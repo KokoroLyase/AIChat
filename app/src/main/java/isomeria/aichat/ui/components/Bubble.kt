@@ -19,6 +19,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.LinkAnnotation
@@ -49,22 +50,27 @@ class BubbleShape(
         val tw = with(density) { tailWidth.toPx() }
         val th = with(density) { tailHeight.toPx() }
         val cy = with(density) { tailCenterY.toPx() }.coerceAtMost(size.height / 2)
-        val path = Path()
         val bodyLeft = if (tailOnRight) 0f else tw
         val bodyRight = if (tailOnRight) size.width - tw else size.width
-        path.addRoundRect(RoundRect(bodyLeft, 0f, bodyRight, size.height, CornerRadius(r, r)))
-        val overlap = 1f
-        if (tailOnRight) {
-            path.moveTo(bodyRight - overlap, cy - th / 2)
-            path.lineTo(size.width, cy)
-            path.lineTo(bodyRight - overlap, cy + th / 2)
-        } else {
-            path.moveTo(bodyLeft + overlap, cy - th / 2)
-            path.lineTo(0f, cy)
-            path.lineTo(bodyLeft + overlap, cy + th / 2)
+        val body = Path().apply {
+            addRoundRect(RoundRect(bodyLeft, 0f, bodyRight, size.height, CornerRadius(r, r)))
         }
-        path.close()
-        return Outline.Generic(path)
+        val overlap = 1f
+        val tail = Path().apply {
+            if (tailOnRight) {
+                moveTo(bodyRight - overlap, cy - th / 2)
+                lineTo(size.width, cy)
+                lineTo(bodyRight - overlap, cy + th / 2)
+            } else {
+                moveTo(bodyLeft + overlap, cy - th / 2)
+                lineTo(0f, cy)
+                lineTo(bodyLeft + overlap, cy + th / 2)
+            }
+            close()
+        }
+        // 必须求并集：直接把尾巴画进同一个 Path 时，右侧尾巴的绕向和圆角矩形相反，
+        // 重叠的 1px 按非零规则会被抵消成空洞，发出的气泡和尾巴之间出现一条浅色细缝
+        return Outline.Generic(Path.combine(PathOperation.Union, body, tail))
     }
 }
 
