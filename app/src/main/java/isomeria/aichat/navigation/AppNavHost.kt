@@ -1,5 +1,7 @@
 package isomeria.aichat.navigation
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -49,8 +51,8 @@ const val NEW_CONTACT = -1L
 private const val DURATION = 300
 
 /**
- * 单 Activity + Navigation Compose。二级页面从右侧推入，返回时滑出；
- * 预测性返回手势（Android 14 起）会驱动同一套动画。
+ * 单 Activity + Navigation Compose。二级页面从右侧推入，点返回箭头时滑出；
+ * 侧边返回手势不加动画，松手后直接切回上一页。
  */
 @Composable
 fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit) {
@@ -73,6 +75,9 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
         exitTransition = { slideOutHorizontally(tween(DURATION, easing = FastOutSlowInEasing)) { -it / 4 } },
         popEnterTransition = { slideInHorizontally(tween(DURATION, easing = FastOutSlowInEasing)) { -it / 4 } },
         popExitTransition = { slideOutHorizontally(tween(DURATION, easing = FastOutSlowInEasing)) { it } },
+        // 侧边返回手势：页面不跟手缩放、滑动，松手后直接回到上一页
+        predictivePopEnterTransition = { EnterTransition.None },
+        predictivePopExitTransition = { ExitTransition.None },
     ) {
         composable<MainRoute> {
             MainScreen(
