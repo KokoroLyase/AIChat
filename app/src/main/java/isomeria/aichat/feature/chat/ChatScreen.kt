@@ -127,7 +127,8 @@ fun ChatScreen(
     LaunchedEffect(lastKey) {
         if (lastKey == null) return@LaunchedEffect
         if (state.lastMessageMine || listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
-        viewModel.markRead()
+        // 只有真正在看（页面处于前台）时才清未读；下拉通知栏、分屏时不清，免得刚发出的通知被取消
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.markRead()
     }
 
     LaunchedEffect(Unit) {
