@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 只给系统窗口和启动图用；界面里的颜色全部来自 ui/theme -->
+    <color name="window_background">#FFEDEDED</color>
+    <color name="ic_launcher_background">#FF07C160</color>
+</resources>

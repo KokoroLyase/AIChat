@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- debug 包使用不同的包名后缀和名称，能和正式包同时安装 -->
+    <string name="app_name">智信 Dev</string>
+</resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知小图标：只用透明度，系统会着色 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="54"
+    android:viewportHeight="54">
+    <group
+        android:translateX="-27"
+        android:translateY="-27">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M44,32h20a14,14 0,0 1,14 14v8a14,14 0,0 1,-14 14h-14l-10,8v-8.6a14,14 0,0 1,-10 -13.4v-8a14,14 0,0 1,14 -14zM54,40.5C55,46.6 56.9,48.6 63,50C56.9,51.4 55,53.4 54,59.5C53,53.4 51.1,51.4 45,50C51.1,48.6 53,46.6 54,40.5z" />
+    </group>
+</vector>

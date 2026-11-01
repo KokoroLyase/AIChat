@@ -1,0 +1,197 @@
+package isomeria.aichat.feature.contactedit
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.navigation.toRoute
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import isomeria.aichat.R
+import isomeria.aichat.data.db.Contact
+import isomeria.aichat.data.db.DeepSeekDefaults
+import isomeria.aichat.data.db.ProviderModel
+import isomeria.aichat.data.db.ThinkingLevel
+import isomeria.aichat.data.repo.ContactRepository
+import isomeria.aichat.data.repo.FileStorage
+import isomeria.aichat.data.repo.ProviderRepository
+import isomeria.aichat.di.ApplicationScope
+import isomeria.aichat.navigation.ContactEditRoute
+import isomeria.aichat.navigation.NEW_CONTACT
+import isomeria.aichat.ui.components.randomAvatarColor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+data class ContactForm(
+    val name: String = "",
+    val avatarPath: String? = null,
+    val avatarColor: Int = 0,
+    val providerId: Long = DeepSeekDefaults.PROVIDER_ID,
+    val model: String = DeepSeekDefaults.DEFAULT_MODEL,
+    val thinking: ThinkingLevel = ThinkingLevel.OFF,
+    val temperature: Float = Contact.DEFAULT_TEMPERATURE,
+    val systemPrompt: String = "",
+    val contextCount: Int = Contact.DEFAULT_CONTEXT_COUNT,
+    val splitReplies: Boolean = true,
+)
+
+data class ContactEditState(
+    val loaded: Boolean = false,
+    val isNew: Boolean = true,
+    val form: ContactForm = ContactForm(),
+    val original: ContactForm? = null,
+    val showNameError: Boolean = false,
+    /** 正在裁剪的图片 */
+    val cropSource: Bitmap? = null,
+) {
+    val dirty: Boolean get() = loaded && form != original
+}
+
+@HiltViewModel
+class ContactEditViewModel @Inject constructor(
+    savedState: SavedStateHandle,
+    @ApplicationContext private val context: Context,
+    private val contacts: ContactRepository,
+    private val providers: ProviderRepository,
+    private val files: FileStorage,
+    @ApplicationScope private val appScope: CoroutineScope,
+) : ViewModel() {
+    private val contactId = savedState.toRoute<ContactEditRoute>().contactId
+    private var existing: Contact? = null
+
+    /** 编辑过程中新生成、但最终没有保存的头像文件，离开时删掉 */
+    private val pendingAvatars = mutableSetOf<String>()
+    private var saved = false
+
+    private val _state = MutableStateFlow(ContactEditState())
+    val state: StateFlow<ContactEditState> = _state.asStateFlow()
+
+    val models: StateFlow<List<ProviderModel>> = providers.observeModels()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        viewModelScope.launch {
+            val form = if (contactId == NEW_CONTACT) {
+                val config = providers.llm()
+                ContactForm(
+                    avatarColor = randomAvatarColor(),
+                    providerId = config.id,
+                    model = config.defaultModel,
+                    systemPrompt = context.getString(R.string.prompt_template),
+                )
+            } else {
+                val contact = contacts.get(contactId)
+                existing = contact
+                contact?.let {
+                    ContactForm(
+                        name = it.name,
+                        avatarPath = it.avatarPath,
+                        avatarColor = it.avatarColor,
+                        providerId = it.providerId,
+                        model = it.model,
+                        thinking = it.thinking,
+                        temperature = it.temperature,
+                        systemPrompt = it.systemPrompt,
+                        contextCount = it.contextCount,
+                        splitReplies = it.splitReplies,
+                    )
+                } ?: ContactForm(avatarColor = randomAvatarColor())
+            }
+            _state.value = ContactEditState(loaded = true, isNew = contactId == NEW_CONTACT, form = form, original = form)
+        }
+    }
+
+    fun update(transform: (ContactForm) -> ContactForm) {
+        _state.update { it.copy(form = transform(it.form), showNameError = false) }
+    }
+
+    fun setName(name: String) = update { it.copy(name = name.take(Contact.NAME_MAX_LENGTH)) }
+
+    fun pickAvatar(uri: Uri) {
+        viewModelScope.launch {
+            val bitmap = runCatching { files.decodeForCrop(uri) }.getOrNull() ?: return@launch
+            _state.update { it.copy(cropSource = bitmap) }
+        }
+    }
+
+    fun cancelCrop() = _state.update { it.copy(cropSource = null) }
+
+    fun applyCrop(bitmap: Bitmap) {
+        viewModelScope.launch {
+            val path = files.saveAvatar(bitmap)
+            pendingAvatars += path
+            _state.update { it.copy(cropSource = null, form = it.form.copy(avatarPath = path)) }
+        }
+    }
+
+    fun resetAvatar() = update { it.copy(avatarPath = null) }
+
+    /** 保存。名称为空时提示，返回 null；成功时返回联系人 id。 */
+    suspend fun save(): Long? {
+        val form = _state.value.form
+        val name = form.name.trim()
+        if (name.isEmpty()) {
+            _state.update { it.copy(showNameError = true) }
+            return null
+        }
+        val now = System.currentTimeMillis()
+        val id = existing?.let { old ->
+            contacts.update(
+                old.copy(
+                    name = name,
+                    avatarPath = form.avatarPath,
+                    avatarColor = form.avatarColor,
+                    providerId = form.providerId,
+                    model = form.model,
+                    thinking = form.thinking,
+                    temperature = form.temperature,
+                    systemPrompt = form.systemPrompt,
+                    contextCount = form.contextCount,
+                    splitReplies = form.splitReplies,
+                ),
+            )
+            old.id
+        } ?: contacts.create(
+            Contact(
+                name = name,
+                avatarPath = form.avatarPath,
+                avatarColor = form.avatarColor,
+                providerId = form.providerId,
+                model = form.model,
+                thinking = form.thinking,
+                temperature = form.temperature,
+                systemPrompt = form.systemPrompt,
+                contextCount = form.contextCount,
+                splitReplies = form.splitReplies,
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
+        saved = true
+        pendingAvatars.remove(form.avatarPath)
+        return id
+    }
+
+    fun delete(onDone: () -> Unit) {
+        val id = existing?.id ?: return
+        appScope.launch {
+            contacts.delete(id)
+            launch(kotlinx.coroutines.Dispatchers.Main) { onDone() }
+        }
+    }
+
+    override fun onCleared() {
+        // 没保存就离开，或保存时用的是另一张：删掉编辑中生成的头像文件
+        val keep = if (saved) _state.value.form.avatarPath else existing?.avatarPath
+        pendingAvatars.filter { it != keep }.forEach(files::delete)
+    }
+}

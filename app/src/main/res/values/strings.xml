@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="app_name">智信</string>
+
+    <!-- Tab -->
+    <string name="tab_chats">智信</string>
+    <string name="tab_contacts">通讯录</string>
+    <string name="tab_me">我</string>
+    <string name="title_chats_unread">智信(%1$d)</string>
+
+    <!-- 通用 -->
+    <string name="action_back">返回</string>
+    <string name="action_search">搜索</string>
+    <string name="action_add">添加</string>
+    <string name="action_ok">确定</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_save">保存</string>
+    <string name="action_done">完成</string>
+    <string name="action_delete">删除</string>
+    <string name="action_copy">复制</string>
+    <string name="action_go_settings">去设置</string>
+    <string name="action_resend">重发</string>
+    <string name="coming_soon">即将支持</string>
+    <string name="default_nickname">我</string>
+
+    <!-- 聊天列表 -->
+    <string name="menu_new_contact">新建联系人</string>
+    <string name="chat_list_empty">还没有聊天</string>
+    <string name="chat_list_empty_hint">去通讯录新建一个 AI 联系人，开始聊天</string>
+    <string name="chat_list_go_contacts">去通讯录</string>
+    <string name="chat_menu_pin">置顶该聊天</string>
+    <string name="chat_menu_unpin">取消置顶</string>
+    <string name="chat_menu_mark_unread">标为未读</string>
+    <string name="chat_menu_mark_read">标为已读</string>
+    <string name="chat_menu_delete">删除该聊天</string>
+    <string name="chat_delete_confirm">删除后，将清空该聊天的消息记录，联系人会保留。</string>
+    <string name="preview_draft">[草稿]</string>
+    <string name="preview_image">[图片]</string>
+
+    <!-- 搜索 -->
+    <string name="search_hint">搜索</string>
+    <string name="search_contacts">联系人</string>
+    <string name="search_messages">聊天记录</string>
+    <string name="search_no_result">没有找到相关结果</string>
+
+    <!-- 聊天页 -->
+    <!-- 和微信一致用三个点 -->
+    <string name="chat_typing" tools:ignore="TypographyEllipsis">对方正在输入...</string>
+    <string name="chat_voice">切换到语音输入</string>
+    <string name="chat_keyboard">切换到键盘</string>
+    <string name="chat_emoji">表情</string>
+    <string name="chat_more">更多功能</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_hold_to_talk">按住 说话</string>
+    <string name="chat_voice_coming">语音聊天即将支持</string>
+    <string name="chat_album">相册</string>
+    <string name="chat_camera">拍照</string>
+    <string name="chat_image_unsupported">当前模型不支持图片，可以到联系人编辑里换成支持图片的模型</string>
+    <string name="chat_thinking_done">已深度思考（用时 %1$d 秒）</string>
+    <string name="chat_menu_regenerate">重新生成</string>
+    <string name="chat_menu_cancel_reply">取消回复</string>
+    <string name="chat_delete_message_confirm">删除这条消息？</string>
+    <string name="chat_resend_title">重发该消息？</string>
+    <string name="chat_no_key_title">还没有配置 API Key</string>
+    <string name="chat_no_key_message">在「设置 → 模型服务 → 大语言模型」里填写 DeepSeek 的 API Key 后就能聊天了。</string>
+    <string name="chat_contact_missing">联系人已被删除</string>
+    <string name="chat_info">聊天信息</string>
+    <string name="chat_image_import_failed">图片读取失败</string>
+
+    <!-- 失败原因 -->
+    <string name="error_auth">API Key 无效</string>
+    <string name="error_balance">DeepSeek 账户余额不足</string>
+    <string name="error_rate_limit">请求过快，请稍后再试</string>
+    <string name="error_bad_request">请求参数有误，可以检查联系人的模型设置</string>
+    <string name="error_server">网络或服务异常</string>
+    <string name="error_network">网络或服务异常</string>
+    <string name="error_cancelled">已取消回复</string>
+    <string name="error_interrupted">等待回复时应用被关闭</string>
+    <string name="error_no_key">还没有配置 API Key</string>
+    <string name="error_empty_reply">对方没有回复内容</string>
+    <string name="error_unknown">发送失败，请重试</string>
+
+    <!-- 图片查看 -->
+    <string name="image_save">保存到相册</string>
+    <string name="image_saved">已保存到相册</string>
+    <string name="image_save_failed">保存失败</string>
+
+    <!-- 通讯录 -->
+    <string name="contacts_new">新建联系人</string>
+    <string name="contacts_count">%1$d 位联系人</string>
+    <string name="contacts_empty_hint">点上面的「新建联系人」，创建你的第一个 AI 联系人</string>
+
+    <!-- 联系人详情 -->
+    <string name="contact_model_line">模型：%1$s</string>
+    <string name="contact_send_message">发消息</string>
+    <string name="contact_edit">编辑</string>
+    <string name="contact_thinking_line">思考：%1$s</string>
+
+    <!-- 联系人编辑 -->
+    <string name="contact_edit_title_new">新建联系人</string>
+    <string name="contact_edit_title">编辑联系人</string>
+    <string name="contact_avatar">头像</string>
+    <string name="contact_avatar_pick">从相册选择</string>
+    <string name="contact_avatar_reset">恢复默认头像</string>
+    <string name="contact_name">名称</string>
+    <string name="contact_name_hint">必填，最多 20 字</string>
+    <string name="contact_name_required">请填写名称</string>
+    <string name="contact_model">模型</string>
+    <string name="contact_model_pick">选择模型</string>
+    <string name="contact_model_image">支持图片</string>
+    <string name="contact_thinking">思考强度</string>
+    <string name="thinking_off">关</string>
+    <string name="thinking_high">高</string>
+    <string name="thinking_max">最高</string>
+    <string name="contact_temperature">温度</string>
+    <string name="contact_temperature_hint">数值越高，回复越随性；越低越稳定</string>
+    <string name="contact_temperature_disabled">思考模式下不生效</string>
+    <string name="contact_prompt">系统提示词</string>
+    <string name="contact_prompt_hint">定义人设和说话方式。{名称} 会自动替换为联系人名称</string>
+    <string name="contact_context_count">上下文条数</string>
+    <string name="contact_context_count_hint">每次请求带上最近 %1$d 条消息</string>
+    <string name="contact_split">分条显示</string>
+    <string name="contact_split_hint">回复里有空行时，拆成多条消息依次出现</string>
+    <string name="contact_delete">删除联系人</string>
+    <string name="contact_delete_confirm">将同时删除与「%1$s」的聊天记录，且无法恢复。</string>
+    <string name="contact_discard_title">放弃本次编辑？</string>
+    <string name="contact_discard">放弃</string>
+    <string name="crop_title">移动和缩放</string>
+
+    <!-- 新建联系人时预填的伴侣模板。{名称} 自动替换为联系人名称，花括号那一行没改时不会发给模型。 -->
+    <string name="prompt_template">你是{名称}，正在用微信和对方聊天。\n用自然、口语化的中文回复，像真人发微信一样简短；想分几条发时，用空行隔开。\n不使用 Markdown、标题、列表或代码块。\n{在这里写人设：性格、和对方的关系、说话习惯、是否使用 emoji}</string>
+    <string name="prompt_name_placeholder">{名称}</string>
+    <string name="prompt_persona_placeholder_prefix">{在这里写人设</string>
+    <!-- 参数：年、月、日、星期、时、分 -->
+    <string name="prompt_time_line">现在是 %1$d年%2$d月%3$d日 %4$s %5$02d:%6$02d。</string>
+    <string name="prompt_nickname_line">对方的昵称是「%1$s」。</string>
+
+    <!-- 我 -->
+    <string name="me_version">版本 %1$s</string>
+    <string name="me_settings">设置</string>
+    <string name="profile_title">个人信息</string>
+    <string name="profile_avatar">头像</string>
+    <string name="profile_nickname">昵称</string>
+    <string name="profile_nickname_hint">联系人会这样称呼你</string>
+
+    <!-- 设置 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_group_models">模型服务</string>
+    <string name="settings_llm">大语言模型</string>
+    <string name="settings_tts">语音合成</string>
+    <string name="settings_asr">语音识别</string>
+    <string name="settings_group_general">通用</string>
+    <string name="settings_dark_mode">深色模式</string>
+    <string name="theme_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="settings_font_size">字体大小</string>
+    <string name="font_small">小</string>
+    <string name="font_standard">标准</string>
+    <string name="font_large">大</string>
+    <string name="font_extra_large">特大</string>
+    <string name="settings_notify">新消息通知</string>
+    <string name="settings_notify_preview">通知显示消息内容</string>
+    <string name="settings_notify_permission_off">系统通知权限已关闭，点这里打开</string>
+    <string name="settings_battery">关闭电池优化</string>
+    <string name="settings_battery_hint">部分系统清理后台较激进，可能导致切到后台后收不到回复</string>
+    <string name="settings_group_about">关于</string>
+    <string name="settings_version">版本号</string>
+    <string name="settings_licenses">开源许可</string>
+    <string name="settings_github">GitHub 仓库</string>
+    <string name="settings_data_notice">所有数据只保存在本机，卸载应用会清空聊天记录和联系人。</string>
+
+    <!-- 大语言模型设置 -->
+    <string name="llm_provider">服务商</string>
+    <string name="llm_provider_deepseek">DeepSeek</string>
+    <string name="llm_api_key">API Key</string>
+    <string name="llm_api_key_hint">sk-…</string>
+    <string name="llm_api_key_saved">已保存：%1$s</string>
+    <string name="llm_api_key_missing">未填写</string>
+    <string name="llm_api_key_clear">清除已保存的 Key</string>
+    <string name="llm_base_url">Base URL</string>
+    <string name="llm_default_model">默认模型</string>
+    <string name="llm_default_model_hint">新建联系人时使用</string>
+    <string name="llm_models">模型列表</string>
+    <string name="llm_models_hint">测试连接成功后自动从接口更新</string>
+    <string name="llm_model_image_yes">支持图片</string>
+    <string name="llm_model_image_no">不支持图片</string>
+    <string name="llm_model_image_unknown">接口未说明是否支持图片，可手动标记</string>
+    <string name="llm_test">测试连接</string>
+    <string name="llm_testing">正在连接…</string>
+    <string name="llm_test_ok">连接成功，已获取 %1$d 个模型</string>
+    <string name="llm_saved">已保存</string>
+    <string name="llm_security_notice">API Key 经 Android Keystore 加密后保存在本机，只会发送到上面的 Base URL。</string>
+    <string name="llm_base_url_invalid">Base URL 需以 https:// 或 http:// 开头</string>
+    <string name="llm_get_key">获取 API Key：platform.deepseek.com</string>
+
+    <!-- 开源许可 -->
+    <string name="licenses_title">开源许可</string>
+    <string name="licenses_intro">智信使用了以下开源项目，感谢它们的作者。</string>
+
+    <!-- 时间 -->
+    <string name="time_yesterday">昨天</string>
+    <string name="time_month_day">%1$d月%2$d日</string>
+    <string name="time_year_month_day">%1$d年%2$d月%3$d日</string>
+    <string-array name="weekdays">
+        <item>星期一</item>
+        <item>星期二</item>
+        <item>星期三</item>
+        <item>星期四</item>
+        <item>星期五</item>
+        <item>星期六</item>
+        <item>星期日</item>
+    </string-array>
+
+    <!-- 通知 -->
+    <string name="notification_channel_messages">新消息</string>
+    <string name="notification_channel_messages_desc">联系人回复到达时提醒</string>
+    <string name="notification_channel_receiving">正在接收消息</string>
+    <string name="notification_channel_receiving_desc">等待回复较久时显示，回复到达后自动消失</string>
+    <string name="notification_receiving">正在接收消息</string>
+    <string name="notification_hidden_content">发来一条新消息</string>
+    <string name="notification_multi">[%1$d条] %2$s</string>
+</resources>

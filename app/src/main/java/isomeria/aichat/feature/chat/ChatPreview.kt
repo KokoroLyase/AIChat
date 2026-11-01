@@ -1,0 +1,114 @@
+package isomeria.aichat.feature.chat
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.tooling.preview.Preview
+import isomeria.aichat.R
+import isomeria.aichat.data.db.Contact
+import isomeria.aichat.data.db.Message
+import isomeria.aichat.data.db.MessageStatus
+import isomeria.aichat.data.db.MessageType
+import isomeria.aichat.data.db.Role
+import isomeria.aichat.data.repo.FailReason
+import isomeria.aichat.ui.components.ChatInputBar
+import isomeria.aichat.ui.components.InputPanel
+import isomeria.aichat.ui.components.TopBarIcon
+import isomeria.aichat.ui.components.WeIcons
+import isomeria.aichat.ui.components.WeTopBar
+import isomeria.aichat.ui.theme.AIChatTheme
+import isomeria.aichat.ui.theme.AvatarPalette
+import isomeria.aichat.ui.theme.WeTheme
+
+internal val sampleContact = Contact(
+    id = 1,
+    name = "小雨",
+    avatarColor = AvatarPalette[0],
+    providerId = 1,
+    model = "deepseek-flash",
+    createdAt = 0,
+    updatedAt = 0,
+)
+
+private fun msg(id: Long, role: Role, text: String, reasoning: String? = null, status: MessageStatus = MessageStatus.SUCCESS) =
+    Message(
+        id = id,
+        contactId = 1,
+        role = role,
+        type = MessageType.TEXT,
+        content = text,
+        reasoning = reasoning,
+        reasoningMillis = if (reasoning != null) 6_000 else 0,
+        status = status,
+        errorCode = if (status == MessageStatus.FAILED) FailReason.NETWORK.code else 0,
+        createdAt = id,
+    )
+
+internal val sampleRows: List<ChatRow> = listOf(
+    ChatRow.TimeBar("昨天 22:41", "t0"),
+    ChatRow.Item(msg(1, Role.USER, "今天加班到好晚，好累")),
+    ChatRow.Item(msg(2, Role.ASSISTANT, "辛苦啦，到家了吗？")),
+    ChatRow.Item(msg(3, Role.ASSISTANT, "记得吃点东西再睡，别空着肚子")),
+    ChatRow.TimeBar("21:30", "t1"),
+    ChatRow.Item(msg(4, Role.USER, "推荐一部轻松点的电影吧")),
+    ChatRow.Item(
+        msg(5, Role.ASSISTANT, "《海蒂和爷爷》怎么样？画面很治愈，节奏也慢，适合放松。豆瓣页面：https://movie.douban.com", reasoning = "对方累了，想看轻松的……"),
+        canRegenerate = true,
+    ),
+    ChatRow.Item(msg(6, Role.USER, "好呀，周末一起看", status = MessageStatus.FAILED)),
+)
+
+private val noActions = MessageActions({}, {}, {}, {}, {}, {}, {})
+
+/** 聊天页的静态外观：顶栏、消息、输入栏。Compose Preview 和截图测试共用。 */
+@Composable
+internal fun ChatPageSample(typing: Boolean = false, input: String = "") {
+    Column(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) {
+        WeTopBar(
+            title = if (typing) stringResource(R.string.chat_typing) else sampleContact.name,
+            onBack = {},
+            showLine = true,
+        ) {
+            TopBarIcon(WeIcons.More, "", {})
+        }
+        ChatMessageList(
+            rows = sampleRows,
+            contact = sampleContact,
+            myName = "我",
+            myAvatarPath = null,
+            waitingReply = typing,
+            actions = noActions,
+            modifier = Modifier.weight(1f),
+        )
+        ChatInputBar(
+            value = TextFieldValue(input),
+            onValueChange = {},
+            voiceMode = false,
+            panel = InputPanel.NONE,
+            onToggleVoice = {},
+            onTogglePanel = {},
+            onSend = {},
+            onInputFocused = {},
+            onVoiceComingSoon = {},
+            focusRequester = remember { FocusRequester() },
+        )
+    }
+}
+
+@Preview(name = "聊天页 浅色", showBackground = true, widthDp = 400, heightDp = 860)
+@Composable
+private fun ChatLightPreview() {
+    AIChatTheme(darkTheme = false) { ChatPageSample() }
+}
+
+@Preview(name = "聊天页 深色", showBackground = true, widthDp = 400, heightDp = 860)
+@Composable
+private fun ChatDarkPreview() {
+    AIChatTheme(darkTheme = true) { ChatPageSample(input = "好的") }
+}

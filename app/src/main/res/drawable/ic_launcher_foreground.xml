@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 智信图标：自绘的单个对话气泡 + 四角星，不描摹微信图标 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M44,32h20a14,14 0,0 1,14 14v8a14,14 0,0 1,-14 14h-14l-10,8v-8.6a14,14 0,0 1,-10 -13.4v-8a14,14 0,0 1,14 -14z" />
+    <path
+        android:fillColor="#FF07C160"
+        android:pathData="M54,40.5C55,46.6 56.9,48.6 63,50C56.9,51.4 55,53.4 54,59.5C53,53.4 51.1,51.4 45,50C51.1,48.6 53,46.6 54,40.5z" />
+</vector>

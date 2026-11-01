@@ -1,0 +1,25 @@
+# Gradle / 构建产物
+.gradle/
+.kotlin/
+build/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+output-metadata.json
+
+# 本机配置
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# 签名：keystore 和密码永远不进仓库
+keystore.properties
+keystore/
+*.jks
+*.keystore
+
+# 日志
+*.log

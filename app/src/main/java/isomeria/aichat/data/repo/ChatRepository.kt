@@ -1,0 +1,207 @@
+package isomeria.aichat.data.repo
+
+import android.content.Context
+import android.net.Uri
+import androidx.room.withTransaction
+import dagger.hilt.android.qualifiers.ApplicationContext
+import isomeria.aichat.R
+import isomeria.aichat.data.db.AppDatabase
+import isomeria.aichat.data.db.Contact
+import isomeria.aichat.data.db.ContactDao
+import isomeria.aichat.data.db.Conversation
+import isomeria.aichat.data.db.ConversationDao
+import isomeria.aichat.data.db.ConversationItem
+import isomeria.aichat.data.db.Message
+import isomeria.aichat.data.db.MessageDao
+import isomeria.aichat.data.db.MessageSearchHit
+import isomeria.aichat.data.db.MessageStatus
+import isomeria.aichat.data.db.MessageType
+import isomeria.aichat.data.db.Role
+import isomeria.aichat.data.reply.ReplyNotifier
+import isomeria.aichat.data.reply.ReplyScheduler
+import kotlinx.coroutines.flow.Flow
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/** 聊天列表、聊天记录与收发。页面只经过这里访问消息数据和回复任务。 */
+@Singleton
+class ChatRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val db: AppDatabase,
+    private val contactDao: ContactDao,
+    private val conversationDao: ConversationDao,
+    private val messageDao: MessageDao,
+    private val files: FileStorage,
+    private val replyScheduler: ReplyScheduler,
+    private val notifier: ReplyNotifier,
+) {
+    fun observeConversations(): Flow<List<ConversationItem>> = conversationDao.observeList()
+
+    fun observeTotalUnread(): Flow<Int> = conversationDao.observeTotalUnread()
+
+    fun observeConversation(contactId: Long): Flow<Conversation?> = conversationDao.observe(contactId)
+
+    fun observeMessages(contactId: Long): Flow<List<Message>> = messageDao.observeByContact(contactId)
+
+    suspend fun sendText(contactId: Long, text: String) {
+        val content = text.trim()
+        if (content.isEmpty()) return
+        insertUserMessages(
+            contactId,
+            listOf(
+                Message(
+                    contactId = contactId,
+                    role = Role.USER,
+                    type = MessageType.TEXT,
+                    content = content,
+                    status = MessageStatus.SENDING,
+                    createdAt = System.currentTimeMillis(),
+                ),
+            ),
+        )
+        conversationDao.setDraft(contactId, "")
+        replyScheduler.enqueue(contactId)
+    }
+
+    /** 一次可选多张，每张单独成一条消息 */
+    suspend fun sendImages(contactId: Long, uris: List<Uri>): Int {
+        val now = System.currentTimeMillis()
+        val rows = uris.mapIndexedNotNull { index, uri ->
+            val image = runCatching { files.importChatImage(uri) }.getOrNull() ?: return@mapIndexedNotNull null
+            Message(
+                contactId = contactId,
+                role = Role.USER,
+                type = MessageType.IMAGE,
+                imagePath = image.path,
+                imageWidth = image.width,
+                imageHeight = image.height,
+                status = MessageStatus.SENDING,
+                createdAt = now + index,
+            )
+        }
+        if (rows.isEmpty()) return 0
+        insertUserMessages(contactId, rows)
+        replyScheduler.enqueue(contactId)
+        return rows.size
+    }
+
+    private suspend fun insertUserMessages(contactId: Long, rows: List<Message>) {
+        db.withTransaction {
+            ensureConversation(contactId)
+            messageDao.insertAll(rows)
+            val last = rows.last()
+            conversationDao.setLastMessage(contactId, last.createdAt, previewOf(last))
+            conversationDao.markRead(contactId)
+        }
+    }
+
+    /** 重试：把最后一条回复之后失败的消息重新发出 */
+    suspend fun retry(contactId: Long) {
+        val messages = messageDao.listByContact(contactId)
+        val lastReply = messages.indexOfLast { it.role == Role.ASSISTANT }
+        val failed = messages.drop(lastReply + 1)
+            .filter { it.role == Role.USER && it.status == MessageStatus.FAILED }
+            .map { it.id }
+        if (failed.isEmpty()) return
+        messageDao.setStatus(failed, MessageStatus.SENDING, 0)
+        replyScheduler.enqueue(contactId)
+    }
+
+    /** 重新生成：删除最后一次回复（分条的几条一起删），重新请求 */
+    suspend fun regenerate(contactId: Long) {
+        val messages = messageDao.listByContact(contactId)
+        val last = messages.lastOrNull { it.role == Role.ASSISTANT } ?: return
+        val lastIndex = messages.indexOf(last)
+        // 只对最后一条回复：回复之后不能再有自己的消息
+        if (messages.drop(lastIndex + 1).any { it.role == Role.USER }) return
+        db.withTransaction {
+            if (last.replyGroup != null) messageDao.deleteGroup(last.replyGroup) else messageDao.delete(last.id)
+            val remaining = messageDao.listByContact(contactId)
+            val previousReply = remaining.indexOfLast { it.role == Role.ASSISTANT }
+            val toResend = remaining.drop(previousReply + 1).filter { it.role == Role.USER }.map { it.id }
+            messageDao.setStatus(toResend, MessageStatus.SENDING, 0)
+            refreshLastMessage(contactId)
+        }
+        replyScheduler.enqueue(contactId)
+    }
+
+    /** 取消回复：丢弃未完成的内容，等待中的消息标记失败 */
+    suspend fun cancelReply(contactId: Long) {
+        replyScheduler.cancel(contactId)
+        messageDao.failSending(contactId, FailReason.CANCELLED.code)
+    }
+
+    suspend fun deleteMessage(id: Long) {
+        val message = messageDao.get(id) ?: return
+        db.withTransaction {
+            messageDao.delete(id)
+            refreshLastMessage(message.contactId)
+        }
+        files.delete(message.imagePath)
+        // 删掉的是最后一条等待中的消息时，取消这次请求
+        if (message.status == MessageStatus.SENDING && messageDao.sendingIds(message.contactId).isEmpty()) {
+            replyScheduler.cancel(message.contactId)
+        }
+    }
+
+    /** 删除聊天：只删聊天记录，不删联系人 */
+    suspend fun deleteConversation(contactId: Long) {
+        replyScheduler.cancel(contactId)
+        val images = messageDao.imagePaths(contactId)
+        db.withTransaction {
+            messageDao.deleteByContact(contactId)
+            conversationDao.reset(contactId)
+        }
+        images.forEach(files::delete)
+        notifier.cancelReply(contactId)
+    }
+
+    suspend fun setPinned(contactId: Long, pinned: Boolean) = conversationDao.setPinned(contactId, pinned)
+
+    suspend fun markUnread(contactId: Long) = conversationDao.markUnread(contactId)
+
+    suspend fun markRead(contactId: Long) {
+        conversationDao.markRead(contactId)
+        notifier.cancelReply(contactId)
+    }
+
+    suspend fun saveDraft(contactId: Long, draft: String) {
+        ensureConversation(contactId)
+        conversationDao.setDraft(contactId, draft)
+    }
+
+    suspend fun searchContacts(query: String): List<Contact> =
+        if (query.isBlank()) emptyList() else contactDao.search(query.trim())
+
+    suspend fun searchMessages(query: String): List<MessageSearchHit> =
+        if (query.isBlank()) emptyList() else messageDao.search(query.trim())
+
+    /**
+     * 启动时检查：等待中但已经没有对应任务的消息（App 在等待中被系统杀掉），标记为失败，可重试。
+     */
+    suspend fun markInterruptedRequests() {
+        for (contactId in messageDao.contactsWithSending()) {
+            if (!replyScheduler.isActive(contactId)) {
+                messageDao.failSending(contactId, FailReason.INTERRUPTED.code)
+            }
+        }
+    }
+
+    private suspend fun ensureConversation(contactId: Long) {
+        if (conversationDao.get(contactId) == null) conversationDao.upsert(Conversation(contactId = contactId))
+    }
+
+    private suspend fun refreshLastMessage(contactId: Long) {
+        val latest = messageDao.latest(contactId)
+        if (latest == null) {
+            conversationDao.setLastMessage(contactId, 0, "")
+        } else {
+            conversationDao.setLastMessage(contactId, latest.createdAt, previewOf(latest))
+        }
+    }
+
+    private fun previewOf(message: Message): String = when (message.type) {
+        MessageType.TEXT -> message.content
+        MessageType.IMAGE -> context.getString(R.string.preview_image)
+    }
+}
