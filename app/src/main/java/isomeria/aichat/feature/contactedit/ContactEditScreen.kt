@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -35,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
@@ -50,6 +53,7 @@ import isomeria.aichat.ui.components.AvatarCropDialog
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.FormRow
 import isomeria.aichat.ui.components.GroupSpacer
+import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeDialog
@@ -89,6 +93,7 @@ fun ContactEditScreen(
         if (state.dirty) showDiscard = true else onBack()
     }
     BackHandler(enabled = state.dirty) { showDiscard = true }
+    ImeBackHandler()
 
     fun save() {
         scope.launch {
@@ -325,6 +330,7 @@ private fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onSelect:
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class) // 自定义滑块和轨道的 Slider 重载仍是实验性 API
 @Composable
 private fun TemperatureRow(value: Float, enabled: Boolean, onChange: (Float) -> Unit) {
     val colors = WeTheme.colors
@@ -348,22 +354,44 @@ private fun TemperatureRow(value: Float, enabled: Boolean, onChange: (Float) -> 
                 color = if (enabled) colors.textTertiary else colors.textSecondary,
             )
         }
+        // 微信式滑块：细轨道 + 白色圆形滑块，不用 Material 3 的竖条滑块和端点圆点
+        val sliderColors = SliderDefaults.colors(
+            thumbColor = Color.White,
+            activeTrackColor = colors.brand,
+            inactiveTrackColor = colors.switchTrackOff,
+            activeTickColor = Color.Transparent,
+            inactiveTickColor = Color.Transparent,
+            disabledThumbColor = Color.White,
+            disabledActiveTrackColor = colors.disabled,
+            disabledInactiveTrackColor = colors.switchTrackOff,
+        )
         Slider(
             value = value,
             onValueChange = { onChange((it * 10).roundToInt() / 10f) },
             valueRange = 0f..2f,
             steps = 19,
             enabled = enabled,
-            colors = SliderDefaults.colors(
-                thumbColor = colors.brand,
-                activeTrackColor = colors.brand,
-                inactiveTrackColor = colors.switchTrackOff,
-                activeTickColor = Color.Transparent,
-                inactiveTickColor = Color.Transparent,
-                disabledThumbColor = colors.disabled,
-                disabledActiveTrackColor = colors.disabled,
-                disabledInactiveTrackColor = colors.switchTrackOff,
-            ),
+            colors = sliderColors,
+            thumb = {
+                Box(
+                    Modifier
+                        .size(dimens.sliderThumb)
+                        .shadow(2.dp, CircleShape)
+                        .background(Color.White, CircleShape),
+                )
+            },
+            track = { sliderState ->
+                SliderDefaults.Track(
+                    sliderState = sliderState,
+                    modifier = Modifier.height(dimens.sliderTrack),
+                    enabled = enabled,
+                    colors = sliderColors,
+                    drawStopIndicator = null,
+                    drawTick = { _, _ -> },
+                    thumbTrackGapSize = 0.dp,
+                    trackInsideCornerSize = dimens.sliderTrack / 2,
+                )
+            },
         )
         Text(
             stringResource(if (enabled) R.string.contact_temperature_hint else R.string.contact_temperature_disabled),

@@ -49,6 +49,7 @@ import isomeria.aichat.data.llm.LlmException
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.FormRow
+import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.WeActionSheet
@@ -186,6 +187,7 @@ fun LlmSettingsScreen(onBack: () -> Unit, viewModel: LlmSettingsViewModel = hilt
     var showKey by remember { mutableStateOf(false) }
     var showModelSheet by remember { mutableStateOf(false) }
 
+    ImeBackHandler()
     Column(Modifier.fillMaxSize().background(colors.pageBackground).imePadding()) {
         WeTopBar(title = stringResource(R.string.settings_llm), onBack = onBack) {
             WeSmallButton(stringResource(R.string.action_save), viewModel::save, enabled = state.loaded)
@@ -202,7 +204,7 @@ fun LlmSettingsScreen(onBack: () -> Unit, viewModel: LlmSettingsViewModel = hilt
             )
 
             SectionHeader(stringResource(R.string.llm_api_key))
-            FormRow(stringResource(R.string.llm_api_key)) {
+            FormRow(stringResource(R.string.llm_api_key), showDivider = state.savedKeyMasked != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f).padding(vertical = 12.dp)) {
                         if (state.keyInput.isEmpty()) {

@@ -48,6 +48,7 @@ import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.MessageSearchHit
 import isomeria.aichat.data.repo.ChatRepository
 import isomeria.aichat.ui.components.Avatar
+import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.WeDivider
 import isomeria.aichat.ui.components.WeIcons
@@ -98,6 +99,7 @@ fun SearchScreen(
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
+    ImeBackHandler()
     Column(Modifier.fillMaxSize().background(colors.pageBackground).imePadding()) {
         Row(
             Modifier

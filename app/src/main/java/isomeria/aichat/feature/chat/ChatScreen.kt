@@ -56,6 +56,7 @@ import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.ui.components.ChatInputBar
 import isomeria.aichat.ui.components.EmojiPanel
+import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.InputPanel
 import isomeria.aichat.ui.components.MorePanel
 import isomeria.aichat.ui.components.TopBarIcon
@@ -169,6 +170,7 @@ fun ChatScreen(
     }
 
     BackHandler(enabled = panel != InputPanel.NONE) { panel = InputPanel.NONE }
+    ImeBackHandler()
 
     val contact = state.contact
     val title = when {

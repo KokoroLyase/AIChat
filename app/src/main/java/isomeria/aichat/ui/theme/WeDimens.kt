@@ -59,6 +59,10 @@ data class WeDimens(
     val badgeSize: Dp = 18.dp,
     val badgeDot: Dp = 10.dp,
 
+    // 滑块（温度）
+    val sliderThumb: Dp = 24.dp,
+    val sliderTrack: Dp = 4.dp,
+
     // 按钮、对话框
     val buttonHeight: Dp = 48.dp,
     val buttonCorner: Dp = 8.dp,

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -192,13 +194,15 @@ fun WeListRow(
             Box(Modifier.size(dimens.listRowAvatar), contentAlignment = Alignment.Center) { leading() }
             Spacer(Modifier.width(dimens.listRowTextStart - dimens.horizontalPadding - dimens.listRowAvatar))
         }
+        // 有值或右侧控件时，标题按自身宽度显示，剩下的宽度全给右侧，让值和控件靠右对齐
+        val hasEnd = value != null || trailing != null
         Text(
             title,
             style = titleStyle,
             color = if (enabled) titleColor else colors.textSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = value == null && trailing == null),
+            modifier = if (hasEnd) Modifier else Modifier.weight(1f),
         )
         if (value != null) {
             Text(
@@ -208,11 +212,11 @@ fun WeListRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 16.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                textAlign = TextAlign.End,
             )
         }
         if (trailing != null) {
-            if (value == null) Spacer(Modifier.weight(0.001f))
+            if (value == null) Spacer(Modifier.weight(1f).widthIn(min = 16.dp)) else Spacer(Modifier.width(8.dp))
             trailing()
         }
         if (showArrow) {

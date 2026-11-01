@@ -48,6 +48,7 @@ import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.AvatarCropDialog
 import isomeria.aichat.ui.components.FormRow
 import isomeria.aichat.ui.components.GroupSpacer
+import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeIcons
@@ -166,6 +167,7 @@ fun ProfileScreen(onBack: () -> Unit, viewModel: MeViewModel = hiltViewModel()) 
         if (uri != null) viewModel.pickAvatar(uri)
     }
 
+    ImeBackHandler()
     Column(Modifier.fillMaxSize().background(colors.pageBackground)) {
         WeTopBar(title = stringResource(R.string.profile_title), onBack = {
             viewModel.setNickname(name.trim())
