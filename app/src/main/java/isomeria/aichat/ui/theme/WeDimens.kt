@@ -41,7 +41,8 @@ data class WeDimens(
     val bubbleTailWidth: Dp = 5.dp,
     val bubbleTailHeight: Dp = 9.dp,
     val bubbleTailCenterY: Dp = 20.dp,
-    val bubbleAvatarGap: Dp = 6.dp,
+    /** 头像到气泡主体的距离；气泡尾巴画在这段间隙里，尾尖离头像 = 间隙 - 尾巴宽度 */
+    val bubbleAvatarGap: Dp = 12.dp,
     val bubbleOppositeMinGap: Dp = 62.dp,
     val messageSpacing: Dp = 12.dp,
     val imageMaxSide: Dp = 140.dp,
