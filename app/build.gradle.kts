@@ -45,7 +45,7 @@ android {
         versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "GITHUB_REPO", "\"Isomeria/AIChat\"")
+        buildConfigField("String", "GITHUB_REPO", "\"KokoroLyase/AIChat\"")
     }
 
     signingConfigs {
