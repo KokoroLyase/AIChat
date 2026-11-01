@@ -60,6 +60,9 @@ data class WeDimens(
     val badgeSize: Dp = 18.dp,
     val badgeDot: Dp = 10.dp,
 
+    /** 返回、推入时页面左边缘的阴影宽度（按微信录屏测量） */
+    val pageEdgeShadow: Dp = 16.dp,
+
     // 滑块（温度）
     val sliderThumb: Dp = 24.dp,
     val sliderTrack: Dp = 4.dp,

@@ -1,11 +1,5 @@
 package isomeria.aichat.navigation
 
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -13,7 +7,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -48,11 +44,9 @@ import kotlinx.serialization.Serializable
 
 const val NEW_CONTACT = -1L
 
-private const val DURATION = 300
-
 /**
- * 单 Activity + Navigation Compose。二级页面从右侧推入，点返回箭头时滑出；
- * 侧边返回手势不加动画，松手后直接切回上一页。
+ * 单 Activity + Navigation Compose。二级页面从右侧推入；返回按微信的动画滑出，
+ * 侧边返回手势和点返回箭头效果相同（见 PageTransitions.kt）。
  */
 @Composable
 fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit) {
@@ -71,13 +65,10 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
         navController = nav,
         startDestination = MainRoute,
         modifier = Modifier.fillMaxSize().background(WeTheme.colors.pageBackground),
-        enterTransition = { slideInHorizontally(tween(DURATION, easing = FastOutSlowInEasing)) { it } },
-        exitTransition = { slideOutHorizontally(tween(DURATION, easing = FastOutSlowInEasing)) { -it / 4 } },
-        popEnterTransition = { slideInHorizontally(tween(DURATION, easing = FastOutSlowInEasing)) { -it / 4 } },
-        popExitTransition = { slideOutHorizontally(tween(DURATION, easing = FastOutSlowInEasing)) { it } },
-        // 侧边返回手势：页面不跟手缩放、滑动，松手后直接回到上一页
-        predictivePopEnterTransition = { EnterTransition.None },
-        predictivePopExitTransition = { ExitTransition.None },
+        enterTransition = pushEnter,
+        exitTransition = pushExit,
+        popEnterTransition = popEnter,
+        popExitTransition = popExit,
     ) {
         composable<MainRoute> {
             MainScreen(
@@ -89,7 +80,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenProfile = { nav.navigate(ProfileRoute) },
             )
         }
-        composable<ChatRoute> {
+        page<ChatRoute>(nav) {
             ChatScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenContact = { nav.navigate(ContactDetailRoute(it)) },
@@ -97,7 +88,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenLlmSettings = { nav.navigate(LlmSettingsRoute) },
             )
         }
-        composable<ContactDetailRoute> { entry ->
+        page<ContactDetailRoute>(nav) { entry ->
             val route = entry.toRoute<ContactDetailRoute>()
             ContactDetailScreen(
                 onBack = nav::popBackStackSafely,
@@ -115,7 +106,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onEdit = { nav.navigate(ContactEditRoute(route.contactId)) },
             )
         }
-        composable<ContactEditRoute> {
+        page<ContactEditRoute>(nav) {
             ContactEditScreen(
                 onBack = nav::popBackStackSafely,
                 onCreated = { id ->
@@ -124,25 +115,35 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onDeleted = { nav.popBackStack(MainRoute, inclusive = false) },
             )
         }
-        composable<SettingsRoute> {
+        page<SettingsRoute>(nav) {
             SettingsScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenLlm = { nav.navigate(LlmSettingsRoute) },
                 onOpenLicenses = { nav.navigate(LicensesRoute) },
             )
         }
-        composable<LlmSettingsRoute> { LlmSettingsScreen(onBack = nav::popBackStackSafely) }
-        composable<LicensesRoute> { LicensesScreen(onBack = nav::popBackStackSafely) }
-        composable<ProfileRoute> { ProfileScreen(onBack = nav::popBackStackSafely) }
-        composable<SearchRoute> {
+        page<LlmSettingsRoute>(nav) { LlmSettingsScreen(onBack = nav::popBackStackSafely) }
+        page<LicensesRoute>(nav) { LicensesScreen(onBack = nav::popBackStackSafely) }
+        page<ProfileRoute>(nav) { ProfileScreen(onBack = nav::popBackStackSafely) }
+        page<SearchRoute>(nav) {
             SearchScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenChat = { nav.navigate(ChatRoute(it)) { popUpTo(MainRoute) } },
             )
         }
-        composable<ImageViewerRoute> { entry ->
+        page<ImageViewerRoute>(nav) { entry ->
             ImageViewerScreen(path = entry.toRoute<ImageViewerRoute>().path, onBack = nav::popBackStackSafely)
         }
+    }
+}
+
+/** 二级页面：套上 PageFrame（返回接管 + 左边缘阴影） */
+private inline fun <reified T : Any> NavGraphBuilder.page(
+    nav: NavHostController,
+    noinline content: @Composable (NavBackStackEntry) -> Unit,
+) {
+    composable<T> { entry ->
+        PageFrame(transition, onBack = nav::popBackStackSafely) { content(entry) }
     }
 }
 
