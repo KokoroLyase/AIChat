@@ -92,9 +92,10 @@ class MainActivity : ComponentActivity() {
         val state by updateInstaller.state.collectAsStateWithLifecycle()
         var needsPermission by remember { mutableStateOf(false) }
         var canInstall by remember { mutableStateOf(packageManager.canRequestPackageInstalls()) }
-        // 从系统设置回来时重新检查
+        // 从系统设置回来时重新检查：打开了就自动继续，没打开就再提示一次，可以取消
         LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
             canInstall = packageManager.canRequestPackageInstalls()
+            if (!canInstall && updateInstaller.state.value is UpdateInstallState.Ready) needsPermission = true
         }
         when (val current = state) {
             is UpdateInstallState.Downloading -> UpdateProgressDialog(current, updateInstaller::cancel)

@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -355,7 +356,10 @@ fun ProviderEditContent(
                                     ?: stringResource(R.string.llm_api_key_hint),
                                 style = WeTheme.typography.listTitle,
                                 color = colors.textSecondary,
+                                // 不换行：打码的 Key 是一整串，放不下时会整体换到第二行，被裁掉后看不到
+                                softWrap = false,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                         BasicTextField(
@@ -493,7 +497,14 @@ private fun TextInput(
     val colors = WeTheme.colors
     Box(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
         if (value.isEmpty()) {
-            Text(hint, style = WeTheme.typography.listTitle, color = colors.textSecondary, maxLines = 1)
+            Text(
+                hint,
+                style = WeTheme.typography.listTitle,
+                color = colors.textSecondary,
+                softWrap = false,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         BasicTextField(
             value = value,
