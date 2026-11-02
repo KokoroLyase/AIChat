@@ -91,6 +91,9 @@ enum class LlmError {
 
 class LlmException(val error: LlmError, val httpCode: Int = 0, message: String? = null, cause: Throwable? = null) :
     Exception(message ?: error.name, cause) {
+    /** 没有发出请求就因为没有 Key 而失败；服务商拒绝 Key 时一定带 HTTP 状态码 */
+    val isMissingKey: Boolean get() = error == LlmError.AUTH && httpCode == 0
+
     companion object {
         fun fromHttp(code: Int): LlmException {
             val error = when (code) {

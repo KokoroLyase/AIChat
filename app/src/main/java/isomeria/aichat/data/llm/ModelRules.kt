@@ -130,6 +130,23 @@ object ModelRules {
         }
     }
 
+    /** 模型为什么还不能用；能用时为空。 */
+    fun gaps(config: ProviderConfig, model: ProviderModel): List<ModelGap> {
+        if (usable(config, model)) return emptyList()
+        val rules = runCatching { effective(model) }.getOrDefault(ModelConfig())
+        if (rules.chat == false) return listOf(ModelGap.NOT_CHAT)
+        return buildList {
+            if (rules.chat != true) add(ModelGap.CHAT)
+            if (model.imageInputUserMark == null && model.imageInput == isomeria.aichat.data.db.Capability.UNKNOWN) add(ModelGap.IMAGE)
+            if (rules.thinking == null || !validThinking(rules.thinking)) add(ModelGap.THINKING)
+            if (rules.temperature == null || !rules.temperature.normal.valid() || rules.temperature.thinking?.valid() == false) add(ModelGap.TEMPERATURE)
+            if (isEmpty()) add(ModelGap.ENCODING)
+        }
+    }
+
+    /** 原因在模型规则本身，要到模型配置页修正；其余原因在联系人或记忆的选择上。 */
+    fun fixedInModel(issue: ConfigurationIssue): Boolean = issue == ConfigurationIssue.INCOMPLETE || issue == ConfigurationIssue.ENCODING
+
     fun parameters(config: ProviderConfig, model: ProviderModel?, option: String, temperature: Float): RequestParameters? {
         validate(config, model, option, temperature)?.let { throw LlmException(LlmError.CONFIGURATION) }
         if (model == null || (model.legacy && config.compatibility == "LEGACY")) return null
@@ -144,6 +161,7 @@ object ModelRules {
     }
 }
 enum class ConfigurationIssue { MODEL, INCOMPLETE, THINKING, TEMPERATURE, ENCODING }
+enum class ModelGap { NOT_CHAT, CHAT, IMAGE, THINKING, TEMPERATURE, ENCODING }
 data class RequestParameters(val encoding: EncodingRules, val hasThinking: Boolean, val option: String, val hasEfforts: Boolean, val temperature: Float?)
 
 object ConfiguredRequestBuilder {

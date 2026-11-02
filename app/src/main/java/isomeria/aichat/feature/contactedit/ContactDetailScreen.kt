@@ -11,9 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Edit
@@ -38,10 +41,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import isomeria.aichat.R
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.ThinkingLevel
+import isomeria.aichat.data.llm.ConfigurationIssue
+import isomeria.aichat.data.llm.ModelRules
 import isomeria.aichat.data.repo.ContactRepository
 import isomeria.aichat.data.repo.MemoryRepository
 import isomeria.aichat.data.repo.ProviderRepository
+import isomeria.aichat.feature.settings.ConfigActionRow
 import isomeria.aichat.navigation.ContactDetailRoute
+import isomeria.aichat.ui.components.configurationIssueText
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.WeDivider
@@ -66,6 +73,9 @@ data class ContactDetailState(
     val providerName: String = "",
     val memoryCount: Int = 0,
     val thinkingName: String? = null,
+    /** 聊天和记忆各自的配置问题；不等聊天失败才告诉用户 */
+    val chatIssue: ConfigurationIssue? = null,
+    val memoryIssue: ConfigurationIssue? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -94,7 +104,14 @@ class ContactDetailViewModel @Inject constructor(
                     providerName = config?.name.orEmpty(),
                     memoryCount = memoryCount,
                     thinkingName = contact.thinkingOption?.let { value ->
-                        isomeria.aichat.data.llm.ModelRules.options(models.firstOrNull { it.modelId == contact.model }).firstOrNull { it.value == value }?.label ?: value
+                        ModelRules.options(models.firstOrNull { it.modelId == contact.model }).firstOrNull { it.value == value }?.label ?: value
+                    },
+                    chatIssue = config?.let {
+                        ModelRules.validate(it, models.firstOrNull { m -> m.modelId == contact.model }, contact.thinkingOption ?: ModelRules.legacyOption(contact.thinking), contact.temperature)
+                    },
+                    memoryIssue = config?.let {
+                        val memoryModel = providers.memoryModel(contact, it)
+                        ModelRules.validate(it, models.firstOrNull { m -> m.modelId == memoryModel }, contact.memoryThinkingOption, 0.3f)
                     },
                 )
             }
@@ -109,6 +126,7 @@ fun ContactDetailScreen(
     onSendMessage: () -> Unit,
     onEdit: () -> Unit,
     onOpenMemory: () -> Unit,
+    onOpenModel: (Long, String) -> Unit = { _, _ -> },
     viewModel: ContactDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -116,7 +134,7 @@ fun ContactDetailScreen(
     if (state.loaded && state.contact == null) {
         androidx.compose.runtime.LaunchedEffect(Unit) { onBack() }
     }
-    ContactDetailContent(state, onBack, onSendMessage, onEdit, onOpenMemory)
+    ContactDetailContent(state, onBack, onSendMessage, onEdit, onOpenMemory, onOpenModel)
 }
 
 @Composable
@@ -126,6 +144,7 @@ fun ContactDetailContent(
     onSendMessage: () -> Unit,
     onEdit: () -> Unit,
     onOpenMemory: () -> Unit,
+    onOpenModel: (Long, String) -> Unit = { _, _ -> },
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -133,6 +152,8 @@ fun ContactDetailContent(
     Column(Modifier.fillMaxSize().background(colors.pageBackground)) {
         WeTopBar(title = "", onBack = onBack, background = colors.listBackground)
         if (contact == null) return@Column
+        // 字体调大、又有待修正的行时，下面的操作按钮可能超出屏幕
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -188,6 +209,16 @@ fun ContactDetailContent(
                 )
             }
         }
+        if (state.chatIssue != null || state.memoryIssue != null) GroupSpacer()
+        state.chatIssue?.let { issue ->
+            ConfigActionRow(stringResource(R.string.contact_chat_issue), stringResource(configurationIssueText(issue)), titleColor = colors.danger) {
+                if (ModelRules.fixedInModel(issue)) onOpenModel(contact.providerId, contact.model) else onEdit()
+            }
+        }
+        if (state.chatIssue != null && state.memoryIssue != null) WeDivider()
+        state.memoryIssue?.let { issue ->
+            ConfigActionRow(stringResource(R.string.contact_memory_issue), stringResource(configurationIssueText(issue, memory = true)), titleColor = colors.danger, onClick = onOpenMemory)
+        }
         GroupSpacer()
         WeListRow(
             title = stringResource(R.string.memory_title),
@@ -198,6 +229,7 @@ fun ContactDetailContent(
         ActionRow(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.contact_send_message), onSendMessage)
         WeDivider()
         ActionRow(Icons.Outlined.Edit, stringResource(R.string.contact_edit), onEdit)
+        }
     }
 }
 

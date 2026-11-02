@@ -12,6 +12,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import isomeria.aichat.data.llm.LlmException
+import isomeria.aichat.di.ApplicationScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,6 +26,7 @@ class MemoryRepository @Inject constructor(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
     private val engine: MemoryEngine,
+    @ApplicationScope private val appScope: CoroutineScope,
 ) {
     val taskStates get() = engine.tasks.states
 
@@ -58,5 +63,20 @@ class MemoryRepository @Inject constructor(
 
     suspend fun clear(contactId: Long) = memoryDao.deleteByContact(contactId)
 
-    suspend fun summarizeBacklog(contactId: Long): BacklogResult = engine.summarizeBacklog(contactId)
+    /**
+     * 手动总结一批。用户确认后请求可能已经计费，所以在应用级协程里运行，离开记忆页不会取消。
+     * 这个联系人已经有一次在进行时直接忽略。回调可能发生在页面关闭之后。
+     */
+    fun startBacklogSummary(contactId: Long, onResult: (BacklogResult) -> Unit, onFailure: (LlmException) -> Unit) {
+        if (!engine.tasks.beginManual(contactId)) return
+        appScope.launch {
+            try {
+                onResult(engine.summarizeBacklog(contactId))
+            } catch (e: LlmException) {
+                onFailure(e)
+            } finally {
+                engine.tasks.endManual(contactId)
+            }
+        }
+    }
 }

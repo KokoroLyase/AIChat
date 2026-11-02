@@ -39,6 +39,17 @@ class MemoryTasksTest {
         assertEquals(2, max)
         assertTrue(tasks.states.value.values.all { !it.generating && it.queued == 0 })
     }
+    @Test fun onlyOneManualSummaryPerContactAtATime() {
+        val tasks = MemoryTasks()
+        assertTrue(tasks.beginManual(1))
+        assertTrue(tasks.states.value[1]!!.manual)
+        assertFalse("同一联系人不能再发起", tasks.beginManual(1))
+        assertTrue("其他联系人不受影响", tasks.beginManual(2))
+        tasks.endManual(1)
+        assertFalse(tasks.states.value[1]!!.manual)
+        assertTrue(tasks.states.value[2]!!.manual)
+        assertTrue("结束后可以再发起", tasks.beginManual(1))
+    }
     @Test fun failureAndCancellationReleaseLocksAndOnlyKeepSafeCategory() = runTest {
         val tasks = MemoryTasks()
         try { tasks.run(1) { throw LlmException(LlmError.CONFIGURATION, message = "sensitive must never be saved") } } catch (_: LlmException) { }

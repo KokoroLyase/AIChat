@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -41,7 +42,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class ModelEditState(val model: ProviderModel? = null, val provider: ProviderConfig? = null, val saved: Boolean = false,
+data class ModelEditState(val model: ProviderModel? = null, val provider: ProviderConfig? = null,
+    /** 保存成功后要提示的文字；有值时页面返回 */
+    val savedMessage: Int? = null,
     val conflicts: List<ModelReference> = emptyList(),
     /** 最后一次读取或保存的内容，用来判断有没有未保存的修改 */
     val original: ProviderModel? = null,
@@ -59,7 +62,7 @@ class ModelEditViewModel @Inject constructor(savedState: SavedStateHandle, priva
         val model = providers.model(route.providerId, route.modelId)
         _state.value = ModelEditState(model, providers.config(route.providerId), original = model)
     } }
-    fun edit(model: ProviderModel) { _state.value = _state.value.copy(model = model, saved = false) }
+    fun edit(model: ProviderModel) { _state.value = _state.value.copy(model = model) }
     fun save(confirmed: Boolean = false) { viewModelScope.launch {
         val s = _state.value
         val model = s.model?.copy(legacy = false) ?: return@launch
@@ -67,7 +70,12 @@ class ModelEditViewModel @Inject constructor(savedState: SavedStateHandle, priva
         val conflicts = providers.conflicts(config, model)
         if (conflicts.isNotEmpty() && !confirmed) _state.value = s.copy(conflicts = conflicts) else {
             providers.saveModel(model)
-            _state.value = s.copy(model = model, original = model, saved = true, conflicts = emptyList())
+            val message = when {
+                confirmed -> R.string.model_saved_conflict
+                !ModelRules.usable(config, model) -> R.string.model_saved_pending
+                else -> R.string.llm_saved
+            }
+            _state.value = s.copy(model = model, original = model, savedMessage = message, conflicts = emptyList())
         }
     } }
     fun dismiss() { _state.value = _state.value.copy(conflicts = emptyList()) }
@@ -82,7 +90,14 @@ class ModelEditViewModel @Inject constructor(savedState: SavedStateHandle, priva
 @Composable
 fun ModelEditScreen(onBack: () -> Unit, viewModel: ModelEditViewModel = hiltViewModel()) {
     val s by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     LaunchedEffect(s.removed) { if (s.removed) onBack() }
+    LaunchedEffect(s.savedMessage) {
+        s.savedMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            onBack()
+        }
+    }
     ModelEditContent(s, onBack, viewModel::edit, { viewModel.save() }, viewModel::remove)
     if (s.conflicts.isNotEmpty()) ConflictDialog(s.conflicts, viewModel::dismiss) { viewModel.save(true) }
     if (s.inUse.isNotEmpty()) WeDialog(message = stringResource(R.string.model_remove_in_use), dismissText = null,
@@ -113,7 +128,12 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
     Column(Modifier.fillMaxSize().background(colors.pageBackground).imePadding()) {
         WeTopBar(stringResource(R.string.model_configure), onBack = { if (unsaved) confirmDiscard = true else onBack() }) {
             WeSmallButton(stringResource(R.string.action_save), {
-                if (invalidInputs.isEmpty()) onSave() else Toast.makeText(context, R.string.model_input_invalid, Toast.LENGTH_SHORT).show()
+                when {
+                    invalidInputs.isNotEmpty() -> Toast.makeText(context, R.string.model_input_invalid, Toast.LENGTH_SHORT).show()
+                    // 保存后会返回，没添加的档位不能悄悄丢掉
+                    effortValue.isNotEmpty() || effortLabel.isNotEmpty() -> Toast.makeText(context, R.string.model_effort_draft, Toast.LENGTH_SHORT).show()
+                    else -> onSave()
+                }
             }, enabled = model != null)
         }
         if (model == null) return@Column
@@ -123,8 +143,7 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
         fun change(value: ModelConfig) = onChange(model.copy(userConfig = ModelRules.encode(value)))
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
             FootnoteText(model.modelId)
-            FootnoteText(stringResource(if (model.legacy) R.string.model_legacy else if (state.provider?.let { ModelRules.usable(it, model) } == true) R.string.model_ready else R.string.model_pending))
-            if (state.saved) FootnoteText(stringResource(R.string.llm_saved))
+            FootnoteText(if (model.legacy) stringResource(R.string.model_legacy) else modelStatusText(state.provider?.let { ModelRules.gaps(it, model) } ?: listOf(ModelGap.ENCODING)))
             FootnoteText(stringResource(R.string.model_incomplete_save))
             val uri = LocalUriHandler.current
             val docs = ProviderPresets.all.firstOrNull { it.id == state.provider?.presetId }
@@ -204,16 +223,33 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
 @Composable internal fun thinkingModeLabel(mode: ThinkingMode?): String = stringResource(when (mode) {
     ThinkingMode.NONE -> R.string.thinking_none; ThinkingMode.SWITCH -> R.string.thinking_switch; ThinkingMode.ALWAYS -> R.string.thinking_always; else -> R.string.rule_unknown
 })
-@Composable internal fun <T> ChoiceRow(title: String, value: String, note: String? = null, options: List<Pair<String, T>>, onPick: (T) -> Unit) {
+/** 模型状态：已配置，或具体缺什么。 */
+@Composable internal fun modelStatusText(gaps: List<ModelGap>): String {
+    val separator = stringResource(R.string.reference_separator)
+    return when {
+        gaps.isEmpty() -> stringResource(R.string.model_ready)
+        ModelGap.NOT_CHAT in gaps -> stringResource(R.string.model_chat_no)
+        gaps == listOf(ModelGap.ENCODING) -> stringResource(R.string.model_pending_encoding)
+        else -> stringResource(R.string.model_pending_gaps, gaps.map { stringResource(when (it) {
+            ModelGap.IMAGE -> R.string.model_gap_image
+            ModelGap.THINKING -> R.string.model_gap_thinking
+            ModelGap.TEMPERATURE -> R.string.model_gap_temperature
+            ModelGap.ENCODING -> R.string.model_gap_encoding
+            ModelGap.CHAT, ModelGap.NOT_CHAT -> R.string.model_gap_chat
+        }) }.joinToString(separator))
+    }
+}
+@Composable internal fun <T> ChoiceRow(title: String, value: String, note: String? = null, options: List<Pair<String, T>>, valueColor: Color = WeTheme.colors.textTertiary, onPick: (T) -> Unit) {
     var show by remember { mutableStateOf(false) }
-    ConfigActionRow(title, value, note) { show = true }
+    // 没有可选项时点开只会是一个空菜单
+    ConfigActionRow(title, value, note, valueColor = valueColor, enabled = options.isNotEmpty()) { show = true }
     if (show) WeActionSheet(title = title, options = options.map { (label, value) -> SheetOption(label) { show = false; onPick(value) } }, onDismiss = { show = false })
 }
-@Composable internal fun ConfigActionRow(title: String, value: String, note: String? = null, onClick: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(WeTheme.colors.listBackground).clickable(onClick = onClick)
+@Composable internal fun ConfigActionRow(title: String, value: String, note: String? = null, titleColor: Color = WeTheme.colors.textPrimary, valueColor: Color = WeTheme.colors.textTertiary, enabled: Boolean = true, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(WeTheme.colors.listBackground).clickable(enabled = enabled, onClick = onClick)
         .heightIn(min = WeTheme.dimens.listRowHeight).padding(WeTheme.dimens.horizontalPadding)) {
-        Text(title, style = WeTheme.typography.listTitle, color = WeTheme.colors.textPrimary)
-        Text(value, style = WeTheme.typography.small, color = WeTheme.colors.textTertiary)
+        Text(title, style = WeTheme.typography.listTitle, color = titleColor)
+        Text(value, style = WeTheme.typography.small, color = valueColor)
         if (note != null) Text(note, style = WeTheme.typography.listTime, color = WeTheme.colors.textTertiary)
     }
 }
@@ -231,10 +267,7 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
     }
 }
 /** 字段下方的红字提示。 */
-@Composable internal fun FieldError(text: String) {
-    Text(text, style = WeTheme.typography.small, color = WeTheme.colors.danger,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = WeTheme.dimens.horizontalPadding, vertical = 6.dp))
-}
+@Composable internal fun FieldError(text: String) = ErrorNote(text)
 /** 只接受完整合法的非负数。"0." 这类输入中途的内容不算，否则删字时会把中间值存进规则。 */
 internal fun parseTemperatureInput(input: String): Float? =
     input.trim().takeIf { it.matches(Regex("""\d*\.?\d+([eE][+-]?\d+)?""")) }?.toFloatOrNull()?.takeIf { it.isFinite() }

@@ -150,11 +150,13 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 },
                 onEdit = { nav.navigate(ContactEditRoute(route.contactId)) },
                 onOpenMemory = { nav.navigate(MemoryRoute(route.contactId)) },
+                onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
             )
         }
         page<ModelEditRoute>(nav) { ModelEditScreen(onBack = nav::popBackStackSafely) }
         page<MemoryRoute>(nav) {
-            MemoryScreen(onBack = nav::popBackStackSafely, onOpen = { nav.navigate(MemoryEditRoute(it)) }, onOpenProvider = { nav.navigate(ProviderEditRoute(it)) })
+            MemoryScreen(onBack = nav::popBackStackSafely, onOpen = { nav.navigate(MemoryEditRoute(it)) }, onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
+                onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) })
         }
         page<MemoryEditRoute>(nav) { MemoryEditScreen(onBack = nav::popBackStackSafely) }
         page<ContactEditRoute>(nav) {

@@ -13,12 +13,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,7 +54,6 @@ import isomeria.aichat.data.memory.MemoryTaskState
 import isomeria.aichat.ui.components.ThinkingSelector
 import isomeria.aichat.feature.settings.ChoiceRow
 import isomeria.aichat.feature.settings.ConfigActionRow
-import isomeria.aichat.data.llm.LlmException
 import isomeria.aichat.data.memory.BacklogResult
 import isomeria.aichat.data.repo.ContactRepository
 import isomeria.aichat.data.repo.FailReason
@@ -59,7 +61,9 @@ import isomeria.aichat.data.repo.MemoryRepository
 import isomeria.aichat.feature.chat.failReasonText
 import isomeria.aichat.navigation.MemoryEditRoute
 import isomeria.aichat.navigation.MemoryRoute
+import isomeria.aichat.ui.components.ErrorNote
 import isomeria.aichat.ui.components.FootnoteText
+import isomeria.aichat.ui.components.configurationIssueText
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.WeDialog
@@ -116,9 +120,6 @@ class MemoryViewModel @Inject constructor(
     /** 要提示的文字（字符串资源） */
     val messageFlow: Flow<Int> = messages.receiveAsFlow()
 
-    private val _summarizing = MutableStateFlow(false)
-    val summarizing: StateFlow<Boolean> = _summarizing.asStateFlow()
-
     private val selection = contacts.observeContact(contactId).flatMapLatest { contact ->
         if (contact == null) flowOf(Triple<Contact?, ProviderConfig?, List<ProviderModel>>(null, null, emptyList()))
         else combine(providers.observeConfig(contact.providerId), providers.observeModels(contact.providerId)) { config, models -> Triple(contact, config, models) }
@@ -148,23 +149,18 @@ class MemoryViewModel @Inject constructor(
         return MemoryRow(id, if (from == to) from else "$from – $to", content, edited)
     }
 
-    fun summarizeBacklog() {
-        if (_summarizing.value) return
-        _summarizing.value = true
-        viewModelScope.launch {
-            try {
-                when (memories.summarizeBacklog(contactId)) {
-                    BacklogResult.DONE -> messages.send(R.string.memory_backlog_done)
-                    BacklogResult.NOTHING -> messages.send(R.string.memory_backlog_nothing)
-                    BacklogResult.NO_API_KEY -> messages.send(R.string.error_no_key)
-                }
-            } catch (e: LlmException) {
-                messages.send(failReasonText(FailReason.of(e)))
-            } finally {
-                _summarizing.value = false
-            }
-        }
-    }
+    /** 离开页面后不再弹提示；回到页面时，结果显示在任务状态里 */
+    fun summarizeBacklog() = memories.startBacklogSummary(
+        contactId,
+        onResult = { result ->
+            messages.trySend(when (result) {
+                BacklogResult.DONE -> R.string.memory_backlog_done
+                BacklogResult.NOTHING -> R.string.memory_backlog_nothing
+                BacklogResult.NO_API_KEY -> R.string.error_no_key
+            })
+        },
+        onFailure = { e -> messages.trySend(failReasonText(FailReason.of(e))) },
+    )
 
     fun clearAll() {
         viewModelScope.launch { memories.clear(contactId) }
@@ -173,10 +169,9 @@ class MemoryViewModel @Inject constructor(
 
 /** 联系人详情 → 记忆：查看、编辑、删除；手动总结更早的聊天。 */
 @Composable
-fun MemoryScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenProvider: (Long) -> Unit = {}, viewModel: MemoryViewModel = hiltViewModel()) {
+fun MemoryScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenProvider: (Long) -> Unit = {}, onOpenModel: (Long, String) -> Unit = { _, _ -> }, viewModel: MemoryViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val summarizing by viewModel.summarizing.collectAsStateWithLifecycle()
     var confirmBacklog by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
 
@@ -193,6 +188,7 @@ fun MemoryScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenProvider: (Lo
         onModel = viewModel::setModel,
         onThinking = viewModel::setThinking,
         onOpenProvider = onOpenProvider,
+        onOpenModel = onOpenModel,
     )
 
 
@@ -232,6 +228,7 @@ fun MemoryContent(
     onModel: (String?) -> Unit = {},
     onThinking: (String) -> Unit = {},
     onOpenProvider: (Long) -> Unit = {},
+    onOpenModel: (Long, String) -> Unit = { _, _ -> },
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -244,16 +241,20 @@ fun MemoryContent(
                 val actual = contact.memoryModel ?: config?.defaultModel?.ifBlank { contact.model } ?: contact.model
                 val model = state.models.firstOrNull { it.modelId == actual }
                 val follow = stringResource(R.string.memory_follow)
+                val issue = config?.let { ModelRules.validate(it, model, contact.memoryThinkingOption, 0.3f) }
                 ChoiceRow(stringResource(R.string.memory_model), if (contact.memoryModel == null) follow else stringResource(R.string.memory_independent),
-                    options = listOf(follow to null) + state.models.filter { config != null && ModelRules.usable(config, it) }.map { it.displayName to it.modelId }, onPick = onModel)
+                    options = listOf(follow to null) + state.models.filter { config != null && ModelRules.usable(config, it) }.map { it.displayName to it.modelId },
+                    valueColor = if (issue == ConfigurationIssue.MODEL) colors.danger else colors.textTertiary, onPick = onModel)
                 FootnoteText(stringResource(R.string.memory_actual, config?.name.orEmpty(), model?.displayName ?: actual))
                 if (contact.memoryModel == null) FootnoteText(stringResource(R.string.memory_follow_fallback))
-                ThinkingSelector(model, contact.memoryThinkingOption, stringResource(R.string.memory_thinking), onThinking)
-                if (config != null && ModelRules.validate(config, model, contact.memoryThinkingOption, 0.3f) != null) {
-                    FootnoteText(stringResource(R.string.memory_model_invalid))
-                    FootnoteText(stringResource(R.string.memory_temperature_conflict))
+                // 没有模型时不展示虚构的档位；旧服务商（LEGACY）没有模型也沿用原有选项
+                if (model != null || config?.compatibility == "LEGACY") {
+                    ThinkingSelector(model, contact.memoryThinkingOption, stringResource(R.string.memory_thinking), onThinking)
                 }
-                WeListRow(stringResource(R.string.model_configure), onClick = { onOpenProvider(contact.providerId) })
+                // 只说实际的原因；档位的问题已经在思考那一行下面说明了
+                if (issue != null && issue != ConfigurationIssue.THINKING) ErrorNote(stringResource(configurationIssueText(issue, memory = true)))
+                if (model != null) WeListRow(stringResource(R.string.model_configure), onClick = { onOpenModel(contact.providerId, model.modelId) })
+                else WeListRow(stringResource(R.string.memory_open_provider), onClick = { onOpenProvider(contact.providerId) })
                 FootnoteText(stringResource(R.string.memory_model_note))
             }
             MemoryTaskFeedback(state.task)
@@ -306,7 +307,8 @@ fun MemoryContent(
                 GroupSpacer()
                 ConfigActionRow(
                     title = stringResource(R.string.memory_backlog),
-                    value = stringResource(R.string.memory_backlog_count, state.backlog),
+                    value = if (state.task.manual) stringResource(R.string.memory_backlog_running) else stringResource(R.string.memory_backlog_count, state.backlog),
+                    enabled = !state.task.manual,
                     onClick = onSummarizeBacklog,
                 )
             }
@@ -331,13 +333,26 @@ fun MemoryContent(
 @Composable
 internal fun MemoryTaskFeedback(task: MemoryTaskState) {
     if (!task.generating && task.queued == 0 && task.lastSuccess == null && task.lastFailure == null) FootnoteText(stringResource(R.string.memory_idle))
-    if (task.generating) FootnoteText(stringResource(R.string.memory_generating))
-    if (task.queued > 0) FootnoteText(stringResource(R.string.memory_queue, task.queued))
+    if (task.generating) TaskProgress(stringResource(R.string.memory_generating))
+    if (task.queued > 0) TaskProgress(stringResource(R.string.memory_queue, task.queued))
     val date = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
     task.lastSuccess?.let { FootnoteText(stringResource(R.string.memory_last_success, date.format(java.util.Date(it)))) }
     task.failure?.let { reason -> task.lastFailure?.let {
-        FootnoteText(stringResource(R.string.memory_last_failure, date.format(java.util.Date(it)), stringResource(failReasonText(reason))))
+        ErrorNote(stringResource(R.string.memory_last_failure, date.format(java.util.Date(it)), stringResource(failReasonText(reason))))
     } }
+}
+
+/** 进行中的任务：转圈加文字。 */
+@Composable
+private fun TaskProgress(text: String) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = WeTheme.dimens.horizontalPadding, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(color = WeTheme.colors.textTertiary, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, style = WeTheme.typography.small, color = WeTheme.colors.textTertiary)
+    }
 }
 
 data class MemoryEditState(val loaded: Boolean = false, val exists: Boolean = false, val content: String = "", val original: String = "") {

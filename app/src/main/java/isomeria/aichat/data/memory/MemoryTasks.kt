@@ -20,6 +20,8 @@ data class MemoryTaskState(
     val lastSuccess: Long? = null,
     val lastFailure: Long? = null,
     val failure: FailReason? = null,
+    /** 手动总结进行中；离开记忆页再回来也要能看到 */
+    val manual: Boolean = false,
 )
 
 /** 只保存安全的瞬时状态；每个联系人锁包含整个任务，网络等待只占两个全局许可之一。 */
@@ -53,6 +55,18 @@ class MemoryTasks @Inject constructor() {
             if (!started) change(id) { it.copy(queued = (it.queued - 1).coerceAtLeast(0)) }
         }
     }
+
+    /** 占住这个联系人的手动总结；已经有一个在进行时返回 false */
+    fun beginManual(id: Long): Boolean {
+        while (true) {
+            val current = _states.value
+            val state = current[id] ?: MemoryTaskState()
+            if (state.manual) return false
+            if (_states.compareAndSet(current, current + (id to state.copy(manual = true)))) return true
+        }
+    }
+
+    fun endManual(id: Long) = change(id) { it.copy(manual = false) }
 
     fun succeeded(id: Long) = change(id) { it.copy(lastSuccess = System.currentTimeMillis(), failure = null) }
 }

@@ -27,8 +27,16 @@ import isomeria.aichat.data.llm.LlmException
 import isomeria.aichat.data.llm.LlmProvider
 import isomeria.aichat.data.llm.*
 import isomeria.aichat.data.db.ProviderModel
+import isomeria.aichat.data.repo.FailReason
+import isomeria.aichat.data.repo.MemoryRepository
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.repo.UsageRepository
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
@@ -316,6 +324,66 @@ class MemoryEngineTest {
         val conversation = db.conversationDao().get(1)!!
         assertEquals(0L, conversation.memoryStart)
         assertTrue(fake.requests.isEmpty())
+    }
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private fun memoryRepository() = MemoryRepository(db.memoryDao(), db.conversationDao(), db.messageDao(), engine, appScope)
+
+    private fun awaitUntil(condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!condition()) {
+            if (System.currentTimeMillis() > deadline) throw AssertionError("等待超时")
+            Thread.sleep(10)
+        }
+    }
+
+    @Test
+    fun manualSummary_doesNotDependOnThePage_andCannotBeStartedTwice() = runBlocking {
+        contact(budget = 1000, cursor = null)
+        messages(600)
+        val gate = CompletableDeferred<Unit>()
+        fake.whileWaiting = { gate.await() }
+        val results = java.util.concurrent.CopyOnWriteArrayList<BacklogResult>()
+        val repo = memoryRepository()
+
+        // 模拟页面：它的协程作用域结束后，总结仍要继续
+        val pageScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        pageScope.launch { repo.startBacklogSummary(1, { results += it }, { throw it }) }.join()
+        pageScope.cancel()
+        awaitUntil { fake.requests.size == 1 }
+        assertTrue(engine.tasks.states.value[1]!!.manual)
+
+        // 回到页面再点一次：不发第二个请求
+        repo.startBacklogSummary(1, { results += it }, { throw it })
+        Thread.sleep(100)
+        assertEquals(1, fake.requests.size)
+
+        gate.complete(Unit)
+        awaitUntil { engine.tasks.states.value[1]?.manual == false }
+        assertEquals(listOf(BacklogResult.DONE), results.toList())
+        assertEquals(1, db.memoryDao().listByContact(1).size)
+        assertTrue(engine.tasks.states.value[1]!!.lastSuccess != null)
+    }
+
+    @Test
+    fun manualSummary_failureIsReportedAndCanBeRetried() = runBlocking {
+        contact(budget = 1000, cursor = null)
+        messages(600)
+        fake.failure = LlmException(LlmError.SERVER, 500)
+        val failures = java.util.concurrent.CopyOnWriteArrayList<LlmException>()
+        val results = java.util.concurrent.CopyOnWriteArrayList<BacklogResult>()
+        val repo = memoryRepository()
+
+        repo.startBacklogSummary(1, { results += it }, { failures += it })
+        awaitUntil { failures.isNotEmpty() && engine.tasks.states.value[1]?.manual == false }
+        assertEquals(LlmError.SERVER, failures.single().error)
+        assertEquals(FailReason.SERVER, engine.tasks.states.value[1]!!.failure)
+
+        fake.failure = null
+        repo.startBacklogSummary(1, { results += it }, { failures += it })
+        awaitUntil { results.isNotEmpty() && engine.tasks.states.value[1]?.manual == false }
+        assertEquals(listOf(BacklogResult.DONE), results.toList())
+        assertEquals(1, failures.size)
     }
 
     @Test

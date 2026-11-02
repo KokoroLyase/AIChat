@@ -379,6 +379,17 @@ fun FootnoteText(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+/** 需要用户处理的状态：红字，紧跟在出问题的那一行下面。普通说明用 [FootnoteText]。 */
+@Composable
+fun ErrorNote(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = WeTheme.typography.small,
+        color = WeTheme.colors.danger,
+        modifier = modifier.fillMaxWidth().padding(horizontal = WeTheme.dimens.horizontalPadding, vertical = 6.dp),
+    )
+}
+
 /** 带左侧标题的白色卡片行，内容自定义（用于表单） */
 @Composable
 fun FormRow(

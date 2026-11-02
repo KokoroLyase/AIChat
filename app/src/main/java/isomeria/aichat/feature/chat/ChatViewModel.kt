@@ -11,7 +11,6 @@ import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.Role
-import isomeria.aichat.data.llm.ConfigurationIssue
 import isomeria.aichat.data.llm.ModelRules
 import isomeria.aichat.data.reply.ActiveChatTracker
 import isomeria.aichat.data.repo.ChatRepository
@@ -211,10 +210,7 @@ class ChatViewModel @Inject constructor(
         val config = providers.config(contact.providerId) ?: return null
         val model = providers.model(contact.providerId, contact.model) ?: return null
         val option = contact.thinkingOption ?: ModelRules.legacyOption(contact.thinking)
-        return when (ModelRules.validate(config, model, option, contact.temperature)) {
-            ConfigurationIssue.INCOMPLETE, ConfigurationIssue.ENCODING -> contact.model
-            else -> null
-        }
+        return ModelRules.validate(config, model, option, contact.temperature)?.takeIf(ModelRules::fixedInModel)?.let { contact.model }
     }
 
     fun retry() {

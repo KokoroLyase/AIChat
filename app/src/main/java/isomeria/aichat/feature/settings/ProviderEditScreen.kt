@@ -1,5 +1,6 @@
 package isomeria.aichat.feature.settings
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -118,6 +120,11 @@ data class ProviderEditState(
     val savedForm: ProviderSavedForm = ProviderSavedForm(),
     /** 名称或地址校验失败的次数；每次失败都把页面带回出错的字段 */
     val validationAttempt: Int = 0,
+    /** 保存成功的次数；每次提示一下，页面不返回，接着可以获取模型列表 */
+    val savedCount: Int = 0,
+    /** 不能删除的原因；操作在页面底部，提示要弹出来才看得到 */
+    val deleteBlockedRes: Int? = null,
+    val deleteBlockedArgs: List<Any> = emptyList(),
 ) {
     val dirty: Boolean get() = loaded && (ProviderSavedForm(name, baseUrl, compatibility, presetId) != savedForm || keyInput.isNotEmpty() || modelInput.isNotEmpty())
 }
@@ -220,7 +227,7 @@ class ProviderEditViewModel @Inject constructor(
             review(config) {
                 val id = persist(url, s)
                 reload(id)
-                _state.update { it.copy(messageRes = R.string.llm_saved, messageArgs = emptyList(), messageIsError = false) }
+                _state.update { it.copy(messageRes = null, savedCount = it.savedCount + 1) }
             }
         }
     }
@@ -249,7 +256,7 @@ class ProviderEditViewModel @Inject constructor(
                     _state.update { it.copy(conflicts = refs, testing = false) }
                 }
             } catch (e: LlmException) {
-                error(R.string.connection_fetch_failed)
+                error(fetchFailureText(e))
             }
         }
     }
@@ -294,14 +301,32 @@ class ProviderEditViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = providers.delete(id)) {
                 DeleteProviderResult.Deleted -> _state.update { it.copy(deleted = true) }
-                is DeleteProviderResult.InUse -> error(R.string.llm_delete_in_use, result.contacts)
-                DeleteProviderResult.LastOne -> error(R.string.llm_delete_last)
+                is DeleteProviderResult.InUse -> _state.update { it.copy(deleteBlockedRes = R.string.llm_delete_in_use, deleteBlockedArgs = listOf(result.contacts)) }
+                DeleteProviderResult.LastOne -> _state.update { it.copy(deleteBlockedRes = R.string.llm_delete_last, deleteBlockedArgs = emptyList()) }
             }
         }
     }
 
+    fun dismissDeleteBlocked() = _state.update { it.copy(deleteBlockedRes = null) }
+
     private companion object {
         const val NAME_MAX_LENGTH = 30
+    }
+}
+
+/** 获取列表失败的原因。只按分类提示，不显示服务端返回的内容。 */
+internal fun fetchFailureText(e: LlmException): Int = when {
+    e.isMissingKey -> R.string.fetch_failed_no_key
+    else -> when (e.error) {
+        LlmError.CONFIGURATION -> R.string.llm_base_url_invalid
+        LlmError.AUTH -> R.string.fetch_failed_auth
+        LlmError.BALANCE -> R.string.fetch_failed_balance
+        LlmError.RATE_LIMIT -> R.string.fetch_failed_rate_limit
+        LlmError.BAD_REQUEST -> R.string.fetch_failed_bad_request
+        LlmError.NOT_FOUND -> R.string.fetch_failed_not_found
+        LlmError.SERVER -> R.string.fetch_failed_server
+        LlmError.NETWORK -> R.string.fetch_failed_network
+        LlmError.UNKNOWN -> R.string.fetch_failed_unreadable
     }
 }
 
@@ -311,7 +336,9 @@ fun ProviderEditScreen(onBack: () -> Unit, onOpenModel: (Long, String) -> Unit =
     val state by viewModel.state.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     var confirmDiscard by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
+    LaunchedEffect(state.savedCount) { if (state.savedCount > 0) Toast.makeText(context, R.string.llm_saved, Toast.LENGTH_SHORT).show() }
     BackHandler(enabled = state.dirty) { confirmDiscard = true }
     ImeBackHandler()
     ProviderEditContent(
@@ -333,6 +360,14 @@ fun ProviderEditScreen(onBack: () -> Unit, onOpenModel: (Long, String) -> Unit =
         onConfigureModel = { onOpenModel(it.providerId, it.modelId) },
     )
     if (state.conflicts.isNotEmpty()) ConflictDialog(state.conflicts, viewModel::dismiss, viewModel::confirm)
+    state.deleteBlockedRes?.let { res ->
+        WeDialog(
+            message = stringResource(res, *state.deleteBlockedArgs.toTypedArray()),
+            dismissText = null,
+            onDismiss = viewModel::dismissDeleteBlocked,
+            onConfirm = viewModel::dismissDeleteBlocked,
+        )
+    }
     if (confirmDiscard) {
         WeDialog(
             message = stringResource(R.string.contact_discard_title),
@@ -504,7 +539,7 @@ fun ProviderEditContent(
             models.forEachIndexed { index, model ->
                 ModelRow(
                     model = model,
-                    ready = ModelRules.usable(editorConfig, model),
+                    gaps = remember(model, state.compatibility) { ModelRules.gaps(editorConfig, model) },
                     showDivider = index != models.lastIndex,
                     onConfigure = { onConfigureModel(model) },
                 )
@@ -602,9 +637,9 @@ private fun TextInput(
 
 /** 一个模型：名称和配置状态、模型 ID。点开进入配置，移除也在配置页里。 */
 @Composable
-private fun ModelRow(model: ProviderModel, ready: Boolean, showDivider: Boolean, onConfigure: () -> Unit) {
+private fun ModelRow(model: ProviderModel, gaps: List<ModelGap>, showDivider: Boolean, onConfigure: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(WeTheme.colors.listBackground)) {
-        ConfigActionRow(model.displayName, stringResource(if (ready) R.string.model_ready else R.string.model_pending), onClick = onConfigure)
+        ConfigActionRow(model.displayName, modelStatusText(gaps), onClick = onConfigure)
         FootnoteText(model.modelId)
         if (model.missingFromList) FootnoteText(stringResource(R.string.model_missing))
         if (showDivider) WeDivider(startIndent = WeTheme.dimens.horizontalPadding)

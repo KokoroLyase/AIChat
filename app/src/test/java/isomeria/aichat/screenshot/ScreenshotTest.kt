@@ -185,9 +185,9 @@ class ScreenshotTest {
         ProviderConfig(2, ProviderKind.LLM, "openai", "OpenRouter", "https://openrouter.ai/api/v1", null, ""),
     )
 
-    @Test fun providerListLight() = shot("10-providers", false) { ProviderListContent(providers, {}, {}, {}) }
+    @Test fun providerListLight() = shot("10-providers", false) { ProviderListContent(providers, {}, {}, {}, mapOf(providers.first().id to 2)) }
 
-    @Test fun providerListDark() = shot("10-providers", true) { ProviderListContent(providers, {}, {}, {}) }
+    @Test fun providerListDark() = shot("10-providers", true) { ProviderListContent(providers, {}, {}, {}, mapOf(providers.first().id to 2)) }
 
     @Test fun providerEditLight() = shot("11-provider-edit", false) { ProviderEditSample() }
 
@@ -256,6 +256,21 @@ class ScreenshotTest {
     @Test fun providerUrlErrorDark() = shot("24-provider-url-error", true) { ProviderEditSample(customUrlError) }
     @Test fun providerPresetLight() = shot("25-provider-preset", false) { ProviderEditSample(presetProvider) }
     @Test fun providerPresetDark() = shot("25-provider-preset", true) { ProviderEditSample(presetProvider) }
+
+    private val issueDetail = isomeria.aichat.feature.contactedit.previewState.copy(chatIssue = isomeria.aichat.data.llm.ConfigurationIssue.TEMPERATURE, memoryIssue = isomeria.aichat.data.llm.ConfigurationIssue.THINKING)
+    @Test fun contactIssuesLight() = shot("26-contact-issues", false) { ContactDetailContent(issueDetail, {}, {}, {}, {}) }
+    @Test fun contactIssuesDark() = shot("26-contact-issues", true) { ContactDetailContent(issueDetail, {}, {}, {}, {}) }
+    @Test fun contactIssuesLargeFontLight() = shot("26-contact-issues-large", false) {
+        AIChatTheme(darkTheme = false, fontScale = 2.5f) { ContactDetailContent(issueDetail, {}, {}, {}, {}) }
+    }
+    private val missingMemoryModel = memorySettings.copy(contact = memorySettings.contact!!.copy(memoryModel = "gone"), task = MemoryTaskState())
+    @Test fun memoryMissingLight() = shot("27-memory-model-missing", false) { MemoryContent(missingMemoryModel, {}, {}, {}, {}) }
+    @Test fun memoryMissingDark() = shot("27-memory-model-missing", true) { MemoryContent(missingMemoryModel, {}, {}, {}, {}) }
+    @Test fun memoryRunningLight() = shot("28-memory-running", false) { MemoryContent(memorySettings.copy(rows = emptyList(), backlog = 128, task = memorySettings.task.copy(manual = true)), {}, {}, {}, {}) }
+    @Test fun memoryRunningDark() = shot("28-memory-running", true) { MemoryContent(memorySettings.copy(rows = emptyList(), backlog = 128, task = memorySettings.task.copy(manual = true)), {}, {}, {}, {}) }
+    private val fetchFailed = previewProviderState.copy(messageRes = isomeria.aichat.R.string.fetch_failed_not_found, messageIsError = true)
+    @Test fun fetchFailedLight() = shot("29-provider-fetch-failed", false) { ProviderEditSample(fetchFailed) }
+    @Test fun fetchFailedDark() = shot("29-provider-fetch-failed", true) { ProviderEditSample(fetchFailed) }
 
     @Test fun longConfigurationLargeFontLight() = shot("22-large-config", false) {
         AIChatTheme(darkTheme = false, fontScale = 2.5f) {

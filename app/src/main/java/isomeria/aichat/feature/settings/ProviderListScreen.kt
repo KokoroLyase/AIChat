@@ -45,6 +45,8 @@ import javax.inject.Inject
 class ProviderListViewModel @Inject constructor(providers: ProviderRepository) : ViewModel() {
     val providers: StateFlow<List<ProviderConfig>> = providers.llmConfigs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val usableModels: StateFlow<Map<Long, Int>> = providers.usableModelCounts
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 }
 
 /** 设置 → 模型服务 → 大语言模型：服务商列表，可添加任意兼容 OpenAI 格式的服务商。 */
@@ -56,7 +58,8 @@ fun ProviderListScreen(
     viewModel: ProviderListViewModel = hiltViewModel(),
 ) {
     val providers by viewModel.providers.collectAsStateWithLifecycle()
-    ProviderListContent(providers, onBack, onOpen, onAdd)
+    val usableModels by viewModel.usableModels.collectAsStateWithLifecycle()
+    ProviderListContent(providers, onBack, onOpen, onAdd, usableModels)
 }
 
 @Composable
@@ -65,6 +68,7 @@ fun ProviderListContent(
     onBack: () -> Unit,
     onOpen: (Long) -> Unit,
     onAdd: () -> Unit,
+    usableModels: Map<Long, Int> = emptyMap(),
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -98,6 +102,12 @@ fun ProviderListContent(
                             color = colors.textTertiary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                        )
+                        val usable = usableModels[provider.id] ?: 0
+                        Text(
+                            if (usable > 0) stringResource(R.string.llm_models_usable, usable) else stringResource(R.string.llm_models_none_usable),
+                            style = WeTheme.typography.listTime,
+                            color = colors.textTertiary,
                         )
                     }
                     Text(

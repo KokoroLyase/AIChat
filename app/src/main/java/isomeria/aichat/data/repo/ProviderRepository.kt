@@ -19,6 +19,7 @@ import isomeria.aichat.data.llm.*
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.ThinkingLevel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -79,6 +80,12 @@ class ProviderRepository @Inject constructor(
     fun observeConfig(id: Long): Flow<ProviderConfig?> = dao.observe(id)
 
     fun observeModels(providerId: Long): Flow<List<ProviderModel>> = dao.observeModels(providerId)
+
+    /** 每个服务商已配置好的模型数量 */
+    val usableModelCounts: Flow<Map<Long, Int>> = combine(llmConfigs, dao.observeAllModels()) { configs, models ->
+        val byProvider = models.groupBy { it.providerId }
+        configs.associate { config -> config.id to byProvider[config.id].orEmpty().count { ModelRules.usable(config, it) } }
+    }
 
     suspend fun list(): List<ProviderConfig> = dao.llmList()
 

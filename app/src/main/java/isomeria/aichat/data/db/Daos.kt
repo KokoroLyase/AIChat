@@ -296,6 +296,9 @@ interface ProviderDao {
     @Query("SELECT * FROM provider_model WHERE providerId = :providerId ORDER BY sortOrder, modelId")
     fun observeModels(providerId: Long): Flow<List<ProviderModel>>
 
+    @Query("SELECT * FROM provider_model")
+    fun observeAllModels(): Flow<List<ProviderModel>>
+
     @Query("SELECT * FROM provider_model WHERE providerId = :providerId ORDER BY sortOrder, modelId")
     suspend fun models(providerId: Long): List<ProviderModel>
 
