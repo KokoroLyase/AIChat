@@ -212,11 +212,13 @@ class SaveFeedbackTest {
     fun confirmedConflictSaveSaysContactsNeedFixing() {
         seedModel(rules)
         runBlocking {
-            db.contactDao().insert(Contact(name = "小雨", avatarColor = 0, providerId = id, model = "m", thinkingOption = "retired", createdAt = 1, updatedAt = 1))
+            db.contactDao().insert(Contact(name = "小雨", avatarColor = 0, providerId = id, model = "m", thinkingOption = "off", temperature = 0.9f, createdAt = 1, updatedAt = 1))
         }
         val vm = modelViewModel()
         var backs = 0
         compose.setContent { AIChatTheme(darkTheme = false) { ModelEditScreen(onBack = { backs++ }, viewModel = vm) } }
+        // 收窄温度范围，让联系人原本有效的值这次才失效
+        vm.edit(vm.state.value.model!!.copy(userConfig = ModelRules.encode(rules.copy(temperature = TemperatureRule(TemperatureSpec(TemperatureMode.ADJUSTABLE, 0f, 0.5f))))))
         vm.save()
         await { vm.state.value.conflicts.isNotEmpty() }
         compose.waitForIdle()

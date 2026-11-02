@@ -30,6 +30,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -108,10 +112,15 @@ fun ImageViewerScreen(path: String, onBack: () -> Unit, viewModel: ImageViewerVi
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
                 .padding(24.dp)
-                .size(40.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.15f))
-                .pointerInput(Unit) { detectTapGestures { save() } },
+                .pointerInput(Unit) { detectTapGestures { save() } }
+                // 手势读屏用不了，单独提供点击操作
+                .semantics(mergeDescendants = true) {
+                    role = Role.Button
+                    onClick { save(); true }
+                },
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Outlined.Download, stringResource(R.string.image_save), tint = Color.White)

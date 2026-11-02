@@ -37,6 +37,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -175,12 +179,14 @@ fun MessageRow(
 @Composable
 private fun FailedMark(modifier: Modifier, onClick: () -> Unit) {
     val colors = WeTheme.colors
+    val description = stringResource(R.string.chat_failed_mark)
     Box(
         modifier
             .size(20.dp)
             .clip(CircleShape)
             .background(colors.badge)
-            .clickable(onClick = onClick),
+            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .clearAndSetSemantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
         Text("!", color = Color.White, style = WeTheme.typography.badge)
@@ -193,12 +199,14 @@ private fun ThinkingBlock(reasoning: String, millis: Long) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     var expanded by rememberSaveable(reasoning) { mutableStateOf(false) }
+    val expandedText = stringResource(if (expanded) R.string.state_expanded else R.string.state_collapsed)
     Column(
         Modifier
             .padding(start = dimens.bubbleTailWidth)
             .clip(RoundedCornerShape(dimens.bubbleCorner))
             .background(colors.thinkingBackground)
-            .clickable { expanded = !expanded }
+            .clickable(role = androidx.compose.ui.semantics.Role.Button) { expanded = !expanded }
+            .semantics { stateDescription = expandedText }
             .padding(horizontal = 10.dp, vertical = 6.dp)
             .animateContentSize(),
     ) {

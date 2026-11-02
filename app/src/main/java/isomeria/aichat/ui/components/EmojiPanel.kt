@@ -301,7 +301,7 @@ private fun DeleteKey(enabled: Boolean, onDelete: () -> Unit) {
     ) {
         Icon(
             Icons.AutoMirrored.Outlined.Backspace,
-            contentDescription = null,
+            contentDescription = stringResource(R.string.emoji_backspace),
             tint = if (enabled) colors.textPrimary else colors.textSecondary,
             modifier = Modifier.size(22.dp),
         )

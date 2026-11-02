@@ -38,6 +38,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -140,7 +143,7 @@ private fun DialogButton(text: String, color: Color, onClick: () -> Unit, modifi
         modifier
             .fillMaxHeight()
             .heightIn(min = 56.dp)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -227,10 +230,11 @@ fun WeActionSheet(
                             Modifier
                                 .fillMaxWidth()
                                 .background(colors.listBackground)
-                                .clickable {
+                                .clickable(role = Role.Button) {
                                     option.onClick()
                                     onDismiss()
                                 }
+                                .then(if (option.selected) Modifier.semantics { selected = true } else Modifier)
                                 .heightIn(min = dimens.listRowHeight)
                                 .padding(horizontal = 24.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -266,7 +270,7 @@ fun WeActionSheet(
                     Modifier
                         .fillMaxWidth()
                         .background(colors.listBackground)
-                        .clickable(onClick = onDismiss)
+                        .clickable(role = Role.Button, onClick = onDismiss)
                         .heightIn(min = dimens.listRowHeight),
                     contentAlignment = Alignment.Center,
                 ) {

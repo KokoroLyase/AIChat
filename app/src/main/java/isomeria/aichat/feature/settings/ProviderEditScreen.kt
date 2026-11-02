@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -44,6 +45,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -65,6 +67,7 @@ import isomeria.aichat.R
 import isomeria.aichat.data.db.*
 import isomeria.aichat.data.db.ProviderProtocol
 import isomeria.aichat.data.llm.*
+import isomeria.aichat.data.repo.ConflictChange
 import isomeria.aichat.data.repo.ModelReference
 import isomeria.aichat.data.repo.BaseUrlRules
 import isomeria.aichat.data.repo.DeleteProviderResult
@@ -112,7 +115,10 @@ data class ProviderEditState(
     val protocol: String = ProviderProtocol.OPENAI,
     val presetId: String? = null,
     val compatibility: String = "GENERIC",
+    /** 这次保存才产生的冲突，要确认 */
     val conflicts: List<ModelReference> = emptyList(),
+    /** 原本就有的冲突，只作提示 */
+    val existingConflicts: List<ModelReference> = emptyList(),
     val name: String = "",
     val baseUrl: String = "",
     val keyInput: String = "",
@@ -130,6 +136,8 @@ data class ProviderEditState(
     val validationAttempt: Int = 0,
     /** 保存成功的次数；每次提示一下，页面不返回，接着可以获取模型列表 */
     val savedCount: Int = 0,
+    /** 刚才保存后还有联系人待修正 */
+    val savedWithConflicts: Boolean = false,
     /** 不能删除的原因；操作在页面底部，提示要弹出来才看得到 */
     val deleteBlockedRes: Int? = null,
     val deleteBlockedArgs: List<Any> = emptyList(),
@@ -214,15 +222,16 @@ class ProviderEditViewModel @Inject constructor(
     }
 
     private var pending: (suspend () -> Unit)? = null
-    private suspend fun review(config: isomeria.aichat.data.db.ProviderConfig?, action: suspend () -> Unit) {
-        val conflicts = config?.let { providers.conflicts(it) }.orEmpty()
-        if (conflicts.isEmpty()) action() else {
-            pending = action
-            _state.update { it.copy(conflicts = conflicts, testing = false) }
+    /** 只有这次新增的冲突才要确认；[action] 的参数表示保存后是否还有联系人待修正。 */
+    private suspend fun review(saved: isomeria.aichat.data.db.ProviderConfig?, after: List<ModelReference>, action: suspend (Boolean) -> Unit) {
+        val change = saved?.let { providers.conflictChange(it, after) } ?: ConflictChange()
+        if (change.added.isEmpty()) action(change.existing.isNotEmpty()) else {
+            pending = { action(true) }
+            _state.update { it.copy(conflicts = change.added, existingConflicts = change.existing, testing = false) }
         }
     }
-    fun confirm() { val action = pending ?: return; pending = null; _state.update { it.copy(conflicts = emptyList()) }; viewModelScope.launch { action() } }
-    fun dismiss() { pending = null; _state.update { it.copy(conflicts = emptyList()) } }
+    fun confirm() { val action = pending ?: return; pending = null; _state.update { it.copy(conflicts = emptyList(), existingConflicts = emptyList()) }; viewModelScope.launch { action() } }
+    fun dismiss() { pending = null; _state.update { it.copy(conflicts = emptyList(), existingConflicts = emptyList()) } }
     fun selectPreset(preset: ProviderPreset?, name: String) = _state.update {
         if (it.providerId != null) it else it.copy(presetId = preset?.id, name = name, baseUrl = preset?.baseUrl.orEmpty(), compatibility = (preset?.compatibility ?: Compatibility.GENERIC).name, messageRes = null)
     }
@@ -231,11 +240,12 @@ class ProviderEditViewModel @Inject constructor(
         val url = validated() ?: return
         val s = _state.value
         viewModelScope.launch {
-            val config = s.providerId?.let { providers.config(it)?.copy(defaultModel = s.defaultModel, compatibility = s.compatibility) }
-            review(config) {
+            val saved = s.providerId?.let { providers.config(it) }
+            val after = saved?.let { providers.conflicts(it.copy(defaultModel = s.defaultModel, compatibility = s.compatibility)) }.orEmpty()
+            review(saved, after) { remaining ->
                 val id = persist(url, s)
                 reload(id)
-                _state.update { it.copy(messageRes = null, savedCount = it.savedCount + 1) }
+                _state.update { it.copy(messageRes = null, savedWithConflicts = remaining, savedCount = it.savedCount + 1) }
             }
         }
     }
@@ -249,19 +259,18 @@ class ProviderEditViewModel @Inject constructor(
             try {
                 val config = s.providerId?.let { providers.config(it) }
                 val remote = providers.fetchModels(config, url, s.keyInput.ifEmpty { null })
-                val action: suspend () -> Unit = {
+                val future = config?.copy(defaultModel = s.defaultModel, compatibility = s.compatibility)
+                review(config, future?.let { providers.remoteConflicts(it, remote) }.orEmpty()) { remaining ->
                     val id = persist(url, s)
                     providers.applyRemoteModels(id, remote)
                     reload(id)
                     _state.update { it.copy(testing = false,
-                        messageRes = if (remote.isEmpty()) R.string.connection_fetch_empty else R.string.connection_fetch_ok,
+                        messageRes = when {
+                            remote.isEmpty() -> R.string.connection_fetch_empty
+                            remaining -> R.string.connection_fetch_ok_conflict
+                            else -> R.string.connection_fetch_ok
+                        },
                         messageArgs = listOf(remote.size), messageIsError = false) }
-                }
-                val future = config?.copy(defaultModel = s.defaultModel, compatibility = s.compatibility)
-                val refs = future?.let { providers.remoteConflicts(it, remote) + providers.conflicts(it) }.orEmpty().distinct()
-                if (refs.isEmpty()) action() else {
-                    pending = action
-                    _state.update { it.copy(conflicts = refs, testing = false) }
                 }
             } catch (e: LlmException) {
                 error(fetchFailureText(e))
@@ -273,7 +282,7 @@ class ProviderEditViewModel @Inject constructor(
         val id = _state.value.providerId ?: return
         viewModelScope.launch {
             val config = providers.config(id) ?: return@launch
-            review(config.copy(defaultModel = modelId)) {
+            review(config, providers.conflicts(config.copy(defaultModel = modelId))) {
                 providers.setDefaultModel(id, modelId)
                 // 只更新这一项：页面上可能还有没保存的名称、地址或 Key
                 _state.update { it.copy(defaultModel = modelId) }
@@ -381,7 +390,7 @@ fun ProviderEditScreen(onBack: () -> Unit, onOpenModel: (Long, String) -> Unit =
     var confirmDiscard by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
-    LaunchedEffect(state.savedCount) { if (state.savedCount > 0) Toast.makeText(context, R.string.llm_saved, Toast.LENGTH_SHORT).show() }
+    LaunchedEffect(state.savedCount) { if (state.savedCount > 0) Toast.makeText(context, if (state.savedWithConflicts) R.string.model_saved_conflict else R.string.llm_saved, Toast.LENGTH_SHORT).show() }
     BackHandler(enabled = state.dirty) { confirmDiscard = true }
     ImeBackHandler()
     ProviderEditContent(
@@ -402,7 +411,7 @@ fun ProviderEditScreen(onBack: () -> Unit, onOpenModel: (Long, String) -> Unit =
         onCompatibility = viewModel::setCompatibility,
         onConfigureModel = { onOpenModel(it.providerId, it.modelId) },
     )
-    if (state.conflicts.isNotEmpty()) ConflictDialog(state.conflicts, viewModel::dismiss, viewModel::confirm)
+    if (state.conflicts.isNotEmpty()) ConflictDialog(state.conflicts, viewModel::dismiss, state.existingConflicts, viewModel::confirm)
     state.deleteBlockedRes?.let { res ->
         WeDialog(
             message = stringResource(res, *state.deleteBlockedArgs.toTypedArray()),
@@ -519,7 +528,11 @@ fun ProviderEditContent(
             }
 
             GroupSpacer()
-            FormRow(stringResource(R.string.llm_api_key), showDivider = state.savedKeyMasked != null) {
+            val keyLabel = stringResource(R.string.llm_api_key)
+            // 摘要被输入框盖住，读屏读不到，所以写进输入框的说明里
+            val keyDescription = state.savedKeyMasked?.takeIf { state.keyInput.isEmpty() }
+                ?.let { keyLabel + stringResource(R.string.reference_separator) + stringResource(R.string.llm_api_key_saved, it) } ?: keyLabel
+            FormRow(keyLabel, showDivider = state.savedKeyMasked != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f).padding(vertical = 12.dp)) {
                         if (state.keyInput.isEmpty()) {
@@ -527,7 +540,8 @@ fun ProviderEditContent(
                                 state.savedKeyMasked?.let { stringResource(R.string.llm_api_key_saved, it) }
                                     ?: stringResource(R.string.llm_api_key_hint),
                                 style = WeTheme.typography.listTitle,
-                                color = colors.textSecondary,
+                                // 已保存的摘要是要读的信息，不是占位文字
+                                color = if (state.savedKeyMasked != null) colors.textTertiary else colors.textSecondary,
                                 // 不换行：打码的 Key 是一整串，放不下时会整体换到第二行，被裁掉后看不到
                                 softWrap = false,
                                 maxLines = 1,
@@ -542,15 +556,21 @@ fun ProviderEditContent(
                             cursorBrush = SolidColor(colors.brand),
                             visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().semantics { contentDescription = keyDescription },
                         )
                     }
-                    Icon(
-                        if (showKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                        null,
-                        tint = colors.inputIcon,
-                        modifier = Modifier.size(22.dp).clickable { showKey = !showKey },
-                    )
+                    Box(
+                        // 点击区 48dp；往右挪一点，让图标仍和其他行的右边对齐
+                        Modifier.offset(x = 13.dp).size(48.dp).clickable(role = Role.Button) { showKey = !showKey },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            if (showKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            stringResource(if (showKey) R.string.key_hide else R.string.key_show),
+                            tint = colors.inputIcon,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
             }
             if (state.savedKeyMasked != null) {
@@ -574,7 +594,7 @@ fun ProviderEditContent(
                 Text(
                     stringResource(res, *state.messageArgs.toTypedArray()),
                     style = WeTheme.typography.small,
-                    color = if (state.messageIsError) colors.danger else colors.brand,
+                    color = if (state.messageIsError) colors.dangerText else colors.brandText,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(dimens.horizontalPadding),
                 )
@@ -771,8 +791,9 @@ private fun ModelSearchField(query: String, onChange: (String) -> Unit) {
                 )
             }
             if (query.isNotEmpty()) {
-                Box(Modifier.clickable { onChange("") }.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    Icon(WeIcons.Close, stringResource(R.string.action_clear), tint = colors.textSecondary, modifier = Modifier.size(16.dp))
+                // 高度不超过搜索框，输入后这一行不跳动；点击区由 Compose 按最小触控尺寸扩到 48dp
+                Box(Modifier.size(48.dp, 36.dp).clickable(role = Role.Button) { onChange("") }, contentAlignment = Alignment.Center) {
+                    Icon(WeIcons.Close, stringResource(R.string.action_clear), tint = colors.textTertiary, modifier = Modifier.size(16.dp))
                 }
             } else {
                 Spacer(Modifier.size(10.dp))

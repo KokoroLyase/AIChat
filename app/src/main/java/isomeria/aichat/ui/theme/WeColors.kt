@@ -62,6 +62,10 @@ data class WeColors(
     val badge: Color,
     /** 危险操作文字，如「删除联系人」（估） */
     val danger: Color,
+    /** 错误和待修正的说明文字：比 [danger] 深，在页面底色上也读得清 */
+    val dangerText: Color,
+    /** 成功提示、选中分段的文字：[brand] 在浅色底上太淡，不能用来写字 */
+    val brandText: Color,
     /** 长按菜单、「+」菜单背景（估） */
     val popupBackground: Color,
     /** 长按菜单文字（估） */
@@ -76,6 +80,8 @@ data class WeColors(
     val thinkingText: Color,
     /** 开关关闭时的轨道（估） */
     val switchTrackOff: Color,
+    /** 滑杆未选中的轨道 */
+    val sliderTrackOff: Color,
     /** 按钮置灰（估） */
     val disabled: Color,
     /** 从搜索跳到某条消息时，这条消息整行的高亮底色（估） */
@@ -113,6 +119,8 @@ val LightWeColors = WeColors(
     linkInSent = Color(0xFF576B95),
     badge = Color(0xFFFE3E3E),
     danger = Color(0xFFFA5151),
+    dangerText = Color(0xFFC62828),
+    brandText = Color(0xFF05793C),
     popupBackground = Color(0xFF4C4C4C),
     popupText = Color(0xFFFFFFFF),
     dialogBackground = Color(0xFFFFFFFF),
@@ -120,6 +128,7 @@ val LightWeColors = WeColors(
     thinkingBackground = Color(0xFFE3E3E3),
     thinkingText = Color(0xFF808080),
     switchTrackOff = Color(0xFFE5E5E5),
+    sliderTrackOff = Color(0xFFE5E5E5),
     disabled = Color(0xFFC6C6C6),
     messageHighlight = Color(0x1F000000),
     emojiKey = Color(0xFFFFFFFF),
@@ -153,6 +162,8 @@ val DarkWeColors = WeColors(
     linkInSent = Color(0xFF1F4E79),
     badge = Color(0xFFFE3E3E),
     danger = Color(0xFFFA5151),
+    dangerText = Color(0xFFFA5151),
+    brandText = Color(0xFF07C160),
     popupBackground = Color(0xFF2C2C2C),
     popupText = Color(0xFFD0D0D0),
     dialogBackground = Color(0xFF262626),
@@ -160,6 +171,7 @@ val DarkWeColors = WeColors(
     thinkingBackground = Color(0xFF1E1E1E),
     thinkingText = Color(0xFF7A7A7A),
     switchTrackOff = Color(0xFF3A3A3A),
+    sliderTrackOff = Color(0xFF707070),
     disabled = Color(0xFF3A3A3A),
     messageHighlight = Color(0x24FFFFFF),
     emojiKey = Color(0xFF2C2C2C),

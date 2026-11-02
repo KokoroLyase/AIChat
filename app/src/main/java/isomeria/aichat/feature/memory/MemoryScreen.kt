@@ -256,7 +256,7 @@ fun MemoryContent(
                         else -> stringResource(R.string.memory_value_follow, name)
                     },
                     options = listOf(follow to null) + usable.map { it.displayName to it.modelId },
-                    valueColor = if (issue == ConfigurationIssue.MODEL) colors.danger else colors.textTertiary,
+                    valueColor = if (issue == ConfigurationIssue.MODEL) colors.dangerText else colors.textTertiary,
                     showDivider = true,
                     isSelected = { _, id -> id == contact.memoryModel },
                     // 同名的模型靠 ID 区分

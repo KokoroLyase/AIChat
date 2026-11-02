@@ -14,6 +14,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import isomeria.aichat.R
 import isomeria.aichat.data.db.ProviderConfig
@@ -51,17 +54,25 @@ internal fun temperatureText(value: Float): String {
     return if (text.endsWith('.')) text + "0" else text
 }
 
+private val KNOWN_OPTIONS = setOf("off", "on", "high", "max")
+
+/** 模型给档位起的名字；没有名字的已知档位返回 null，由界面显示中文名；认不出的如实显示。 */
+internal fun thinkingDisplayName(options: List<NativeEffort>, value: String): String? =
+    options.firstOrNull { it.value == value }?.label?.takeIf { it.isNotBlank() } ?: value.takeUnless { it in KNOWN_OPTIONS }
+
 @Composable
 fun ThinkingSelector(model: ProviderModel?, value: String, title: String, showDivider: Boolean = false, onChange: (String) -> Unit) {
     val options = ModelRules.options(model)
     val current = options.firstOrNull { it.value == value }
     // 模型还没配置思考规则时没有档位可选，原因由调用方说明，这里不算保存值错了
     val invalid = current == null && options.isNotEmpty()
-    ChoiceRow(title, current?.let { effortLabel(it) } ?: if (invalid) value else stringResource(R.string.rule_unknown),
+    // 已知的档位用中文名，别让用户看到 off 这样的原始值
+    val savedLabel = if (value in KNOWN_OPTIONS) effortLabel(NativeEffort(value, "")) else value
+    ChoiceRow(title, current?.let { effortLabel(it) } ?: if (invalid) savedLabel else stringResource(R.string.rule_unknown),
         options = options.map { effortLabel(it) to it.value },
-        valueColor = if (invalid) WeTheme.colors.danger else WeTheme.colors.textTertiary, showDivider = showDivider,
+        valueColor = if (invalid) WeTheme.colors.dangerText else WeTheme.colors.textTertiary, showDivider = showDivider,
         isSelected = { _, option -> option == value }, onPick = onChange)
-    if (invalid) ErrorNote(stringResource(R.string.thinking_pending, value))
+    if (invalid) ErrorNote(stringResource(R.string.thinking_pending, savedLabel))
 }
 
 @Composable
@@ -105,25 +116,31 @@ private fun TemperatureSlider(value: Float, spec: TemperatureSpec, outOfRange: B
             Text(
                 stringResource(R.string.contact_temperature),
                 style = WeTheme.typography.listTitle,
-                color = if (outOfRange) colors.danger else colors.textPrimary,
+                color = if (outOfRange) colors.dangerText else colors.textPrimary,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 temperatureText(value),
                 style = WeTheme.typography.listTitle,
-                color = if (outOfRange) colors.danger else colors.textTertiary,
+                color = if (outOfRange) colors.dangerText else colors.textTertiary,
             )
         }
         if (spec.valid()) {
             val sliderColors = SliderDefaults.colors(
                 thumbColor = Color.White,
                 activeTrackColor = colors.brand,
-                inactiveTrackColor = colors.switchTrackOff,
+                inactiveTrackColor = colors.sliderTrackOff,
                 activeTickColor = Color.Transparent,
                 inactiveTickColor = Color.Transparent,
             )
+            val sliderLabel = stringResource(R.string.contact_temperature)
             Slider(
                 value = value.coerceIn(spec.min, spec.max),
+                // 读屏默认只读百分比，这里读名称和实际数值
+                modifier = Modifier.semantics {
+                    contentDescription = sliderLabel
+                    stateDescription = temperatureText(value)
+                },
                 onValueChange = { onChange(snapTemperature(it, spec.min, spec.max)) },
                 valueRange = spec.min..spec.max,
                 colors = sliderColors,

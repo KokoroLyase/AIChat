@@ -65,6 +65,15 @@ data class ContactEditState(
     val dirty: Boolean get() = loaded && form != original
 }
 
+/**
+ * 模型是否挡住保存。已有联系人没换模型时不挡：改名、改提示词不用先修模型，
+ * 发送前的校验仍会拦下无效请求。新建联系人或换了模型，选的模型必须配置好。[saved] 是已有联系人保存时的内容。
+ */
+internal fun modelBlocksSave(form: ContactForm, saved: ContactForm?, model: ProviderModel?): Boolean {
+    if (saved != null && saved.providerId == form.providerId && saved.model == form.model) return false
+    return form.model.isBlank() || model?.let(ModelRules::complete) == false
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ContactEditViewModel @Inject constructor(
@@ -193,7 +202,7 @@ class ContactEditViewModel @Inject constructor(
             _state.update { it.copy(showNameError = true) }
             return null
         }
-        if (form.model.isBlank() || providers.model(form.providerId, form.model)?.let(ModelRules::complete) == false) {
+        if (modelBlocksSave(form, existing?.let { _state.value.original }, providers.model(form.providerId, form.model))) {
             _state.update { it.copy(showModelError = true) }
             return null
         }

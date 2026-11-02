@@ -49,6 +49,7 @@ import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.feature.settings.ConfigActionRow
 import isomeria.aichat.navigation.ContactDetailRoute
 import isomeria.aichat.ui.components.configurationIssueText
+import isomeria.aichat.ui.components.thinkingDisplayName
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.WeDivider
@@ -104,7 +105,7 @@ class ContactDetailViewModel @Inject constructor(
                     providerName = config?.name.orEmpty(),
                     memoryCount = memoryCount,
                     thinkingName = contact.thinkingOption?.let { value ->
-                        ModelRules.options(models.firstOrNull { it.modelId == contact.model }).firstOrNull { it.value == value }?.label ?: value
+                        thinkingDisplayName(ModelRules.options(models.firstOrNull { it.modelId == contact.model }), value)
                     },
                     chatIssue = config?.let {
                         ModelRules.validate(it, models.firstOrNull { m -> m.modelId == contact.model }, contact.thinkingOption ?: ModelRules.legacyOption(contact.thinking), contact.temperature)
@@ -211,12 +212,12 @@ fun ContactDetailContent(
         }
         if (state.chatIssue != null || state.memoryIssue != null) GroupSpacer()
         state.chatIssue?.let { issue ->
-            ConfigActionRow(stringResource(R.string.contact_chat_issue), stringResource(configurationIssueText(issue)), titleColor = colors.danger, showDivider = state.memoryIssue != null) {
+            ConfigActionRow(stringResource(R.string.contact_chat_issue), stringResource(configurationIssueText(issue)), titleColor = colors.dangerText, showDivider = state.memoryIssue != null) {
                 if (ModelRules.fixedInModel(issue)) onOpenModel(contact.providerId, contact.model) else onEdit()
             }
         }
         state.memoryIssue?.let { issue ->
-            ConfigActionRow(stringResource(R.string.contact_memory_issue), stringResource(configurationIssueText(issue, memory = true)), titleColor = colors.danger, onClick = onOpenMemory)
+            ConfigActionRow(stringResource(R.string.contact_memory_issue), stringResource(configurationIssueText(issue, memory = true)), titleColor = colors.dangerText, onClick = onOpenMemory)
         }
         GroupSpacer()
         WeListRow(

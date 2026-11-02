@@ -200,7 +200,7 @@ fun ExportScreen(onBack: () -> Unit, viewModel: ExportViewModel = hiltViewModel(
                             stringResource(error)
                         },
                         style = WeTheme.typography.small,
-                        color = colors.danger,
+                        color = colors.dangerText,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = WeTheme.dimens.horizontalPadding, vertical = 8.dp),
                     )
                 }

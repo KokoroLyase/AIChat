@@ -35,6 +35,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -57,6 +64,7 @@ import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.WeActionSheet
+import isomeria.aichat.ui.components.ErrorNote
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeSegmented
@@ -73,6 +81,7 @@ fun ContactEditScreen(
     onCreated: (Long) -> Unit,
     onDeleted: () -> Unit,
     onOpenProvider: (Long) -> Unit = {},
+    onOpenModel: (Long, String) -> Unit = { _, _ -> },
     viewModel: ContactEditViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -145,7 +154,7 @@ fun ContactEditScreen(
                 Text(
                     stringResource(R.string.contact_name_required),
                     style = WeTheme.typography.small,
-                    color = colors.danger,
+                    color = colors.dangerText,
                     modifier = Modifier.padding(horizontal = dimens.horizontalPadding, vertical = 6.dp),
                 )
             }
@@ -159,23 +168,23 @@ fun ContactEditScreen(
                 onClick = { showProviderSheet = true },
             )
             val currentModel = models.firstOrNull { it.modelId == form.model }
+            val modelPending = currentModel != null && !ModelRules.complete(currentModel)
             ConfigActionRow(
                 title = stringResource(R.string.contact_model),
                 value = currentModel?.displayName ?: form.model.ifEmpty { stringResource(R.string.llm_no_model) },
-                showDivider = currentModel != null || provider?.compatibility == "LEGACY",
+                showDivider = (currentModel != null && !modelPending) || provider?.compatibility == "LEGACY",
                 onClick = { showModelSheet = true },
             )
             if (state.showModelError) {
-                Text(
-                    stringResource(R.string.contact_model_required),
-                    style = WeTheme.typography.small,
-                    color = colors.danger,
-                    modifier = Modifier.padding(horizontal = dimens.horizontalPadding, vertical = 6.dp),
-                )
+                ErrorNote(stringResource(if (form.model.isBlank()) R.string.contact_model_required else R.string.contact_model_pending_required))
             }
             // 确实没有模型时不展示虚构的强度和温度；旧服务商（LEGACY）没有模型也沿用原有选项
             if (currentModel == null && provider?.compatibility != "LEGACY") {
                 FootnoteText(stringResource(if (form.model.isBlank()) R.string.contact_model_pick_first else R.string.contact_model_unavailable))
+            } else if (currentModel != null && modelPending) {
+                // 模型没配置好时档位和温度都无从选择，直接带用户去配置
+                if (!state.showModelError) ErrorNote(stringResource(R.string.contact_model_pending))
+                WeListRow(stringResource(R.string.action_configure_model), onClick = { onOpenModel(form.providerId, currentModel.modelId) })
             } else {
                 ModelParameterControls(provider, currentModel, form.thinkingOption ?: ModelRules.legacyOption(form.thinking), form.temperature,
                     onOption = { value -> viewModel.update { it.copy(thinkingOption = value) } },
@@ -207,7 +216,7 @@ fun ContactEditScreen(
                 title = stringResource(R.string.contact_split),
                 showArrow = false,
                 trailing = {
-                    WeSwitch(form.splitReplies, { on -> viewModel.update { it.copy(splitReplies = on) } })
+                    WeSwitch(form.splitReplies, { on -> viewModel.update { it.copy(splitReplies = on) } }, label = stringResource(R.string.contact_split))
                 },
             )
             FootnoteText(stringResource(R.string.contact_split_hint))
@@ -216,7 +225,7 @@ fun ContactEditScreen(
                 title = stringResource(R.string.contact_auto_memory),
                 showArrow = false,
                 trailing = {
-                    WeSwitch(form.autoMemory, { on -> viewModel.update { it.copy(autoMemory = on) } })
+                    WeSwitch(form.autoMemory, { on -> viewModel.update { it.copy(autoMemory = on) } }, label = stringResource(R.string.contact_auto_memory))
                 },
             )
             FootnoteText(stringResource(R.string.contact_auto_memory_hint))
@@ -360,7 +369,7 @@ private fun InlineField(value: String, onValueChange: (String) -> Unit, hint: St
 }
 
 @Composable
-private fun ContextBudgetRow(value: Int, onChange: (Int) -> Unit) {
+internal fun ContextBudgetRow(value: Int, onChange: (Int) -> Unit) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     Column(
@@ -391,10 +400,15 @@ private fun ContextBudgetRow(value: Int, onChange: (Int) -> Unit) {
 private fun Stepper(value: Int, onChange: (Int) -> Unit) {
     val colors = WeTheme.colors
     Row(
-        Modifier.clip(RoundedCornerShape(6.dp)).background(colors.pageBackground),
+        // 按钮的点击区是 48dp，看到的灰底仍是原来的高度；字放大后灰底跟着变高
+        Modifier.drawBehind {
+            val minimum = 48.dp.toPx()
+            val height = if (size.height > minimum) size.height else 32.dp.toPx()
+            drawRoundRect(colors.pageBackground, Offset(0f, (size.height - height) / 2), Size(size.width, height), CornerRadius(6.dp.toPx()))
+        },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StepButton("−", enabled = value > Contact.MIN_CONTEXT_TOKENS) { onChange(ContextBudgetSteps.decrease(value)) }
+        StepButton("−", stringResource(R.string.contact_context_decrease), enabled = value > Contact.MIN_CONTEXT_TOKENS) { onChange(ContextBudgetSteps.decrease(value)) }
         Text(
             value.toString(),
             style = WeTheme.typography.listTitle,
@@ -402,19 +416,20 @@ private fun Stepper(value: Int, onChange: (Int) -> Unit) {
             textAlign = TextAlign.Center,
             softWrap = false,
             maxLines = 1,
-            modifier = Modifier.widthIn(min = 72.dp).heightIn(min = 32.dp).padding(top = 4.dp),
+            modifier = Modifier.widthIn(min = 48.dp),
         )
-        StepButton("+", enabled = value < Contact.MAX_CONTEXT_TOKENS) { onChange(ContextBudgetSteps.increase(value)) }
+        StepButton("+", stringResource(R.string.contact_context_increase), enabled = value < Contact.MAX_CONTEXT_TOKENS) { onChange(ContextBudgetSteps.increase(value)) }
     }
 }
 
 @Composable
-private fun StepButton(text: String, enabled: Boolean, onClick: () -> Unit) {
+private fun StepButton(text: String, description: String, enabled: Boolean, onClick: () -> Unit) {
     val colors = WeTheme.colors
     Box(
         Modifier
-            .size(36.dp, 32.dp)
-            .clickable(enabled = enabled, onClick = onClick),
+            .size(48.dp)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clearAndSetSemantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
         Text(text, style = WeTheme.typography.listTitle, color = if (enabled) colors.textPrimary else colors.disabled)

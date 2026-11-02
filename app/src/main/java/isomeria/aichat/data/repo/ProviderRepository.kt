@@ -226,15 +226,14 @@ class ProviderRepository @Inject constructor(
     }
 
     suspend fun remoteConflicts(config: ProviderConfig, remote: List<RemoteModel>): List<ModelReference> {
-        val refs = mutableListOf<ModelReference>()
-        for (r in remote) {
-            val old = dao.model(config.id, r.id) ?: continue
-            if (!old.legacy) refs += conflicts(config, old.copy(
+        val replacements = remote.mapNotNull { r ->
+            val old = dao.model(config.id, r.id) ?: return@mapNotNull null
+            if (old.legacy) null else old.copy(
                 reportedConfig = ModelRules.encode(r.config.over(ModelRules.decode(old.reportedConfig))),
                 imageInput = capability(r.supportsImage) ?: old.imageInput,
-            ))
+            )
         }
-        return refs.distinct()
+        return conflicts(config, replacements)
     }
 
     private fun capability(supports: Boolean?): Capability? = when (supports) {
@@ -277,17 +276,26 @@ class ProviderRepository @Inject constructor(
 
     suspend fun saveModel(model: ProviderModel) = dao.upsertModels(listOf(model))
 
-    suspend fun conflicts(config: ProviderConfig, replacement: ProviderModel? = null): List<ModelReference> {
+    suspend fun conflicts(config: ProviderConfig, replacement: ProviderModel? = null): List<ModelReference> = conflicts(config, listOfNotNull(replacement))
+
+    suspend fun conflicts(config: ProviderConfig, replacements: List<ProviderModel>): List<ModelReference> {
         val models = dao.models(config.id).associateBy { it.modelId }.toMutableMap()
-        replacement?.let { models[it.modelId] = it }
+        replacements.forEach { models[it.modelId] = it }
         return buildList {
             db.contactDao().listAll().filter { it.providerId == config.id }.forEach { c ->
                 if (ModelRules.validate(config, models[c.model], c.thinkingOption ?: ModelRules.legacyOption(c.thinking), c.temperature) != null)
-                    add(ModelReference(c.name, ReferencePurpose.CHAT))
+                    add(ModelReference(c.name, ReferencePurpose.CHAT, c.id))
                 if (ModelRules.validate(config, models[memoryModel(c, config)], c.memoryThinkingOption, 0.3f) != null)
-                    add(ModelReference(c.name, ReferencePurpose.MEMORY))
+                    add(ModelReference(c.name, ReferencePurpose.MEMORY, c.id))
             }
         }
+    }
+
+    /** 和 [saved]（数据库里现在的配置）比较：哪些用途是这次保存才不能用的。原因变了但本来就不能用的，不算新增。 */
+    suspend fun conflictChange(saved: ProviderConfig, after: List<ModelReference>): ConflictChange {
+        val before = conflicts(saved).toSet()
+        val (existing, added) = after.partition { it in before }
+        return ConflictChange(added, existing)
     }
 
     fun memoryModel(contact: Contact, config: ProviderConfig): String = contact.memoryModel ?: config.defaultModel.ifBlank { contact.model }
@@ -326,7 +334,9 @@ class ProviderRepository @Inject constructor(
 }
 
 enum class ReferencePurpose { DEFAULT, CHAT, MEMORY }
-data class ModelReference(val contactName: String?, val purpose: ReferencePurpose)
+/** [contactId] 用来区分同名联系人 */
+data class ModelReference(val contactName: String?, val purpose: ReferencePurpose, val contactId: Long? = null)
+data class ConflictChange(val added: List<ModelReference> = emptyList(), val existing: List<ModelReference> = emptyList())
 data class ModelSnapshot(
     val contact: Contact, val config: ProviderConfig, val endpoint: LlmEndpoint, val model: String,
     val supportsImage: Boolean, val thinking: ThinkingLevel, val temperature: Float, val parameters: RequestParameters?,

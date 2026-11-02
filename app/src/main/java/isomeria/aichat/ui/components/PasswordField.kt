@@ -5,6 +5,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
@@ -22,11 +23,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import isomeria.aichat.R
 import isomeria.aichat.ui.theme.WeTheme
 
 /** 表单里的密码输入框：默认显示为圆点，右侧小眼睛切换明文。放在 [FormRow] 里用。 */
@@ -60,17 +64,25 @@ fun PasswordField(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        Icon(
-            if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-            null,
-            tint = colors.inputIcon,
-            modifier = Modifier
-                .size(22.dp)
+        Box(
+            // 点击区 48dp；往右挪一点，让图标仍和其他行的右边对齐
+            Modifier
+                .offset(x = 13.dp)
+                .size(48.dp)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
+                    role = Role.Button,
                     onClick = { visible = !visible },
                 ),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                stringResource(if (visible) R.string.password_hide else R.string.password_show),
+                tint = colors.inputIcon,
+                modifier = Modifier.size(22.dp),
+            )
+        }
     }
 }

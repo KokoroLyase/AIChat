@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -55,7 +56,10 @@ import javax.inject.Inject
 data class ModelEditState(val model: ProviderModel? = null, val provider: ProviderConfig? = null,
     /** 保存成功后要提示的文字；有值时页面返回 */
     val savedMessage: Int? = null,
+    /** 这次保存才产生的冲突，要确认 */
     val conflicts: List<ModelReference> = emptyList(),
+    /** 原本就有的冲突，只作提示 */
+    val existingConflicts: List<ModelReference> = emptyList(),
     /** 最后一次读取或保存的内容，用来判断有没有未保存的修改 */
     val original: ProviderModel? = null,
     val removed: Boolean = false,
@@ -77,18 +81,19 @@ class ModelEditViewModel @Inject constructor(savedState: SavedStateHandle, priva
         val s = _state.value
         val model = s.model?.copy(legacy = false) ?: return@launch
         val config = s.provider ?: return@launch
-        val conflicts = providers.conflicts(config, model)
-        if (conflicts.isNotEmpty() && !confirmed) _state.value = s.copy(conflicts = conflicts) else {
+        val change = providers.conflictChange(config, providers.conflicts(config, model))
+        if (change.added.isNotEmpty() && !confirmed) _state.value = s.copy(conflicts = change.added, existingConflicts = change.existing) else {
             providers.saveModel(model)
             val message = when {
-                confirmed -> R.string.model_saved_conflict
+                change.added.isNotEmpty() -> R.string.model_saved_conflict
                 !ModelRules.usable(config, model) -> R.string.model_saved_pending
+                change.existing.isNotEmpty() -> R.string.model_saved_conflict
                 else -> R.string.llm_saved
             }
-            _state.value = s.copy(model = model, original = model, savedMessage = message, conflicts = emptyList())
+            _state.value = s.copy(model = model, original = model, savedMessage = message, conflicts = emptyList(), existingConflicts = emptyList())
         }
     } }
-    fun dismiss() { _state.value = _state.value.copy(conflicts = emptyList()) }
+    fun dismiss() { _state.value = _state.value.copy(conflicts = emptyList(), existingConflicts = emptyList()) }
     fun remove() { viewModelScope.launch {
         val model = _state.value.model ?: return@launch
         if (providers.removeModel(model.providerId, model.modelId)) _state.value = _state.value.copy(removed = true)
@@ -109,7 +114,7 @@ fun ModelEditScreen(onBack: () -> Unit, viewModel: ModelEditViewModel = hiltView
         }
     }
     ModelEditContent(s, onBack, viewModel::edit, { viewModel.save() }, viewModel::remove)
-    if (s.conflicts.isNotEmpty()) ConflictDialog(s.conflicts, viewModel::dismiss) { viewModel.save(true) }
+    if (s.conflicts.isNotEmpty()) ConflictDialog(s.conflicts, viewModel::dismiss, s.existingConflicts) { viewModel.save(true) }
     if (s.inUse.isNotEmpty()) WeDialog(message = stringResource(R.string.model_remove_in_use), dismissText = null,
         onDismiss = viewModel::dismissInUse, onConfirm = viewModel::dismissInUse) { ReferenceList(s.inUse) }
 }
@@ -295,7 +300,7 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
     val d = WeTheme.dimens
     val noteSize = WeTheme.typography.listTime.fontSize
     Row(
-        Modifier.fillMaxWidth().background(colors.listBackground).clickable(enabled = enabled, onClick = onClick)
+        Modifier.fillMaxWidth().background(colors.listBackground).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .heightIn(min = d.listRowHeight)
             .drawBehind {
                 if (showDivider) {
@@ -428,13 +433,21 @@ internal fun effortIssue(rule: ThinkingRule, value: String, label: String): Effo
         if (!spec.valid()) FieldError(stringResource(R.string.temperature_invalid))
     }
 }
-@Composable internal fun ConflictDialog(refs: List<ModelReference>, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+@Composable internal fun ConflictDialog(refs: List<ModelReference>, onDismiss: () -> Unit, existing: List<ModelReference> = emptyList(), onConfirm: () -> Unit) {
     WeDialog(title = stringResource(R.string.conflict_title), message = stringResource(R.string.conflict_note),
-        confirmText = stringResource(R.string.conflict_save), onDismiss = onDismiss, onConfirm = onConfirm) { ReferenceList(refs) }
+        confirmText = stringResource(R.string.conflict_save), onDismiss = onDismiss, onConfirm = onConfirm) {
+        Column(Modifier.fillMaxWidth()) {
+            ReferenceList(refs)
+            if (existing.isNotEmpty()) {
+                Text(stringResource(R.string.conflict_existing), style = WeTheme.typography.small, color = WeTheme.colors.textTertiary, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                ReferenceList(existing)
+            }
+        }
+    }
 }
 /** 同一联系人的多个用途合成一行；服务商默认模型没有联系人，单独一行。 */
 internal fun groupReferences(refs: List<ModelReference>): List<Pair<String?, List<ReferencePurpose>>> =
-    refs.groupBy { it.contactName }.map { (name, items) -> name to items.map { it.purpose }.distinct() }
+    refs.groupBy { it.contactId to it.contactName }.map { (key, items) -> key.second to items.map { it.purpose }.distinct() }
 @Composable internal fun ReferenceList(refs: List<ModelReference>) {
     val separator = stringResource(R.string.reference_separator)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {

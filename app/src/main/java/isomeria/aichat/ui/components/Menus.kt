@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -68,7 +69,7 @@ fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
                     Modifier
                         .widthIn(min = 56.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .clickable {
+                        .clickable(role = Role.Button) {
                             onDismiss()
                             item.onClick()
                         }
@@ -107,7 +108,7 @@ fun WeContextMenu(pressOffset: IntOffset, items: List<MenuItem>, onDismiss: () -
             items.forEach { item ->
                 Row(
                     Modifier
-                        .clickable {
+                        .clickable(role = Role.Button) {
                             onDismiss()
                             item.onClick()
                         }
@@ -142,7 +143,7 @@ fun WeDropdownMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
             items.forEach { item ->
                 Row(
                     Modifier
-                        .clickable {
+                        .clickable(role = Role.Button) {
                             onDismiss()
                             item.onClick()
                         }

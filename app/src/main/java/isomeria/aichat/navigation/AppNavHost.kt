@@ -167,6 +167,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 },
                 onDeleted = { nav.popBackStack(MainRoute, inclusive = false) },
                 onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
+                onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
             )
         }
         page<SettingsRoute>(nav) {

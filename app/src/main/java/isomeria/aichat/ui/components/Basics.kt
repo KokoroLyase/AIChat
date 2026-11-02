@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -37,6 +38,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +50,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import isomeria.aichat.R
 import isomeria.aichat.ui.theme.AvatarPalette
 import isomeria.aichat.ui.theme.WeTheme
 import java.io.File
@@ -181,11 +188,14 @@ fun WeListRow(
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
+    val expandedText = stringResource(if (expanded == true) R.string.state_expanded else R.string.state_collapsed)
     Row(
         modifier
             .fillMaxWidth()
             .background(colors.listBackground)
-            .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier)
+            // 能点的行整行读出来；不能点的行也把标题和值合在一起，别拆成两段
+            .then(if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier.semantics(mergeDescendants = true) {})
+            .then(if (expanded != null) Modifier.semantics { stateDescription = expandedText } else Modifier)
             .heightIn(min = dimens.listRowHeight)
             .drawBehind {
                 if (showDivider) {
@@ -262,7 +272,7 @@ fun <T> WeSegmented(
                 Modifier
                     .clip(RoundedCornerShape(5.dp))
                     .background(if (active) colors.listBackground else Color.Transparent)
-                    .clickable(enabled = enabled) { onSelect(value) }
+                    .selectable(selected = active, enabled = enabled, role = Role.Tab) { onSelect(value) }
                     .padding(horizontal = 18.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -271,7 +281,7 @@ fun <T> WeSegmented(
                     style = WeTheme.typography.small,
                     color = when {
                         !enabled -> colors.textSecondary
-                        active -> colors.brand
+                        active -> colors.brandText
                         else -> colors.textTertiary
                     },
                     softWrap = false,
@@ -307,7 +317,7 @@ fun WeButton(
             .heightIn(min = dimens.buttonHeight)
             .clip(RoundedCornerShape(dimens.buttonCorner))
             .background(background)
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -325,40 +335,48 @@ fun WeSmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
     val colors = WeTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    // 点击区至少 48dp，看到的按钮仍是 32dp 高
     Box(
         modifier
             .padding(end = 8.dp)
-            .heightIn(min = 32.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(
-                when {
-                    !enabled -> colors.disabled
-                    pressed -> colors.brandPressed
-                    else -> colors.brand
-                },
-            )
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp),
+            .heightIn(min = 48.dp)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text,
-            style = WeTheme.typography.small,
-            color = if (enabled) Color.White else colors.textSecondary,
-            softWrap = false,
-            maxLines = 1,
-        )
+        Box(
+            Modifier
+                .heightIn(min = 32.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(
+                    when {
+                        !enabled -> colors.disabled
+                        pressed -> colors.brandPressed
+                        else -> colors.brand
+                    },
+                )
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text,
+                style = WeTheme.typography.small,
+                color = if (enabled) Color.White else colors.textSecondary,
+                softWrap = false,
+                maxLines = 1,
+            )
+        }
     }
 }
 
 @Composable
-fun WeSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun WeSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, label: String? = null) {
     val colors = WeTheme.colors
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
         enabled = enabled,
-        modifier = modifier,
+        // 开关是单独的读屏焦点，要自己说明开关的是什么
+        modifier = if (label != null) modifier.semantics { contentDescription = label } else modifier,
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White,
             checkedTrackColor = colors.brand,
@@ -390,7 +408,7 @@ fun ErrorNote(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
         style = WeTheme.typography.small,
-        color = WeTheme.colors.danger,
+        color = WeTheme.colors.dangerText,
         modifier = modifier.fillMaxWidth().padding(horizontal = WeTheme.dimens.horizontalPadding, vertical = 6.dp),
     )
 }
