@@ -259,6 +259,7 @@ fun ChatScreen(
         val uri = pendingCameraUri
         pendingCameraUri = null
         if (ok && uri != null) viewModel.sendImages(listOf(uri.toUri()))
+        if (!ok || uri == null) viewModel.finishCamera()
     }
 
     /** 发送前检查：没配置 Key 时提示去设置；第一次发送时申请通知权限 */

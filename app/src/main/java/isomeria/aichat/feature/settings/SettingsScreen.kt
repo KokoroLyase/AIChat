@@ -113,6 +113,7 @@ fun SettingsScreen(
     onOpenExport: () -> Unit,
     onOpenRestore: () -> Unit,
     onOpenCrashLogs: () -> Unit = {},
+    onOpenStorage: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -226,6 +227,7 @@ fun SettingsScreen(
             FootnoteText(stringResource(R.string.settings_battery_hint))
 
             SectionHeader(stringResource(R.string.settings_group_data))
+            WeListRow(title = stringResource(R.string.storage_title), onClick = onOpenStorage, showDivider = true)
             WeListRow(title = stringResource(R.string.settings_export), onClick = onOpenExport, showDivider = true)
             WeListRow(title = stringResource(R.string.settings_restore), onClick = onOpenRestore, showDivider = true)
             WeListRow(title = stringResource(R.string.settings_clear_all), onClick = { confirmClearAll = true })

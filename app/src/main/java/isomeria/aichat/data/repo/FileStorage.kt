@@ -55,6 +55,7 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
 
     suspend fun saveAvatar(bitmap: Bitmap): String = withContext(Dispatchers.IO) {
         val file = File(avatarsDir, "${UUID.randomUUID()}.jpg")
+        StorageOperations.pin(file)
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
         file.absolutePath
     }
@@ -63,8 +64,11 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         if (path.isNullOrEmpty()) return
         val file = File(path)
         // 只删应用私有目录里的文件
-        if (isPrivate(file)) file.delete()
+        if (isPrivate(file)) { file.delete(); StorageOperations.unpin(file) }
     }
+
+    /** The DB/MMKV reference is now published, so the transient editor protection can end. */
+    fun commitAvatar(path: String?) { path?.let { StorageOperations.unpin(File(it)) } }
 
     /** 是否在应用私有目录里（导出时只打包这里的文件） */
     fun isPrivate(file: File): Boolean =
@@ -80,11 +84,48 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
     }
 
     /** 删除头像和图片目录里已经没有任何记录引用的文件（恢复数据后清理） */
-    fun deleteUnreferenced(referenced: Set<String>) {
-        val keep = referenced.mapNotNull { runCatching { File(it).canonicalPath }.getOrNull() }.toSet()
-        for (dir in listOf(avatarsDir, imagesDir)) {
-            dir.listFiles()?.forEach { file -> if (file.isFile && file.canonicalPath !in keep) file.delete() }
+    fun unreferenced(referenced: Set<String>): List<File> {
+        val keep = referenced.mapNotNull { runCatching { File(it).canonicalPath }.getOrNull() }.toSet() + StorageOperations.pinnedPaths()
+        return listOf(avatarsDir, imagesDir).flatMap { dir ->
+            dir.listFiles().orEmpty().filter { it.isFile && isPrivate(it) && it.canonicalPath !in keep }
         }
+    }
+
+    fun deleteUnreferenced(referenced: Set<String>, reviewed: List<OrphanFile>? = null): CleanupResult {
+        val reviewedByPath = reviewed?.associateBy { it.path }
+        var count = 0
+        var bytes = 0L
+        for (file in unreferenced(referenced)) {
+            val prior = reviewedByPath?.get(file.canonicalPath)
+            if (reviewedByPath != null && (prior == null || prior.bytes != file.length() || prior.modified != file.lastModified())) continue
+            val size = file.length()
+            check(file.delete())
+            count++
+            bytes += size
+        }
+        return CleanupResult(count, bytes)
+    }
+
+    fun finishCamera() {
+        for (file in cameraDir.listFiles().orEmpty()) StorageOperations.unpin(file)
+    }
+
+    fun clearRegenerableCacheDirectories(): CleanupResult {
+        var count = 0
+        var bytes = 0L
+        val pinned = StorageOperations.pinnedPaths()
+        for (name in listOf("camera", "updates", "restore")) {
+            val dir = File(context.cacheDir, name)
+            check(dir.canonicalPath.startsWith(context.cacheDir.canonicalPath + File.separator))
+            for (file in storageFiles(dir)) {
+                if (file.canonicalPath in pinned) continue
+                val size = file.length()
+                check(file.delete())
+                count++
+                bytes += size
+            }
+        }
+        return CleanupResult(count, bytes)
     }
 
     /** 读成 data URL，放进请求 */
@@ -97,6 +138,7 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
     fun newCameraUri(): Uri {
         cameraDir.listFiles()?.forEach { it.delete() }
         val file = File(cameraDir, "${UUID.randomUUID()}.jpg")
+        StorageOperations.pin(file)
         return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }
 

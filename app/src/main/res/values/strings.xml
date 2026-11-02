@@ -583,4 +583,17 @@
     <string name="chat_new_messages">↓ %1$d 条新消息</string>
     <string name="chat_target_missing">目标消息已不存在，或暂时无法定位。</string>
     <string name="chat_page_retry">聊天记录加载失败，点此重试</string>
+    <string name="storage_title">存储空间</string>
+    <string name="storage_images">聊天图片</string>
+    <string name="storage_avatars">头像</string>
+    <string name="storage_cache">缓存</string>
+    <string name="storage_database">数据库</string>
+    <string name="storage_clear_cache">清理缓存</string>
+    <string name="storage_orphans">清理孤立文件</string>
+    <string name="storage_notice">统计在后台计算。清理缓存只移除可再生文件，不会删除聊天图片、头像或数据库。编辑中尚未保存的图片会暂时保留。</string>
+    <string name="storage_busy">回复、更新或恢复等操作进行中，请稍后再清理。</string>
+    <string name="storage_result">已清理 %1$d 个文件，释放约 %2$s。</string>
+    <string name="storage_no_orphans">没有发现可清理的孤立文件。</string>
+    <string name="storage_confirm_orphans">将清理 %1$d 个未被引用的文件（约 %2$s）。确认前会重新核对引用，已开始使用的文件会保留。是否继续？</string>
+    <string name="storage_confirm_cache">清理相机临时文件、更新缓存、恢复临时文件和图片缓存？正在使用的临时文件会保留。</string>
 </resources>

@@ -56,7 +56,9 @@ class ReplyEngine @Inject constructor(
     private val notifier: ReplyNotifier,
     private val activeChat: ActiveChatTracker,
 ) {
-    suspend fun run(contactId: Long) {
+    suspend fun run(contactId: Long) = isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
+
+    private suspend fun runProtected(contactId: Long) {
         // 只处理此刻在等待回复的消息；之后新发的消息会由替换上来的新任务处理
         val waiting = messageDao.sendingIds(contactId)
         if (waiting.isEmpty()) return

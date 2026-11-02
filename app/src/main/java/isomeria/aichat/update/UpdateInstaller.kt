@@ -109,7 +109,7 @@ class UpdateInstaller @Inject constructor(
 
     /** 启动时清掉上次下载的安装包 */
     fun cleanupOldFiles() {
-        scope.launch { downloader.cleanup() }
+        scope.launch { isomeria.aichat.data.repo.StorageOperations.gate.activity { downloader.cleanup() } }
     }
 
     companion object {

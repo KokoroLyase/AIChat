@@ -88,6 +88,7 @@ class MeViewModel @Inject constructor(
         viewModelScope.launch {
             val old = settings.avatarPath.value
             settings.setAvatarPath(files.saveAvatar(bitmap))
+            files.commitAvatar(settings.avatarPath.value)
             files.delete(old)
             _cropSource.value = null
         }

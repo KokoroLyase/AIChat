@@ -74,7 +74,9 @@ class ChatRepository @Inject constructor(
     }
 
     /** 一次可选多张，每张单独成一条消息 */
-    suspend fun sendImages(contactId: Long, uris: List<Uri>): Int {
+    suspend fun sendImages(contactId: Long, uris: List<Uri>): Int = StorageOperations.gate.activity { sendImagesProtected(contactId, uris) }
+
+    private suspend fun sendImagesProtected(contactId: Long, uris: List<Uri>): Int {
         val now = System.currentTimeMillis()
         val rows = uris.mapIndexedNotNull { index, uri ->
             val image = runCatching { files.importChatImage(uri) }.getOrNull() ?: return@mapIndexedNotNull null

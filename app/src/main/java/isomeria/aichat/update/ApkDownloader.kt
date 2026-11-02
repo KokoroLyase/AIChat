@@ -61,7 +61,7 @@ class ApkDownloader(client: OkHttpClient, private val dir: File) {
      * 失败时抛 [UpdateException]；协程取消时中断下载并删掉半个文件。
      */
     suspend fun download(apkUrl: String, sha256Url: String, onProgress: (Long, Long) -> Unit): File =
-        withContext(Dispatchers.IO) {
+        isomeria.aichat.data.repo.StorageOperations.gate.activity { withContext(Dispatchers.IO) {
             dir.mkdirs()
             val part = File(dir, "$APK_NAME.part")
             val target = File(dir, APK_NAME)
@@ -77,7 +77,7 @@ class ApkDownloader(client: OkHttpClient, private val dir: File) {
             } finally {
                 part.delete()
             }
-        }
+        } }
 
     /** 上次下载留下的文件：装完之后已经没用了 */
     fun cleanup() {

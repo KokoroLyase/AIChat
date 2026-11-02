@@ -124,6 +124,22 @@ class ScreenshotTest {
     @Test fun crashLogsFailure() = shot("40-crash-failure", true) { CrashLogsContent(CrashLogsState(loading = false, failed = true), {}, {}, {}, {}, {}) }
     @Test fun crashLogsDetail() = shot("40-crash-detail", false) { CrashLogsContent(CrashLogsState(loading = false, selected = "fixture", detail = "java.lang.IllegalStateException\n at fixture.App.run(App.kt:42)"), {}, {}, {}, {}, {}) }
     @Test fun crashLogsCompleted() = shot("40-crash-completed", true) { CrashLogsContent(CrashLogsState(loading = false, completed = true), {}, {}, {}, {}, {}) }
+    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789))
+    @Test fun storageLight() = shot("42-storage", false) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
+    @Test fun storageDark() = shot("42-storage", true) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
+    @Test fun storageLoading() = shot("42-storage-loading", false) { StorageContent(StorageState(), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageFailed() = shot("42-storage-failed", true) { StorageContent(storageSample.copy(error = StorageError.FAILED), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageBusy() = shot("42-storage-busy", false) { StorageContent(storageSample.copy(error = StorageError.BUSY), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageEmpty() = shot("42-storage-empty", true) { StorageContent(storageSample.copy(orphans = OrphanPreview(emptyList())), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageCompleted() = shot("42-storage-completed", false) { StorageContent(storageSample.copy(result = CleanupResult(3, 65536)), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageWorking() {
+        compose.setContent { AIChatTheme(darkTheme = false) { StorageContent(storageSample.copy(working = true), {}, {}, {}, {}, {}, {}) } }
+        captureScreenRoboImage("screenshots/42-storage-working-light.png")
+    }
+    @Test fun storageConfirmOrphans() {
+        compose.setContent { AIChatTheme(darkTheme = true) { StorageContent(storageSample.copy(orphans = OrphanPreview(listOf(OrphanFile("fixture", 1024, 1)))), {}, {}, {}, {}, {}, {}) } }
+        captureScreenRoboImage("screenshots/42-storage-confirm-dark.png")
+    }
     @Test fun crashLogsWorking() {
         compose.setContent { AIChatTheme(darkTheme = false) { CrashLogsContent(CrashLogsState(loading = false, busy = true), {}, {}, {}, {}, {}) } }
         captureScreenRoboImage("screenshots/40-crash-working-light.png")

@@ -52,6 +52,7 @@ import isomeria.aichat.data.backup.RestoreMode
 import isomeria.aichat.data.backup.RestoreSummary
 import isomeria.aichat.data.backup.WrongPasswordException
 import isomeria.aichat.data.repo.FileStorage
+import isomeria.aichat.data.repo.StorageOperations
 import isomeria.aichat.di.ApplicationScope
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.GroupSpacer
@@ -109,18 +110,20 @@ class RestoreViewModel @Inject constructor(
     private val _state = MutableStateFlow(RestoreUiState())
     val state: StateFlow<RestoreUiState> = _state.asStateFlow()
 
-    private val cacheFile get() = File(files.restoreCacheDir, "selected.zip")
+    private val cacheFile get() = File(files.restoreCacheDir, "selected.zip").also(StorageOperations::pin)
 
     /** 先把选中的文件复制到应用缓存目录，再读取校验 */
     fun pick(uri: Uri) {
         _state.update { it.copy(reading = true, error = null, preview = null, password = "", wrongPassword = false) }
         viewModelScope.launch {
             val result = try {
+                StorageOperations.gate.activity {
                 withContext(Dispatchers.IO) {
                     val input = context.contentResolver.openInputStream(uri) ?: error("无法读取所选文件")
                     input.use { stream -> cacheFile.outputStream().use { stream.copyTo(it) } }
                 }
                 Result.success(backup.inspect(cacheFile))
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -159,7 +162,7 @@ class RestoreViewModel @Inject constructor(
             try {
                 val summary = backup.restore(preview, s.mode, password)
                 _state.update { it.copy(restoring = false, done = summary, doneMode = s.mode, preview = null, password = "") }
-                withContext(Dispatchers.IO) { cacheFile.delete() }
+                withContext(Dispatchers.IO) { cacheFile.delete(); StorageOperations.unpin(cacheFile) }
             } catch (_: WrongPasswordException) {
                 _state.update { it.copy(restoring = false, wrongPassword = true) }
             } catch (e: CancellationException) {
@@ -173,7 +176,7 @@ class RestoreViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        if (!_state.value.restoring) cacheFile.delete()
+        if (!_state.value.restoring) { cacheFile.delete(); StorageOperations.unpin(cacheFile) }
     }
 }
 

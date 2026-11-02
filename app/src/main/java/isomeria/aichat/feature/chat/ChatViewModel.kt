@@ -217,13 +217,16 @@ class ChatViewModel @Inject constructor(
     fun sendImages(uris: List<Uri>) {
         if (uris.isEmpty()) return
         appScope.launch {
-            val sent = chats.sendImages(contactId, uris)
-            if (sent > 0) requestLatest()
-            if (sent < uris.size) events.send(ChatEvent.ImageImportFailed)
+            try {
+                val sent = chats.sendImages(contactId, uris)
+                if (sent > 0) requestLatest()
+                if (sent < uris.size) events.send(ChatEvent.ImageImportFailed)
+            } finally { files.finishCamera() }
         }
     }
 
     fun newCameraUri(): Uri = files.newCameraUri()
+    fun finishCamera() = files.finishCamera()
 
     /** 配置错误的原因在模型规则（没配完或字段不兼容）时返回该模型 id；其余情况在联系人页修正，返回 null。 */
     suspend fun modelToConfigure(): String? {

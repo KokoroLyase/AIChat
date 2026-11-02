@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ContactDao {
+    @Query("SELECT avatarPath FROM contact WHERE avatarPath IS NOT NULL")
+    suspend fun avatarPaths(): List<String>
+
     @Query("SELECT * FROM contact ORDER BY name")
     fun observeAll(): Flow<List<Contact>>
 

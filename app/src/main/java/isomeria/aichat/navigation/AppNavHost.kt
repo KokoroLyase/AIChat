@@ -34,6 +34,7 @@ import isomeria.aichat.feature.settings.ProviderEditScreen
 import isomeria.aichat.feature.settings.ProviderListScreen
 import isomeria.aichat.feature.settings.SettingsScreen
 import isomeria.aichat.feature.settings.CrashLogsScreen
+import isomeria.aichat.feature.settings.StorageScreen
 import isomeria.aichat.feature.usage.UsageDetailScreen
 import isomeria.aichat.feature.usage.UsageScreen
 import isomeria.aichat.ui.theme.WeTheme
@@ -49,6 +50,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class ContactEditRoute(val contactId: Long = NEW_CONTACT)
 @Serializable data object SettingsRoute
 @Serializable data object CrashLogsRoute
+@Serializable data object StorageRoute
 @Serializable data object ProviderListRoute
 
 /** providerId 为 -1 时是添加新服务商 */
@@ -181,10 +183,12 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenExport = { nav.navigate(ExportRoute) },
                 onOpenRestore = { nav.navigate(RestoreRoute) },
                 onOpenCrashLogs = { nav.navigate(CrashLogsRoute) },
+                onOpenStorage = { nav.navigate(StorageRoute) },
             )
         }
         page<ExportRoute>(nav) { ExportScreen(onBack = nav::popBackStackSafely) }
         page<CrashLogsRoute>(nav) { CrashLogsScreen(onBack = nav::popBackStackSafely) }
+        page<StorageRoute>(nav) { StorageScreen(onBack = nav::popBackStackSafely) }
         page<RestoreRoute>(nav) { RestoreScreen(onBack = nav::popBackStackSafely) }
         page<ProviderListRoute>(nav) {
             ProviderListScreen(

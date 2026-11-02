@@ -23,6 +23,7 @@ import isomeria.aichat.data.reply.ReplyControl
 import isomeria.aichat.data.repo.BaseUrlRules
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.data.repo.FileStorage
+import isomeria.aichat.data.repo.StorageOperations
 import isomeria.aichat.data.repo.MediaKind
 import isomeria.aichat.data.settings.FontSize
 import isomeria.aichat.data.settings.ThemeMode
@@ -129,13 +130,13 @@ class BackupManager @Inject constructor(
      * 导出到 [out]（写完后关闭）。[apiKeyPassword] 不为 null 时包含 API Key，用这个密码加密。
      */
     suspend fun export(out: OutputStream, apiKeyPassword: CharArray?): ExportSummary = mutex.withLock {
-        withContext(Dispatchers.IO) {
+        StorageOperations.gate.activity { withContext(Dispatchers.IO) {
             writeBackup(out, if (apiKeyPassword != null) KeyExport.Password(apiKeyPassword) else KeyExport.None)
-        }
+        } }
     }
 
     /** 读取并校验备份文件；见类注释第 1 步。 */
-    suspend fun inspect(file: File): BackupPreview = withContext(Dispatchers.IO) { readBackup(file) }
+    suspend fun inspect(file: File): BackupPreview = StorageOperations.gate.activity { withContext(Dispatchers.IO) { readBackup(file) } }
 
     /**
      * 恢复。备份里有加密的 API Key 但 [password] 为空时，跳过 Key、照常恢复其他数据；
@@ -143,12 +144,12 @@ class BackupManager @Inject constructor(
      */
     suspend fun restore(preview: BackupPreview, mode: RestoreMode, password: CharArray?): RestoreSummary =
         mutex.withLock {
-            withContext(Dispatchers.IO) {
+            StorageOperations.gate.activity { withContext(Dispatchers.IO) {
                 val apiKeys = importedApiKeys(preview, password)
                 writeSnapshot()
                 if (mode == RestoreMode.OVERWRITE) stopAllReplies()
                 apply(preview, mode, apiKeys, exactKey = false, rollback = snapshotFile)
-            }
+            } }
         }
 
     // ---------- 导出 ----------

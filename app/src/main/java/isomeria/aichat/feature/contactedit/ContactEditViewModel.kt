@@ -245,6 +245,7 @@ class ContactEditViewModel @Inject constructor(
         )
         saved = true
         pendingAvatars.remove(form.avatarPath)
+        files.commitAvatar(form.avatarPath)
         return id
     }
 
