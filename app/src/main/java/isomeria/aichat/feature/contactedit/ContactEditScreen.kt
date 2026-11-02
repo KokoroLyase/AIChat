@@ -6,7 +6,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,7 +45,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import isomeria.aichat.R
+import isomeria.aichat.core.ContextBudgetSteps
+import isomeria.aichat.data.db.Contact
+import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderModel
+import isomeria.aichat.data.db.ProviderProtocol
 import isomeria.aichat.data.db.ThinkingLevel
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.AvatarCropDialog
@@ -58,6 +61,7 @@ import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeListRow
+import isomeria.aichat.ui.components.WeSegmented
 import isomeria.aichat.ui.components.WeSmallButton
 import isomeria.aichat.ui.components.WeSwitch
 import isomeria.aichat.ui.components.WeTopBar
@@ -66,7 +70,7 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
 
-/** 联系人编辑：头像、名称、模型、思考强度、温度、系统提示词、上下文条数、分条显示。 */
+/** 联系人编辑：头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文预算、分条显示、自动记忆。 */
 @Composable
 fun ContactEditScreen(
     onBack: () -> Unit,
@@ -78,9 +82,11 @@ fun ContactEditScreen(
     val dimens = WeTheme.dimens
     val state by viewModel.state.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
+    val providerList by viewModel.providerList.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val form = state.form
     var showAvatarSheet by remember { mutableStateOf(false) }
+    var showProviderSheet by remember { mutableStateOf(false) }
     var showModelSheet by remember { mutableStateOf(false) }
     var showDiscard by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
@@ -148,27 +154,46 @@ fun ContactEditScreen(
             }
 
             GroupSpacer()
-            val modelName = models.firstOrNull { it.modelId == form.model }?.displayName ?: form.model
+            val provider = providerList.firstOrNull { it.id == form.providerId }
+            WeListRow(
+                title = stringResource(R.string.contact_provider),
+                value = provider?.name.orEmpty(),
+                onClick = { showProviderSheet = true },
+                showDivider = true,
+            )
+            val currentModel = models.firstOrNull { it.modelId == form.model }
             WeListRow(
                 title = stringResource(R.string.contact_model),
-                value = modelName,
+                value = currentModel?.displayName ?: form.model.ifEmpty { stringResource(R.string.llm_no_model) },
                 onClick = { showModelSheet = true },
                 showDivider = true,
             )
+            if (state.showModelError) {
+                Text(
+                    stringResource(R.string.contact_model_required),
+                    style = WeTheme.typography.small,
+                    color = colors.danger,
+                    modifier = Modifier.padding(horizontal = dimens.horizontalPadding, vertical = 6.dp),
+                )
+            }
+            val supportsThinking = currentModel?.supportsThinking ?: (provider?.provider == ProviderProtocol.DEEPSEEK)
+            val thinking = if (supportsThinking) form.thinking else ThinkingLevel.OFF
             FormRow(stringResource(R.string.contact_thinking), showDivider = true) {
-                Segmented(
+                WeSegmented(
                     options = listOf(
                         ThinkingLevel.OFF to stringResource(R.string.thinking_off),
                         ThinkingLevel.HIGH to stringResource(R.string.thinking_high),
                         ThinkingLevel.MAX to stringResource(R.string.thinking_max),
                     ),
-                    selected = form.thinking,
+                    selected = thinking,
                     onSelect = { level -> viewModel.update { it.copy(thinking = level) } },
+                    enabled = supportsThinking,
                 )
             }
+            if (!supportsThinking) FootnoteText(stringResource(R.string.contact_thinking_unsupported))
             TemperatureRow(
                 value = form.temperature,
-                enabled = form.thinking == ThinkingLevel.OFF,
+                enabled = thinking == ThinkingLevel.OFF,
                 onChange = { t -> viewModel.update { it.copy(temperature = t) } },
             )
 
@@ -192,7 +217,7 @@ fun ContactEditScreen(
             FootnoteText(stringResource(R.string.contact_prompt_hint))
 
             GroupSpacer()
-            ContextCountRow(form.contextCount) { n -> viewModel.update { it.copy(contextCount = n) } }
+            ContextBudgetRow(form.contextTokens) { n -> viewModel.update { it.copy(contextTokens = n) } }
             WeListRow(
                 title = stringResource(R.string.contact_split),
                 showArrow = false,
@@ -201,6 +226,15 @@ fun ContactEditScreen(
                 },
             )
             FootnoteText(stringResource(R.string.contact_split_hint))
+            GroupSpacer()
+            WeListRow(
+                title = stringResource(R.string.contact_auto_memory),
+                showArrow = false,
+                trailing = {
+                    WeSwitch(form.autoMemory, { on -> viewModel.update { it.copy(autoMemory = on) } })
+                },
+            )
+            FootnoteText(stringResource(R.string.contact_auto_memory_hint))
 
             if (!state.isNew) {
                 GroupSpacer()
@@ -234,8 +268,13 @@ fun ContactEditScreen(
             onDismiss = { showAvatarSheet = false },
         )
     }
+    if (showProviderSheet) {
+        ProviderSheet(providerList, form.providerId, onPick = viewModel::selectProvider) {
+            showProviderSheet = false
+        }
+    }
     if (showModelSheet) {
-        ModelSheet(models, form.model, onPick = { m -> viewModel.update { it.copy(model = m.modelId) } }) {
+        ModelSheet(models, form.model, onPick = viewModel::selectModel) {
             showModelSheet = false
         }
     }
@@ -269,14 +308,40 @@ fun ContactEditScreen(
 }
 
 @Composable
+private fun ProviderSheet(
+    providers: List<ProviderConfig>,
+    current: Long,
+    onPick: (ProviderConfig) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val noKey = stringResource(R.string.llm_api_key_missing)
+    WeActionSheet(
+        title = stringResource(R.string.contact_provider_pick),
+        options = providers.map { provider ->
+            SheetOption(
+                label = provider.name,
+                subtitle = if (provider.apiKeyEncrypted.isNullOrEmpty()) noKey else null,
+                selected = provider.id == current,
+            ) { onPick(provider) }
+        },
+        onDismiss = onDismiss,
+    )
+}
+
+@Composable
 private fun ModelSheet(models: List<ProviderModel>, current: String, onPick: (ProviderModel) -> Unit, onDismiss: () -> Unit) {
     val imageLabel = stringResource(R.string.contact_model_image)
+    val thinkingLabel = stringResource(R.string.contact_model_thinking)
     WeActionSheet(
         title = stringResource(R.string.contact_model_pick),
         options = models.map { model ->
             SheetOption(
                 label = model.displayName,
-                subtitle = if (model.supportsImage) "${model.modelId} · $imageLabel" else model.modelId,
+                subtitle = buildList {
+                    add(model.modelId)
+                    if (model.supportsImage) add(imageLabel)
+                    if (model.supportsThinking) add(thinkingLabel)
+                }.joinToString(" · "),
                 selected = model.modelId == current,
             ) { onPick(model) }
         },
@@ -297,36 +362,6 @@ private fun InlineField(value: String, onValueChange: (String) -> Unit, hint: St
             cursorBrush = SolidColor(colors.brand),
             modifier = Modifier.fillMaxWidth(),
         )
-    }
-}
-
-@Composable
-private fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
-    val colors = WeTheme.colors
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(colors.pageBackground)
-            .padding(2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        options.forEach { (value, label) ->
-            val active = value == selected
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(if (active) colors.listBackground else Color.Transparent)
-                    .clickable { onSelect(value) }
-                    .padding(horizontal = 18.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    label,
-                    style = WeTheme.typography.small,
-                    color = if (active) colors.brand else colors.textTertiary,
-                )
-            }
-        }
     }
 }
 
@@ -402,7 +437,7 @@ private fun TemperatureRow(value: Float, enabled: Boolean, onChange: (Float) -> 
 }
 
 @Composable
-private fun ContextCountRow(value: Int, onChange: (Int) -> Unit) {
+private fun ContextBudgetRow(value: Int, onChange: (Int) -> Unit) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     Column(
@@ -413,7 +448,7 @@ private fun ContextCountRow(value: Int, onChange: (Int) -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.contact_context_count),
+                stringResource(R.string.contact_context_tokens),
                 style = WeTheme.typography.listTitle,
                 color = colors.textPrimary,
                 modifier = Modifier.weight(1f),
@@ -421,7 +456,7 @@ private fun ContextCountRow(value: Int, onChange: (Int) -> Unit) {
             Stepper(value, onChange)
         }
         Text(
-            stringResource(R.string.contact_context_count_hint, value),
+            stringResource(R.string.contact_context_tokens_hint),
             style = WeTheme.typography.listTime,
             color = colors.textTertiary,
             modifier = Modifier.padding(top = 4.dp),
@@ -436,20 +471,17 @@ private fun Stepper(value: Int, onChange: (Int) -> Unit) {
         Modifier.clip(RoundedCornerShape(6.dp)).background(colors.pageBackground),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StepButton("−", enabled = value > MIN_CONTEXT) { onChange((value - stepFor(value - 1)).coerceAtLeast(MIN_CONTEXT)) }
+        StepButton("−", enabled = value > Contact.MIN_CONTEXT_TOKENS) { onChange(ContextBudgetSteps.decrease(value)) }
         Text(
             value.toString(),
             style = WeTheme.typography.listTitle,
             color = colors.textPrimary,
             textAlign = TextAlign.Center,
-            modifier = Modifier.size(width = 44.dp, height = 32.dp).padding(top = 4.dp),
+            modifier = Modifier.size(width = 72.dp, height = 32.dp).padding(top = 4.dp),
         )
-        StepButton("+", enabled = value < MAX_CONTEXT) { onChange((value + stepFor(value)).coerceAtMost(MAX_CONTEXT)) }
+        StepButton("+", enabled = value < Contact.MAX_CONTEXT_TOKENS) { onChange(ContextBudgetSteps.increase(value)) }
     }
 }
-
-/** 20 条以下每次加减 2，以上每次 10 */
-private fun stepFor(value: Int) = if (value < 20) 2 else 10
 
 @Composable
 private fun StepButton(text: String, enabled: Boolean, onClick: () -> Unit) {
@@ -463,6 +495,3 @@ private fun StepButton(text: String, enabled: Boolean, onClick: () -> Unit) {
         Text(text, style = WeTheme.typography.listTitle, color = if (enabled) colors.textPrimary else colors.disabled)
     }
 }
-
-private const val MIN_CONTEXT = 2
-private const val MAX_CONTEXT = 100

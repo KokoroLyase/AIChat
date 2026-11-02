@@ -22,6 +22,9 @@ enum class ProviderKind { LLM, TTS, ASR }
 /** 模型能力：接口报告支持 / 不支持，或接口没说（由用户在设置里标记）。 */
 enum class Capability { YES, NO, UNKNOWN }
 
+/** 用量的用途：聊天回复，或自动总结记忆。 */
+enum class UsagePurpose { CHAT, MEMORY }
+
 /** 联系人。一个联系人对应一个会话。 */
 @Entity(tableName = "contact")
 data class Contact(
@@ -36,16 +39,21 @@ data class Contact(
     val thinking: ThinkingLevel = ThinkingLevel.OFF,
     val temperature: Float = DEFAULT_TEMPERATURE,
     val systemPrompt: String = "",
-    val contextCount: Int = DEFAULT_CONTEXT_COUNT,
+    /** 上下文预算（token）：系统提示词、记忆和聊天记录合计不超过它，超出时丢弃最早的消息 */
+    @ColumnInfo(defaultValue = "4000") val contextTokens: Int = DEFAULT_CONTEXT_TOKENS,
     /** 分条显示：回复里有空行时拆成多条气泡依次出现 */
     val splitReplies: Boolean = true,
+    /** 自动记忆：较早的聊天自动总结成记忆，会额外消耗 API 额度 */
+    @ColumnInfo(defaultValue = "1") val autoMemory: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
 ) {
     companion object {
         /** DeepSeek 官方对「通用对话」建议的温度 */
         const val DEFAULT_TEMPERATURE = 1.3f
-        const val DEFAULT_CONTEXT_COUNT = 20
+        const val DEFAULT_CONTEXT_TOKENS = 4000
+        const val MIN_CONTEXT_TOKENS = 1000
+        const val MAX_CONTEXT_TOKENS = 200_000
         const val NAME_MAX_LENGTH = 20
     }
 }
@@ -72,6 +80,14 @@ data class Conversation(
     /** 0 表示没有消息，不在聊天列表里显示（有草稿时除外） */
     val lastMessageTime: Long = 0,
     val lastMessagePreview: String = "",
+    /**
+     * 自动记忆已处理到的消息时间：这个时间及更早的消息不再自动总结。
+     * null 表示还没确定起点（0.3.0 之前的聊天，或刚重新打开自动记忆），下次检查时设为当前上下文窗口的开头，
+     * 这样升级后不会自动回溯总结老聊天
+     */
+    val memoryCursor: Long? = 0,
+    /** 早于这个时间的消息还没总结（只能在记忆页手动「总结更早的聊天」）；0 表示没有 */
+    @ColumnInfo(defaultValue = "0") val memoryStart: Long = 0,
 )
 
 @Entity(
@@ -116,15 +132,17 @@ data class Message(
 data class ProviderConfig(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val kind: ProviderKind,
-    /** 服务商标识，如 deepseek */
+    /** 请求格式：[ProviderProtocol.DEEPSEEK] 或 [ProviderProtocol.OPENAI] */
     val provider: String,
+    /** 显示名称，用户可改 */
+    @ColumnInfo(defaultValue = "''") val name: String = "",
     val baseUrl: String,
     val apiKeyEncrypted: String? = null,
     val defaultModel: String,
     val enabled: Boolean = true,
 )
 
-/** 服务商的模型列表与能力（是否支持图片输入）。 */
+/** 服务商的模型列表与能力（是否支持图片、是否支持思考）。 */
 @Entity(
     tableName = "provider_model",
     primaryKeys = ["providerId", "modelId"],
@@ -143,16 +161,67 @@ data class ProviderModel(
     val displayName: String,
     /** 接口报告的图片输入能力 */
     val imageInput: Capability = Capability.UNKNOWN,
-    /** 接口读不到时，用户在设置里的标记 */
+    /** 用户在设置里的标记，优先于接口报告的能力 */
     val imageInputUserMark: Boolean? = null,
     val sortOrder: Int = 0,
+    /** 接口报告的思考能力 */
+    @ColumnInfo(defaultValue = "UNKNOWN") val thinkingInput: Capability = Capability.UNKNOWN,
+    /** 用户在设置里的标记，优先于接口报告的能力 */
+    val thinkingUserMark: Boolean? = null,
+    /** 手动添加的模型：接口没有模型列表时用，刷新列表时保留 */
+    @ColumnInfo(defaultValue = "0") val manual: Boolean = false,
 ) {
-    val supportsImage: Boolean
-        get() = when (imageInput) {
-            Capability.YES -> true
-            Capability.NO -> false
-            Capability.UNKNOWN -> imageInputUserMark == true
-        }
+    val supportsImage: Boolean get() = imageInputUserMark ?: (imageInput == Capability.YES)
+
+    val supportsThinking: Boolean get() = thinkingUserMark ?: (thinkingInput == Capability.YES)
+}
+
+/**
+ * 长期记忆：一段较早的聊天总结成的一条记忆，每次请求都带上。
+ * 删除联系人时一起删除；清空聊天记录时保留。
+ */
+@Entity(
+    tableName = "memory",
+    foreignKeys = [
+        ForeignKey(
+            entity = Contact::class,
+            parentColumns = ["id"],
+            childColumns = ["contactId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["contactId", "fromTime"])],
+)
+data class Memory(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val contactId: Long,
+    val content: String,
+    /** 这条记忆覆盖的聊天时间范围 */
+    val fromTime: Long,
+    val toTime: Long,
+    /** 用户改过的记忆不会被自动合并 */
+    val edited: Boolean = false,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+/**
+ * 按天、按联系人统计的 token 用量。和消息表分开：清空聊天记录不影响统计。
+ * [contactId] 为 [DELETED_CONTACT] 时是已删除联系人的合计。
+ */
+@Entity(tableName = "usage_daily", primaryKeys = ["day", "contactId", "purpose"])
+data class UsageDaily(
+    /** 本地日期的 epochDay */
+    val day: Long,
+    val contactId: Long,
+    val purpose: UsagePurpose,
+    val promptTokens: Long,
+    val completionTokens: Long,
+    val requests: Int,
+) {
+    companion object {
+        const val DELETED_CONTACT = 0L
+    }
 }
 
 /** 聊天列表的一行：会话 + 联系人的名称和头像。 */

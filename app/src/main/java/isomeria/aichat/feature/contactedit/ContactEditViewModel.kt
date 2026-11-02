@@ -11,8 +11,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import isomeria.aichat.R
 import isomeria.aichat.data.db.Contact
-import isomeria.aichat.data.db.DeepSeekDefaults
+import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderModel
+import isomeria.aichat.data.db.ProviderProtocol
 import isomeria.aichat.data.db.ThinkingLevel
 import isomeria.aichat.data.repo.ContactRepository
 import isomeria.aichat.data.repo.FileStorage
@@ -22,10 +23,14 @@ import isomeria.aichat.navigation.ContactEditRoute
 import isomeria.aichat.navigation.NEW_CONTACT
 import isomeria.aichat.ui.components.randomAvatarColor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -35,13 +40,14 @@ data class ContactForm(
     val name: String = "",
     val avatarPath: String? = null,
     val avatarColor: Int = 0,
-    val providerId: Long = DeepSeekDefaults.PROVIDER_ID,
-    val model: String = DeepSeekDefaults.DEFAULT_MODEL,
+    val providerId: Long = 0,
+    val model: String = "",
     val thinking: ThinkingLevel = ThinkingLevel.OFF,
     val temperature: Float = Contact.DEFAULT_TEMPERATURE,
     val systemPrompt: String = "",
-    val contextCount: Int = Contact.DEFAULT_CONTEXT_COUNT,
+    val contextTokens: Int = Contact.DEFAULT_CONTEXT_TOKENS,
     val splitReplies: Boolean = true,
+    val autoMemory: Boolean = true,
 )
 
 data class ContactEditState(
@@ -50,12 +56,14 @@ data class ContactEditState(
     val form: ContactForm = ContactForm(),
     val original: ContactForm? = null,
     val showNameError: Boolean = false,
+    val showModelError: Boolean = false,
     /** 正在裁剪的图片 */
     val cropSource: Bitmap? = null,
 ) {
     val dirty: Boolean get() = loaded && form != original
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ContactEditViewModel @Inject constructor(
     savedState: SavedStateHandle,
@@ -75,13 +83,20 @@ class ContactEditViewModel @Inject constructor(
     private val _state = MutableStateFlow(ContactEditState())
     val state: StateFlow<ContactEditState> = _state.asStateFlow()
 
-    val models: StateFlow<List<ProviderModel>> = providers.observeModels()
+    /** 可选的服务商 */
+    val providerList: StateFlow<List<ProviderConfig>> = providers.llmConfigs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 当前选中的服务商的模型 */
+    val models: StateFlow<List<ProviderModel>> = _state.map { it.form.providerId }
+        .distinctUntilChanged()
+        .flatMapLatest { providers.observeModels(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
         viewModelScope.launch {
             val form = if (contactId == NEW_CONTACT) {
-                val config = providers.llm()
+                val config = providers.defaultLlm()
                 ContactForm(
                     avatarColor = randomAvatarColor(),
                     providerId = config.id,
@@ -101,8 +116,9 @@ class ContactEditViewModel @Inject constructor(
                         thinking = it.thinking,
                         temperature = it.temperature,
                         systemPrompt = it.systemPrompt,
-                        contextCount = it.contextCount,
+                        contextTokens = it.contextTokens,
                         splitReplies = it.splitReplies,
+                        autoMemory = it.autoMemory,
                     )
                 } ?: ContactForm(avatarColor = randomAvatarColor())
             }
@@ -115,6 +131,40 @@ class ContactEditViewModel @Inject constructor(
     }
 
     fun setName(name: String) = update { it.copy(name = name.take(Contact.NAME_MAX_LENGTH)) }
+
+    /** 换服务商：模型换成它的默认模型（没有时用列表里的第一个） */
+    fun selectProvider(config: ProviderConfig) {
+        if (config.id == _state.value.form.providerId) return
+        viewModelScope.launch {
+            val list = providers.models(config.id)
+            val model = config.defaultModel.ifBlank { list.firstOrNull()?.modelId.orEmpty() }
+            val supportsThinking = list.firstOrNull { it.modelId == model }?.supportsThinking
+                ?: (config.provider == ProviderProtocol.DEEPSEEK)
+            _state.update { state ->
+                state.copy(
+                    showModelError = false,
+                    form = state.form.copy(
+                        providerId = config.id,
+                        model = model,
+                        thinking = if (supportsThinking) state.form.thinking else ThinkingLevel.OFF,
+                    ),
+                )
+            }
+        }
+    }
+
+    /** 换模型：新模型不支持思考时，思考强度改回「关」 */
+    fun selectModel(model: ProviderModel) {
+        _state.update { state ->
+            state.copy(
+                showModelError = false,
+                form = state.form.copy(
+                    model = model.modelId,
+                    thinking = if (model.supportsThinking) state.form.thinking else ThinkingLevel.OFF,
+                ),
+            )
+        }
+    }
 
     fun pickAvatar(uri: Uri) {
         viewModelScope.launch {
@@ -135,12 +185,16 @@ class ContactEditViewModel @Inject constructor(
 
     fun resetAvatar() = update { it.copy(avatarPath = null) }
 
-    /** 保存。名称为空时提示，返回 null；成功时返回联系人 id。 */
+    /** 保存。名称为空或没选模型时提示，返回 null；成功时返回联系人 id。 */
     suspend fun save(): Long? {
         val form = _state.value.form
         val name = form.name.trim()
         if (name.isEmpty()) {
             _state.update { it.copy(showNameError = true) }
+            return null
+        }
+        if (form.model.isBlank()) {
+            _state.update { it.copy(showModelError = true) }
             return null
         }
         val now = System.currentTimeMillis()
@@ -155,8 +209,9 @@ class ContactEditViewModel @Inject constructor(
                     thinking = form.thinking,
                     temperature = form.temperature,
                     systemPrompt = form.systemPrompt,
-                    contextCount = form.contextCount,
+                    contextTokens = form.contextTokens,
                     splitReplies = form.splitReplies,
+                    autoMemory = form.autoMemory,
                 ),
             )
             old.id
@@ -170,8 +225,9 @@ class ContactEditViewModel @Inject constructor(
                 thinking = form.thinking,
                 temperature = form.temperature,
                 systemPrompt = form.systemPrompt,
-                contextCount = form.contextCount,
+                contextTokens = form.contextTokens,
                 splitReplies = form.splitReplies,
+                autoMemory = form.autoMemory,
                 createdAt = now,
                 updatedAt = now,
             ),

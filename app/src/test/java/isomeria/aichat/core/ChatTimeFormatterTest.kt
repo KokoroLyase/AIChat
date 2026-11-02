@@ -8,6 +8,21 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 
 class ChatTimeFormatterTest {
+    @Test
+    fun forDate_omitsYearOnlyForThisYear() {
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+        val formatter = ChatTimeFormatter(
+            TimeLabels("昨天", List(7) { "星期$it" }, "%1\$d月%2\$d日", "%1\$d年%2\$d月%3\$d日"),
+            zone,
+        )
+        fun at(year: Int, month: Int, day: Int) =
+            java.time.LocalDate.of(year, month, day).atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+        val now = at(2026, 11, 2)
+        assertEquals("11月2日", formatter.forDate(now, now))
+        assertEquals("10月20日", formatter.forDate(at(2026, 10, 20), now))
+        assertEquals("2025年10月20日", formatter.forDate(at(2025, 10, 20), now))
+    }
+
     private val zone = ZoneId.of("Asia/Shanghai")
     private val formatter = ChatTimeFormatter(
         TimeLabels(

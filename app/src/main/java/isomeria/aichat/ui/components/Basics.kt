@@ -230,6 +230,47 @@ fun WeListRow(
     }
 }
 
+/** 分段选择（思考强度、用量的时间范围）。 */
+@Composable
+fun <T> WeSegmented(
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val colors = WeTheme.colors
+    Row(
+        modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.pageBackground)
+            .padding(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        options.forEach { (value, label) ->
+            val active = value == selected
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(if (active) colors.listBackground else Color.Transparent)
+                    .clickable(enabled = enabled) { onSelect(value) }
+                    .padding(horizontal = 18.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    style = WeTheme.typography.small,
+                    color = when {
+                        !enabled -> colors.textSecondary
+                        active -> colors.brand
+                        else -> colors.textTertiary
+                    },
+                )
+            }
+        }
+    }
+}
+
 /** 主按钮：绿色底白字，按下变深。 */
 @Composable
 fun WeButton(

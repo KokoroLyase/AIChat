@@ -37,6 +37,17 @@ class ChatTimeFormatter(
 
     fun forChat(time: Long, now: Long): String = format(time, now, withTime = true)
 
+    /** 只显示日期：今年 10月20日，往年 2025年10月20日（记忆的时间范围、用量统计） */
+    fun forDate(time: Long, now: Long): String {
+        val date = Instant.ofEpochMilli(time).atZone(zone).toLocalDate()
+        val year = Instant.ofEpochMilli(now).atZone(zone).year
+        return if (date.year == year) {
+            labels.monthDay.format(date.monthValue, date.dayOfMonth)
+        } else {
+            labels.yearMonthDay.format(date.year, date.monthValue, date.dayOfMonth)
+        }
+    }
+
     private fun format(time: Long, now: Long, withTime: Boolean): String {
         val moment = Instant.ofEpochMilli(time).atZone(zone)
         val date = moment.toLocalDate()

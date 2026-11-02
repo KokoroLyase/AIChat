@@ -27,7 +27,7 @@ class GitHubUpdateSource(
     private val apiBase: HttpUrl,
 ) : UpdateSource {
     @Inject constructor(client: OkHttpClient, json: Json) :
-        this(client, json, BuildConfig.GITHUB_REPO, "https://api.github.com/".toHttpUrl())
+        this(client, json, BuildConfig.GITHUB_REPO, BuildConfig.UPDATE_API_BASE.toHttpUrl())
 
     /** 模型请求的客户端不跟随重定向（保护 API Key）；这里没有凭据，允许重定向，超时也短一些 */
     private val http = client.newBuilder()
@@ -61,12 +61,15 @@ class GitHubUpdateSource(
         // 只打开 GitHub 自己的页面
         val page = release.htmlUrl?.takeIf { it.startsWith("https://github.com/") }
             ?: "https://github.com/$repo/releases/tag/$tag"
+        val apk = release.assets.firstOrNull { it.name.endsWith(".apk") }
+        val checksum = apk?.let { release.assets.firstOrNull { asset -> asset.name == it.name + ".sha256" } }
         return ReleaseInfo(
             version = tag.removePrefix("v").removePrefix("V"),
             tag = tag,
             notes = ReleaseNotes.toPlainText(release.body.orEmpty()),
             pageUrl = page,
-            apkUrl = release.assets.firstOrNull { it.name.endsWith(".apk") }?.downloadUrl,
+            apkUrl = apk?.downloadUrl,
+            sha256Url = checksum?.downloadUrl,
         )
     }
 

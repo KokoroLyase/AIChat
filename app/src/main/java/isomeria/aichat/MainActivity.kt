@@ -3,13 +3,21 @@ package isomeria.aichat
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
@@ -18,8 +26,13 @@ import isomeria.aichat.data.settings.SettingsStore
 import isomeria.aichat.data.settings.ThemeMode
 import isomeria.aichat.navigation.AppNavHost
 import isomeria.aichat.ui.components.UpdateDialog
+import isomeria.aichat.ui.components.UpdateFailedDialog
+import isomeria.aichat.ui.components.UpdateInstallPermissionDialog
+import isomeria.aichat.ui.components.UpdateProgressDialog
 import isomeria.aichat.ui.theme.AIChatTheme
 import isomeria.aichat.update.UpdateChecker
+import isomeria.aichat.update.UpdateInstallState
+import isomeria.aichat.update.UpdateInstaller
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -28,6 +41,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject lateinit var settings: SettingsStore
     @Inject lateinit var updateChecker: UpdateChecker
+    @Inject lateinit var updateInstaller: UpdateInstaller
 
     /** 点通知进入的聊天 */
     private val openChatRequest = MutableStateFlow<Long?>(null)
@@ -39,6 +53,8 @@ class MainActivity : ComponentActivity() {
             handleIntent(intent)
             // 启动时静默检查更新（24 小时最多一次，失败不提示）
             lifecycleScope.launch { updateChecker.autoCheck() }
+            // 上次下载的安装包已经没用了
+            if (updateInstaller.state.value == UpdateInstallState.Idle) updateInstaller.cleanupOldFiles()
         }
         setContent {
             val themeMode by settings.themeMode.collectAsStateWithLifecycle()
@@ -57,16 +73,79 @@ class MainActivity : ComponentActivity() {
                 release?.let { info ->
                     UpdateDialog(
                         release = info,
-                        // 0.2.0 先跳到 Release 页面下载，0.3.0 改为应用内下载安装
                         onUpdate = {
                             updateChecker.later()
-                            openLink(info.pageUrl)
+                            updateInstaller.start(info)
                         },
                         onLater = updateChecker::later,
                         onIgnore = { updateChecker.ignore(info) },
                     )
                 }
+                UpdateProgress()
             }
+        }
+    }
+
+    /** 下载进度、失败提示，以及下载完成后交给系统安装 */
+    @Composable
+    private fun UpdateProgress() {
+        val state by updateInstaller.state.collectAsStateWithLifecycle()
+        var needsPermission by remember { mutableStateOf(false) }
+        var canInstall by remember { mutableStateOf(packageManager.canRequestPackageInstalls()) }
+        // 从系统设置回来时重新检查
+        LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+            canInstall = packageManager.canRequestPackageInstalls()
+        }
+        when (val current = state) {
+            is UpdateInstallState.Downloading -> UpdateProgressDialog(current, updateInstaller::cancel)
+            is UpdateInstallState.Failed -> UpdateFailedDialog(
+                failure = current.failure,
+                onOpenBrowser = {
+                    updateInstaller.reset()
+                    openLink(current.release.pageUrl)
+                },
+                onDismiss = updateInstaller::reset,
+            )
+            is UpdateInstallState.Ready -> {
+                LaunchedEffect(current, canInstall) {
+                    if (canInstall) {
+                        needsPermission = false
+                        updateInstaller.reset()
+                        startInstall(current)
+                    } else {
+                        needsPermission = true
+                    }
+                }
+                if (needsPermission) {
+                    UpdateInstallPermissionDialog(
+                        onOpenSettings = {
+                            needsPermission = false
+                            openInstallPermissionSettings()
+                        },
+                        onDismiss = {
+                            needsPermission = false
+                            updateInstaller.reset()
+                        },
+                    )
+                }
+            }
+            UpdateInstallState.Idle -> Unit
+        }
+    }
+
+    private fun startInstall(ready: UpdateInstallState.Ready) {
+        try {
+            startActivity(UpdateInstaller.installIntent(this, ready.apk))
+        } catch (_: ActivityNotFoundException) {
+            openLink(ready.release.pageUrl)
+        }
+    }
+
+    private fun openInstallPermissionSettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:$packageName".toUri()))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.no_app_to_open_link, Toast.LENGTH_SHORT).show()
         }
     }
 

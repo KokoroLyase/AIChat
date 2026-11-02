@@ -29,10 +29,12 @@ data class ReleaseInfo(
     val tag: String,
     /** 更新说明（已转成纯文本） */
     val notes: String,
-    /** Release 页面地址，「立即更新」打开它 */
+    /** Release 页面地址，下载失败时在浏览器里打开它 */
     val pageUrl: String,
-    /** APK 下载地址（0.3.0 应用内下载时使用） */
+    /** APK 下载地址 */
     val apkUrl: String?,
+    /** .sha256 校验文件的下载地址 */
+    val sha256Url: String? = null,
 )
 
 /** 更新来源。GitHub 是第一个实现；以后可以加更新镜像。 */

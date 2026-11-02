@@ -38,40 +38,62 @@ import isomeria.aichat.R
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.ThinkingLevel
 import isomeria.aichat.data.repo.ContactRepository
+import isomeria.aichat.data.repo.MemoryRepository
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.navigation.ContactDetailRoute
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.WeDivider
+import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.theme.AIChatTheme
 import isomeria.aichat.ui.theme.AvatarPalette
 import isomeria.aichat.ui.theme.WeTheme
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
-data class ContactDetailState(val loaded: Boolean = false, val contact: Contact? = null, val modelName: String = "")
+data class ContactDetailState(
+    val loaded: Boolean = false,
+    val contact: Contact? = null,
+    val modelName: String = "",
+    val providerName: String = "",
+    val memoryCount: Int = 0,
+)
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ContactDetailViewModel @Inject constructor(
     savedState: SavedStateHandle,
     contacts: ContactRepository,
     providers: ProviderRepository,
+    memories: MemoryRepository,
 ) : ViewModel() {
     private val id = savedState.toRoute<ContactDetailRoute>().contactId
 
-    val state: StateFlow<ContactDetailState> = combine(
-        contacts.observeContact(id),
-        providers.observeModels(),
-    ) { contact, models ->
-        ContactDetailState(
-            loaded = true,
-            contact = contact,
-            modelName = contact?.let { c -> models.firstOrNull { it.modelId == c.model }?.displayName ?: c.model }.orEmpty(),
-        )
+    val state: StateFlow<ContactDetailState> = contacts.observeContact(id).flatMapLatest { contact ->
+        if (contact == null) {
+            flowOf(ContactDetailState(loaded = true))
+        } else {
+            combine(
+                providers.observeModels(contact.providerId),
+                providers.observeConfig(contact.providerId),
+                memories.observeCount(id),
+            ) { models, config, memoryCount ->
+                ContactDetailState(
+                    loaded = true,
+                    contact = contact,
+                    modelName = models.firstOrNull { it.modelId == contact.model }?.displayName ?: contact.model,
+                    providerName = config?.name.orEmpty(),
+                    memoryCount = memoryCount,
+                )
+            }
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContactDetailState())
 }
 
@@ -81,6 +103,7 @@ fun ContactDetailScreen(
     onBack: () -> Unit,
     onSendMessage: () -> Unit,
     onEdit: () -> Unit,
+    onOpenMemory: () -> Unit,
     viewModel: ContactDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -88,7 +111,7 @@ fun ContactDetailScreen(
     if (state.loaded && state.contact == null) {
         androidx.compose.runtime.LaunchedEffect(Unit) { onBack() }
     }
-    ContactDetailContent(state, onBack, onSendMessage, onEdit)
+    ContactDetailContent(state, onBack, onSendMessage, onEdit, onOpenMemory)
 }
 
 @Composable
@@ -97,6 +120,7 @@ fun ContactDetailContent(
     onBack: () -> Unit,
     onSendMessage: () -> Unit,
     onEdit: () -> Unit,
+    onOpenMemory: () -> Unit,
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -127,6 +151,15 @@ fun ContactDetailContent(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (state.providerName.isNotEmpty()) {
+                    Text(
+                        stringResource(R.string.contact_provider_line, state.providerName),
+                        style = WeTheme.typography.small,
+                        color = colors.textTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     stringResource(R.string.contact_model_line, state.modelName),
                     style = WeTheme.typography.small,
@@ -148,6 +181,12 @@ fun ContactDetailContent(
                 )
             }
         }
+        GroupSpacer()
+        WeListRow(
+            title = stringResource(R.string.memory_title),
+            value = if (state.memoryCount > 0) stringResource(R.string.memory_count, state.memoryCount) else null,
+            onClick = onOpenMemory,
+        )
         GroupSpacer()
         ActionRow(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.contact_send_message), onSendMessage)
         WeDivider()
@@ -178,16 +217,18 @@ internal val previewState = ContactDetailState(
     loaded = true,
     contact = Contact(1, "小雨", null, AvatarPalette[0], 1, "deepseek-flash", createdAt = 0, updatedAt = 0),
     modelName = "DeepSeek V4.1 Flash",
+    providerName = "DeepSeek",
+    memoryCount = 3,
 )
 
 @Preview(name = "联系人详情 浅色", showBackground = true)
 @Composable
 private fun ContactDetailLightPreview() {
-    AIChatTheme(darkTheme = false) { ContactDetailContent(previewState, {}, {}, {}) }
+    AIChatTheme(darkTheme = false) { ContactDetailContent(previewState, {}, {}, {}, {}) }
 }
 
 @Preview(name = "联系人详情 深色", showBackground = true)
 @Composable
 private fun ContactDetailDarkPreview() {
-    AIChatTheme(darkTheme = true) { ContactDetailContent(previewState, {}, {}, {}) }
+    AIChatTheme(darkTheme = true) { ContactDetailContent(previewState, {}, {}, {}, {}) }
 }

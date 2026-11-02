@@ -9,6 +9,7 @@ enum class FailReason(val code: Int) {
     BALANCE(402),
     RATE_LIMIT(429),
     BAD_REQUEST(400),
+    NOT_FOUND(404),
     SERVER(500),
     NETWORK(1),
     CANCELLED(2),
@@ -27,6 +28,7 @@ enum class FailReason(val code: Int) {
             LlmError.BALANCE -> BALANCE
             LlmError.RATE_LIMIT -> RATE_LIMIT
             LlmError.BAD_REQUEST -> BAD_REQUEST
+            LlmError.NOT_FOUND -> NOT_FOUND
             LlmError.SERVER -> SERVER
             LlmError.NETWORK -> NETWORK
             LlmError.UNKNOWN -> UNKNOWN

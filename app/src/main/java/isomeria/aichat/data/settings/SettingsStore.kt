@@ -6,6 +6,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import isomeria.aichat.data.memory.NicknameSource
 import isomeria.aichat.update.UpdatePrefs
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,7 +25,7 @@ enum class FontSize(val scale: Float) {
  * 设置项，存在 MMKV（腾讯开源的键值存储）。每项都以 StateFlow 暴露，界面直接订阅。
  */
 @Singleton
-class SettingsStore @Inject constructor(@ApplicationContext context: Context) : UpdatePrefs {
+class SettingsStore @Inject constructor(@ApplicationContext context: Context) : UpdatePrefs, NicknameSource {
     private val mmkv: MMKV
 
     init {
@@ -45,6 +46,8 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) : 
     private val _nickname = MutableStateFlow(mmkv.decodeString(KEY_NICKNAME, "") ?: "")
     /** 自己的昵称；为空时界面显示默认称呼，请求里不附带昵称 */
     val nickname: StateFlow<String> = _nickname.asStateFlow()
+
+    override fun nickname(): String = _nickname.value
 
     private val _avatarPath = MutableStateFlow(mmkv.decodeString(KEY_AVATAR, null))
     val avatarPath: StateFlow<String?> = _avatarPath.asStateFlow()

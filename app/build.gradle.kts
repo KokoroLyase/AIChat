@@ -46,6 +46,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "GITHUB_REPO", "\"KokoroLyase/AIChat\"")
+        buildConfigField("String", "UPDATE_API_BASE", "\"https://api.github.com/\"")
     }
 
     signingConfigs {
@@ -63,6 +64,10 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // 测试应用内更新：-PdebugUpdateApiBase=http://localhost:端口/ 换成本机的假 Release（只影响 debug 包）
+            providers.gradleProperty("debugUpdateApiBase").orNull?.let {
+                buildConfigField("String", "UPDATE_API_BASE", "\"$it\"")
+            }
         }
         release {
             isMinifyEnabled = true

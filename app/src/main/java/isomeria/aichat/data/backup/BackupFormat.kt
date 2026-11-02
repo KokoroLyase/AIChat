@@ -1,11 +1,13 @@
 package isomeria.aichat.data.backup
 
 import isomeria.aichat.data.db.Capability
+import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.ProviderKind
 import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.db.ThinkingLevel
+import isomeria.aichat.data.db.UsagePurpose
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -13,7 +15,7 @@ import kotlinx.serialization.json.Json
  * 导出文件的格式（zip）：
  *
  *   manifest.json   App 版本、数据格式版本、导出时间
- *   data.json       联系人、会话、消息、服务商配置和设置
+ *   data.json       联系人、会话、消息、服务商配置（每个服务商各自的模型和可选的 Key）、记忆、用量和设置
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
  *
@@ -24,7 +26,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 1
+    const val VERSION = 2
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -63,6 +65,8 @@ data class BackupData(
     val conversations: List<ConversationDto> = emptyList(),
     val messages: List<MessageDto> = emptyList(),
     val providers: List<ProviderDto> = emptyList(),
+    val memories: List<MemoryDto> = emptyList(),
+    val usage: List<UsageDto> = emptyList(),
     val settings: SettingsDto = SettingsDto(),
 )
 
@@ -78,8 +82,9 @@ data class ContactDto(
     val thinking: ThinkingLevel = ThinkingLevel.OFF,
     val temperature: Float,
     val systemPrompt: String = "",
-    val contextCount: Int,
+    val contextTokens: Int = Contact.DEFAULT_CONTEXT_TOKENS,
     val splitReplies: Boolean = true,
+    val autoMemory: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
 )
@@ -93,6 +98,9 @@ data class ConversationDto(
     val draft: String = "",
     val lastMessageTime: Long = 0,
     val lastMessagePreview: String = "",
+    /** 自动记忆处理到的消息时间；null 表示恢复后再确定起点 */
+    val memoryCursor: Long? = null,
+    val memoryStart: Long = 0,
 )
 
 @Serializable
@@ -122,6 +130,7 @@ data class ProviderDto(
     val id: Long,
     val kind: ProviderKind,
     val provider: String,
+    val name: String = "",
     val baseUrl: String,
     val defaultModel: String,
     val enabled: Boolean = true,
@@ -137,6 +146,32 @@ data class ProviderModelDto(
     val imageInput: Capability = Capability.UNKNOWN,
     val imageInputUserMark: Boolean? = null,
     val sortOrder: Int = 0,
+    val thinkingInput: Capability = Capability.UNKNOWN,
+    val thinkingUserMark: Boolean? = null,
+    val manual: Boolean = false,
+)
+
+@Serializable
+data class MemoryDto(
+    val id: Long,
+    val contactId: Long,
+    val content: String,
+    val fromTime: Long,
+    val toTime: Long,
+    val edited: Boolean = false,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+/** 一天、一个联系人的用量。contactId 为 0 时是已删除联系人的合计 */
+@Serializable
+data class UsageDto(
+    val day: Long,
+    val contactId: Long,
+    val purpose: UsagePurpose = UsagePurpose.CHAT,
+    val promptTokens: Long = 0,
+    val completionTokens: Long = 0,
+    val requests: Int = 0,
 )
 
 /**

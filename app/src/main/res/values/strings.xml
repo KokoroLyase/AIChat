@@ -35,7 +35,7 @@
     <string name="chat_menu_mark_unread">标为未读</string>
     <string name="chat_menu_mark_read">标为已读</string>
     <string name="chat_menu_delete">删除该聊天</string>
-    <string name="chat_delete_confirm">删除后，将清空该聊天的消息记录，联系人会保留。</string>
+    <string name="chat_delete_confirm">删除后，将清空该聊天的消息记录，联系人和记忆会保留。</string>
     <string name="preview_draft">[草稿]</string>
     <string name="preview_image">[图片]</string>
 
@@ -66,7 +66,7 @@
     <string name="chat_delete_message_confirm">删除这条消息？</string>
     <string name="chat_resend_title">重发该消息？</string>
     <string name="chat_no_key_title">还没有配置 API Key</string>
-    <string name="chat_no_key_message">在「设置 → 模型服务 → 大语言模型」里填写 DeepSeek 的 API Key 后就能聊天了。</string>
+    <string name="chat_no_key_message">这个联系人用的服务商还没有 API Key。填写后就能聊天了。</string>
     <string name="chat_contact_missing">联系人已被删除</string>
     <string name="chat_info">聊天信息</string>
     <string name="chat_image_import_failed">图片读取失败</string>
@@ -88,13 +88,14 @@
     <string name="chat_info_search">查找聊天记录</string>
     <string name="chat_info_pin">置顶聊天</string>
     <string name="chat_info_clear">清空聊天记录</string>
-    <string name="chat_info_clear_confirm">确定清空和「%1$s」的聊天记录吗？</string>
+    <string name="chat_info_clear_confirm">确定清空和「%1$s」的聊天记录吗？记忆会保留，要清除可以到联系人详情的「记忆」里操作。</string>
 
     <!-- 失败原因 -->
     <string name="error_auth">API Key 无效</string>
-    <string name="error_balance">DeepSeek 账户余额不足</string>
+    <string name="error_balance">服务商账户余额不足</string>
     <string name="error_rate_limit">请求过快，请稍后再试</string>
     <string name="error_bad_request">请求参数有误，可以检查联系人的模型设置</string>
+    <string name="error_not_found">接口或模型不存在，可以检查 Base URL 和模型</string>
     <string name="error_server">网络或服务异常</string>
     <string name="error_network">网络或服务异常</string>
     <string name="error_cancelled">已取消回复</string>
@@ -118,6 +119,7 @@
     <string name="contact_send_message">发消息</string>
     <string name="contact_edit">编辑</string>
     <string name="contact_thinking_line">思考：%1$s</string>
+    <string name="contact_provider_line">服务商：%1$s</string>
 
     <!-- 联系人编辑 -->
     <string name="contact_edit_title_new">新建联系人</string>
@@ -128,10 +130,15 @@
     <string name="contact_name">名称</string>
     <string name="contact_name_hint">必填，最多 20 字</string>
     <string name="contact_name_required">请填写名称</string>
+    <string name="contact_provider">服务商</string>
+    <string name="contact_provider_pick">选择服务商</string>
     <string name="contact_model">模型</string>
     <string name="contact_model_pick">选择模型</string>
+    <string name="contact_model_required">请选择模型；这个服务商还没有模型时，先到设置里拉取或手动添加</string>
     <string name="contact_model_image">支持图片</string>
+    <string name="contact_model_thinking">支持思考</string>
     <string name="contact_thinking">思考强度</string>
+    <string name="contact_thinking_unsupported">当前模型不支持思考。可以在设置的服务商页面里修改这个标记。</string>
     <string name="thinking_off">关</string>
     <string name="thinking_high">高</string>
     <string name="thinking_max">最高</string>
@@ -140,12 +147,14 @@
     <string name="contact_temperature_disabled">思考模式下不生效</string>
     <string name="contact_prompt">系统提示词</string>
     <string name="contact_prompt_hint">定义人设和说话方式。{名称} 会自动替换为联系人名称</string>
-    <string name="contact_context_count">上下文条数</string>
-    <string name="contact_context_count_hint">每次请求带上最近 %1$d 条消息</string>
+    <string name="contact_context_tokens">上下文上限（token）</string>
+    <string name="contact_context_tokens_hint">系统提示词、记忆和聊天记录合计不超过这个上限，超出时丢弃最早的消息。上限越高，每次请求消耗的额度越多</string>
+    <string name="contact_auto_memory">自动记忆</string>
+    <string name="contact_auto_memory_hint">较早的聊天自动总结成记忆，每次请求都带上。总结会额外消耗少量 API 额度，用的是这个服务商的默认模型</string>
     <string name="contact_split">分条显示</string>
     <string name="contact_split_hint">回复里有空行时，拆成多条消息依次出现</string>
     <string name="contact_delete">删除联系人</string>
-    <string name="contact_delete_confirm">将同时删除与「%1$s」的聊天记录，且无法恢复。</string>
+    <string name="contact_delete_confirm">将同时删除与「%1$s」的聊天记录和记忆，且无法恢复。</string>
     <string name="contact_discard_title">放弃本次编辑？</string>
     <string name="contact_discard">放弃</string>
     <string name="crop_title">移动和缩放</string>
@@ -157,6 +166,14 @@
     <!-- 参数：年、月、日、星期、时、分 -->
     <string name="prompt_time_line">现在是 %1$d年%2$d月%3$d日 %4$s %5$02d:%6$02d。</string>
     <string name="prompt_nickname_line">对方的昵称是「%1$s」。</string>
+    <string name="prompt_memory_header">下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：</string>
+    <!-- 参数：年、月、日、内容 -->
+    <string name="prompt_memory_item">- [%1$d年%2$d月%3$d日] %4$s</string>
+    <!-- 总结记忆的提示词。参数：联系人名称、对方称呼 -->
+    <string name="memory_summary_prompt">你在帮聊天角色「%1$s」整理长期记忆。下面是它和「%2$s」较早的一段聊天记录。用不超过 200 字的中文写一段总结：保留对方的个人信息、喜好、重要经历、约定和情绪变化，以及两人关系的进展；不写寒暄和无关细节，不编造记录里没有的内容。只输出总结本身，不要标题和列表。</string>
+    <!-- 合并记忆的提示词。参数：联系人名称 -->
+    <string name="memory_merge_prompt">下面是聊天角色「%1$s」的几条较早的记忆，按时间排列。把它们合并成一段不超过 300 字的中文：保留重要的事实、约定和关系变化，去掉重复和次要内容，不编造。只输出合并后的内容，不要标题和列表。</string>
+    <string name="memory_default_my_name">对方</string>
 
     <!-- 我 -->
     <string name="me_version">版本 %1$s</string>
@@ -191,7 +208,7 @@
     <string name="settings_export">导出数据</string>
     <string name="settings_restore">恢复数据</string>
     <string name="settings_clear_all">清空所有聊天记录</string>
-    <string name="settings_clear_all_confirm">将删除所有聊天记录和聊天图片，联系人会保留。此操作无法撤销。</string>
+    <string name="settings_clear_all_confirm">将删除所有聊天记录和聊天图片，联系人和记忆会保留。此操作无法撤销。</string>
     <string name="settings_cleared">已清空</string>
     <string name="settings_data_notice">所有数据只保存在本机，卸载应用会清空聊天记录和联系人，建议定期导出备份。</string>
     <string name="settings_group_about">关于</string>
@@ -213,13 +230,22 @@
     <string name="update_now">立即更新</string>
     <string name="update_later">稍后</string>
     <string name="update_ignore">忽略此版本</string>
+    <string name="update_downloading">正在下载智信 %1$s</string>
+    <string name="update_download_progress">%1$s / %2$s MB</string>
+    <string name="update_download_failed_title">更新失败</string>
+    <string name="update_failure_missing">这个版本没有可以直接下载的安装包，可以在浏览器里打开发布页面。</string>
+    <string name="update_failure_network">下载失败，请检查网络后重试，也可以在浏览器里打开发布页面。</string>
+    <string name="update_failure_checksum">安装包校验不通过，已删除，没有安装。可以在浏览器里打开发布页面下载。</string>
+    <string name="update_failure_invalid">下载的安装包不对，已删除，没有安装。可以在浏览器里打开发布页面下载。</string>
+    <string name="update_permission_title">需要允许安装应用</string>
+    <string name="update_permission_message">安装包已下载并校验通过。请在系统设置里允许智信安装未知应用，回来后会自动继续。</string>
 
     <!-- 导出数据 -->
     <string name="export_title">导出数据</string>
-    <string name="export_intro">把联系人、聊天记录、头像、聊天图片和设置导出为一个 zip 文件，可以在新手机上用「恢复数据」导入。</string>
+    <string name="export_intro">把联系人、聊天记录、记忆、用量统计、服务商、头像、聊天图片和设置导出为一个 zip 文件，可以在新手机上用「恢复数据」导入。</string>
     <string name="export_include_key">包含 API Key</string>
     <string name="export_no_key">还没有保存 API Key</string>
-    <string name="export_key_hint">API Key 会用这个密码加密，恢复时需要输入同一个密码。忘记密码只能重新填写 Key。</string>
+    <string name="export_key_hint">所有服务商的 API Key 都会用这个密码加密，恢复时需要输入同一个密码。忘记密码只能重新填写 Key。</string>
     <string name="export_key_off_hint">默认不导出 API Key。在新手机上恢复后，需要重新填写 Key。</string>
     <string name="export_password">设置密码</string>
     <string name="export_password_hint">至少 %1$d 位</string>
@@ -236,7 +262,7 @@
 
     <!-- 恢复数据 -->
     <string name="restore_title">恢复数据</string>
-    <string name="restore_intro">从导出的 zip 文件恢复联系人、聊天记录和设置。恢复前会自动备份当前数据，恢复失败时自动撤销。</string>
+    <string name="restore_intro">从导出的 zip 文件恢复联系人、聊天记录、记忆、用量统计、服务商和设置。恢复前会自动备份当前数据，恢复失败时自动撤销。</string>
     <string name="restore_pick">选择备份文件</string>
     <string name="restore_pick_again">重新选择</string>
     <string name="restore_reading">正在读取…</string>
@@ -254,14 +280,14 @@
     <string name="restore_password">密码</string>
     <string name="restore_password_hint">导出时设的密码</string>
     <string name="restore_password_note">不填密码时不恢复 API Key，其他数据照常恢复。</string>
-    <string name="restore_key_kept_note">备份里没有 API Key，恢复后保留本机的 Key。</string>
+    <string name="restore_key_kept_note">备份里没有 API Key，恢复后保留本机相同服务商的 Key。</string>
     <string name="restore_mode">恢复方式</string>
     <string name="restore_mode_merge">合并</string>
-    <string name="restore_mode_merge_desc">保留本机数据，只加入本机没有的联系人和消息</string>
+    <string name="restore_mode_merge_desc">保留本机数据，只加入本机没有的联系人、消息、记忆和服务商</string>
     <string name="restore_mode_overwrite">覆盖</string>
-    <string name="restore_mode_overwrite_desc">清空本机的联系人和聊天记录，换成备份里的</string>
+    <string name="restore_mode_overwrite_desc">清空本机的联系人、聊天记录、记忆和用量统计，服务商也换成备份里的</string>
     <string name="restore_button">开始恢复</string>
-    <string name="restore_overwrite_confirm">本机现有的联系人、聊天记录和设置将被备份里的内容替换。恢复前会自动备份当前数据。</string>
+    <string name="restore_overwrite_confirm">本机现有的联系人、聊天记录、记忆、用量统计、服务商和设置将被备份里的内容替换。恢复前会自动备份当前数据。</string>
     <string name="restore_overwrite_action">覆盖</string>
     <string name="restore_running">正在恢复…</string>
     <string name="restore_done_title">恢复完成</string>
@@ -277,27 +303,80 @@
 
     <!-- 大语言模型设置 -->
     <string name="llm_provider">服务商</string>
-    <string name="llm_provider_deepseek">DeepSeek</string>
+    <string name="llm_add_provider">添加服务商</string>
+    <string name="llm_edit_provider">服务商</string>
+    <string name="llm_providers_hint">可以添加任意兼容 OpenAI 格式的服务商。联系人在编辑页选择用哪个服务商和模型。</string>
+    <string name="llm_name">名称</string>
+    <string name="llm_name_hint">比如 OpenRouter</string>
+    <string name="llm_name_required">请填写名称</string>
     <string name="llm_api_key">API Key</string>
     <string name="llm_api_key_hint">sk-…</string>
     <string name="llm_api_key_saved">已保存：%1$s</string>
-    <string name="llm_api_key_missing">未填写</string>
+    <string name="llm_api_key_missing">未填写 Key</string>
+    <string name="llm_api_key_set">已配置</string>
     <string name="llm_api_key_clear">清除已保存的 Key</string>
     <string name="llm_base_url">Base URL</string>
+    <string name="llm_base_url_hint">https://…</string>
+    <string name="llm_base_url_note">按服务商文档填写，很多服务商以 /v1 结尾。只支持 https。</string>
     <string name="llm_default_model">默认模型</string>
-    <string name="llm_default_model_hint">新建联系人时使用</string>
+    <string name="llm_default_model_hint">新建联系人时默认使用，自动总结记忆也用它</string>
+    <string name="llm_no_model">未选择</string>
     <string name="llm_models">模型列表</string>
-    <string name="llm_models_hint">测试连接成功后自动从接口更新</string>
-    <string name="llm_model_image_yes">支持图片</string>
-    <string name="llm_model_image_no">不支持图片</string>
-    <string name="llm_model_image_unknown">接口未说明是否支持图片，可手动标记</string>
+    <string name="llm_models_hint">测试连接成功后自动从接口更新。接口没说明能力时可以点标记切换；接口没有模型列表时可以手动添加模型 ID。</string>
+    <string name="llm_add_model">添加模型</string>
+    <string name="llm_add_model_hint">模型 ID</string>
+    <string name="llm_remove_model">移除</string>
+    <string name="llm_mark_image">图片</string>
+    <string name="llm_mark_thinking">思考</string>
+    <!-- 参数：能力名称 -->
+    <string name="llm_mark_on">✓ %1$s</string>
+    <string name="llm_mark_off">不支持%1$s</string>
+    <string name="llm_delete_provider">删除服务商</string>
+    <string name="llm_delete_confirm">确定删除「%1$s」吗？Key 和模型列表会一起删除。</string>
+    <string name="llm_delete_in_use">还有 %1$d 个联系人在用这个服务商，先给它们换一个服务商才能删除</string>
+    <string name="llm_delete_last">至少要保留一个服务商</string>
     <string name="llm_test">测试连接</string>
     <string name="llm_testing">正在连接…</string>
     <string name="llm_test_ok">连接成功，已获取 %1$d 个模型</string>
     <string name="llm_saved">已保存</string>
     <string name="llm_security_notice">API Key 经 Android Keystore 加密后保存在本机，只会发送到上面的 Base URL。</string>
-    <string name="llm_base_url_invalid">Base URL 需以 https:// 或 http:// 开头</string>
+    <string name="llm_base_url_invalid">Base URL 需以 https:// 开头，并且是有效的地址</string>
     <string name="llm_get_key">获取 API Key：platform.deepseek.com</string>
+
+    <!-- 长期记忆 -->
+    <string name="memory_title">记忆</string>
+    <string name="memory_count">%1$d 条</string>
+    <string name="memory_empty">还没有记忆。聊得多了，较早的聊天会自动总结到这里</string>
+    <string name="memory_hint">每次请求都会带上这些记忆，最多占上下文上限的四分之一。超出时最早的、没改过的记忆会被合并。</string>
+    <string name="memory_hint_off">这个联系人关闭了自动记忆，不再生成新的记忆，已有的记忆仍会带上。可以在联系人编辑页打开。</string>
+    <string name="memory_edited">已修改</string>
+    <string name="memory_backlog">总结更早的聊天</string>
+    <string name="memory_backlog_count">%1$d 条未总结</string>
+    <string name="memory_backlog_confirm">往前总结一批聊天记录，最多 %1$d token，会消耗一次 API 额度。</string>
+    <string name="memory_backlog_action">开始总结</string>
+    <string name="memory_backlog_done">已总结一批</string>
+    <string name="memory_backlog_nothing">没有更早的聊天了</string>
+    <string name="memory_summarizing">正在总结…</string>
+    <string name="memory_clear">清空全部记忆</string>
+    <string name="memory_clear_confirm">确定清空这个联系人的全部记忆吗？此操作无法撤销。</string>
+    <string name="memory_edit_title">编辑记忆</string>
+    <string name="memory_edit_hint">改过的记忆不会被自动合并。</string>
+    <string name="memory_delete">删除这条记忆</string>
+    <string name="memory_delete_confirm">确定删除这条记忆吗？</string>
+
+    <!-- 用量统计 -->
+    <string name="usage_title">用量统计</string>
+    <string name="usage_range_week">近 7 天</string>
+    <string name="usage_range_month">近 30 天</string>
+    <string name="usage_range_all">全部</string>
+    <string name="usage_by_day">按天</string>
+    <string name="usage_by_contact">按联系人</string>
+    <string name="usage_total_tokens">%1$s token</string>
+    <string name="usage_detail">输入 %1$s · 输出 %2$s</string>
+    <string name="usage_detail_memory">输入 %1$s · 输出 %2$s · 其中记忆 %3$s</string>
+    <string name="usage_deleted_contact">已删除的联系人</string>
+    <string name="usage_empty">这段时间没有用量</string>
+    <string name="usage_hint">数字来自服务商返回的用量；服务商没有返回时是估算值。清空聊天记录不影响统计。</string>
 
     <!-- 开源许可 -->
     <string name="licenses_title">开源许可</string>

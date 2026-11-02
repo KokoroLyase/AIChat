@@ -100,7 +100,8 @@ fun ChatScreen(
     onOpenContact: (Long) -> Unit,
     onOpenChatInfo: (Long) -> Unit,
     onOpenImage: (String) -> Unit,
-    onOpenLlmSettings: () -> Unit,
+    /** 打开服务商设置；参数是服务商 id */
+    onOpenProvider: (Long) -> Unit,
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -417,7 +418,7 @@ fun ChatScreen(
             onDismiss = { showNoKey = false },
             onConfirm = {
                 showNoKey = false
-                onOpenLlmSettings()
+                state.contact?.let { onOpenProvider(it.providerId) }
             },
         )
     }
@@ -432,7 +433,7 @@ fun ChatScreen(
             onDismiss = { failedDialog = null },
             onConfirm = {
                 failedDialog = null
-                if (needsSettings) onOpenLlmSettings() else viewModel.retry()
+                if (needsSettings) state.contact?.let { onOpenProvider(it.providerId) } else viewModel.retry()
             },
         )
     }
@@ -543,6 +544,7 @@ fun failReasonText(reason: FailReason): Int = when (reason) {
     FailReason.BALANCE -> R.string.error_balance
     FailReason.RATE_LIMIT -> R.string.error_rate_limit
     FailReason.BAD_REQUEST -> R.string.error_bad_request
+    FailReason.NOT_FOUND -> R.string.error_not_found
     FailReason.SERVER -> R.string.error_server
     FailReason.NETWORK -> R.string.error_network
     FailReason.CANCELLED -> R.string.error_cancelled

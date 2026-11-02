@@ -28,6 +28,18 @@ import isomeria.aichat.feature.contactedit.previewState
 import isomeria.aichat.feature.contacts.ContactsContent
 import isomeria.aichat.feature.contacts.previewSections
 import isomeria.aichat.feature.me.MeContent
+import isomeria.aichat.feature.memory.MemoryContent
+import isomeria.aichat.feature.memory.previewMemoryState
+import isomeria.aichat.feature.settings.ProviderEditSample
+import isomeria.aichat.feature.settings.ProviderListContent
+import isomeria.aichat.feature.usage.UsageContent
+import isomeria.aichat.feature.usage.previewUsageState
+import isomeria.aichat.data.db.ProviderConfig
+import isomeria.aichat.data.db.ProviderKind
+import isomeria.aichat.ui.components.UpdateFailedDialog
+import isomeria.aichat.ui.components.UpdateProgressDialog
+import isomeria.aichat.update.UpdateFailure
+import isomeria.aichat.update.UpdateInstallState
 import isomeria.aichat.ui.components.EmojiCatalog
 import isomeria.aichat.ui.components.EmojiPanel
 import isomeria.aichat.ui.components.TabItem
@@ -113,9 +125,9 @@ class ScreenshotTest {
 
     @Test fun meDark() = shot("4-me", true) { Me() }
 
-    @Test fun contactDetailLight() = shot("5-contact-detail", false) { ContactDetailContent(previewState, {}, {}, {}) }
+    @Test fun contactDetailLight() = shot("5-contact-detail", false) { ContactDetailContent(previewState, {}, {}, {}, {}) }
 
-    @Test fun contactDetailDark() = shot("5-contact-detail", true) { ContactDetailContent(previewState, {}, {}, {}) }
+    @Test fun contactDetailDark() = shot("5-contact-detail", true) { ContactDetailContent(previewState, {}, {}, {}, {}) }
 
     /** 对话框是单独的窗口，截整个屏幕 */
     @Test fun dialogLight() {
@@ -161,6 +173,47 @@ class ScreenshotTest {
     @Test fun updateDialogLight() = dialogShot("9-update", false)
 
     @Test fun updateDialogDark() = dialogShot("9-update", true)
+
+    private val providers = listOf(
+        ProviderConfig(1, ProviderKind.LLM, "deepseek", "DeepSeek", "https://api.deepseek.com", "enc", "deepseek-flash"),
+        ProviderConfig(2, ProviderKind.LLM, "openai", "OpenRouter", "https://openrouter.ai/api/v1", null, ""),
+    )
+
+    @Test fun providerListLight() = shot("10-providers", false) { ProviderListContent(providers, {}, {}, {}) }
+
+    @Test fun providerListDark() = shot("10-providers", true) { ProviderListContent(providers, {}, {}, {}) }
+
+    @Test fun providerEditLight() = shot("11-provider-edit", false) { ProviderEditSample() }
+
+    @Test fun providerEditDark() = shot("11-provider-edit", true) { ProviderEditSample() }
+
+    @Test fun memoryLight() = shot("12-memory", false) { MemoryContent(previewMemoryState, {}, {}, {}, {}) }
+
+    @Test fun memoryDark() = shot("12-memory", true) { MemoryContent(previewMemoryState, {}, {}, {}, {}) }
+
+    @Test fun usageLight() = shot("13-usage", false) { UsageContent(previewUsageState, {}, {}, {}, {}) }
+
+    @Test fun usageDark() = shot("13-usage", true) { UsageContent(previewUsageState, {}, {}, {}, {}) }
+
+    private fun updateShot(name: String, dark: Boolean, dialog: @Composable () -> Unit) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark) {
+                Me()
+                dialog()
+            }
+        }
+        captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+
+    private val downloading = UpdateInstallState.Downloading(release, 12_000_000, 31_000_000)
+
+    @Test fun updateProgressLight() = updateShot("14-update-progress", false) { UpdateProgressDialog(downloading, {}) }
+
+    @Test fun updateProgressDark() = updateShot("14-update-progress", true) { UpdateProgressDialog(downloading, {}) }
+
+    @Test fun updateFailedLight() = updateShot("15-update-failed", false) { UpdateFailedDialog(UpdateFailure.CHECKSUM, {}, {}) }
+
+    @Test fun updateFailedDark() = updateShot("15-update-failed", true) { UpdateFailedDialog(UpdateFailure.CHECKSUM, {}, {}) }
 
     private fun dialogShot(name: String, dark: Boolean) {
         compose.setContent {

@@ -9,6 +9,7 @@ import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Conversation
 import isomeria.aichat.data.db.DeepSeekDefaults
+import isomeria.aichat.data.db.MIGRATION_1_2
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -18,6 +19,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,10 +37,32 @@ class DatabaseTest {
     val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), AppDatabase::class.java)
 
     @Test
-    fun version1_schemaMatchesExportedFile() {
-        helper.createDatabase(TEST_DB, 1).close()
-        // 用导出的 v1 schema 校验当前实体定义
-        helper.runMigrationsAndValidate(TEST_DB, 1, true).close()
+    fun migrate1To2_keepsDataAndMatchesExportedSchema() {
+        helper.createDatabase(TEST_DB, 1).use { db ->
+            db.execSQL(
+                "INSERT INTO provider_config (id, kind, provider, baseUrl, apiKeyEncrypted, defaultModel, enabled) " +
+                    "VALUES (1, 'LLM', 'deepseek', 'https://api.deepseek.com', 'encrypted', 'deepseek-flash', 1)",
+            )
+            db.execSQL(
+                "INSERT INTO contact (id, name, avatarPath, avatarColor, providerId, model, thinking, temperature, " +
+                    "systemPrompt, contextCount, splitReplies, createdAt, updatedAt) " +
+                    "VALUES (7, '小雨', NULL, 1, 1, 'deepseek-flash', 'OFF', 1.3, '', 20, 1, 1, 1)",
+            )
+        }
+        // 真机的系统 SQLite 上执行迁移，并按导出的 v2 schema 校验
+        helper.runMigrationsAndValidate(TEST_DB, 2, true, MIGRATION_1_2).use { db ->
+            db.query("SELECT name, contextTokens, autoMemory FROM contact WHERE id = 7").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("小雨", cursor.getString(0))
+                assertEquals(4000, cursor.getInt(1))
+                assertEquals(1, cursor.getInt(2))
+            }
+            db.query("SELECT name, apiKeyEncrypted FROM provider_config WHERE id = 1").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("DeepSeek", cursor.getString(0))
+                assertEquals("encrypted", cursor.getString(1))
+            }
+        }
     }
 
     @Test
@@ -47,7 +71,7 @@ class DatabaseTest {
             .addCallback(AppDatabase.seedCallback)
             .build()
         try {
-            val provider = db.providerDao().getLlm()!!
+            val provider = db.providerDao().llmList().first()
             assertEquals(DeepSeekDefaults.DEFAULT_MODEL, provider.defaultModel)
             assertEquals(DeepSeekDefaults.knownModels.size, db.providerDao().models(provider.id).size)
 

@@ -4,10 +4,10 @@ import isomeria.aichat.data.db.ThinkingLevel
 import kotlinx.coroutines.flow.Flow
 
 /**
- * 大语言模型服务。0.1.0 只实现 DeepSeek；以后加入其他兼容 OpenAI 格式的服务商，只需新增一个实现。
+ * 大语言模型服务，每种请求格式一个实现：DeepSeek 和通用的 OpenAI 兼容格式。
  */
 interface LlmProvider {
-    /** 与 provider_config.provider 对应，如 deepseek */
+    /** 与 provider_config.provider 对应，见 [isomeria.aichat.data.db.ProviderProtocol] */
     val id: String
 
     /** 拉取模型列表；「测试连接」也用它 */
@@ -29,6 +29,8 @@ data class RemoteModel(
     val name: String?,
     /** 接口报告的图片输入能力；接口没给时为 null */
     val supportsImage: Boolean?,
+    /** 接口报告的思考能力；接口没给时为 null */
+    val supportsThinking: Boolean? = null,
 )
 
 data class ChatRequest(
@@ -66,7 +68,7 @@ sealed interface ChatEvent {
 }
 
 enum class LlmError {
-    /** 401 认证失败 */
+    /** 401 / 403 认证失败 */
     AUTH,
     /** 402 余额不足 */
     BALANCE,
@@ -74,6 +76,8 @@ enum class LlmError {
     RATE_LIMIT,
     /** 400 / 422 请求格式或参数错误 */
     BAD_REQUEST,
+    /** 404 接口或模型不存在：通常是 Base URL 或模型名不对 */
+    NOT_FOUND,
     /** 5xx */
     SERVER,
     /** 断网、超时、连接中断 */
@@ -87,10 +91,11 @@ class LlmException(val error: LlmError, val httpCode: Int = 0, message: String? 
     companion object {
         fun fromHttp(code: Int): LlmException {
             val error = when (code) {
-                401 -> LlmError.AUTH
+                401, 403 -> LlmError.AUTH
                 402 -> LlmError.BALANCE
                 429 -> LlmError.RATE_LIMIT
                 400, 422 -> LlmError.BAD_REQUEST
+                404 -> LlmError.NOT_FOUND
                 in 500..599 -> LlmError.SERVER
                 else -> LlmError.UNKNOWN
             }

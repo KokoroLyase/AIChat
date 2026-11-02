@@ -4,9 +4,15 @@ import android.util.Log
 import androidx.room.withTransaction
 import isomeria.aichat.BuildConfig
 import isomeria.aichat.core.ContextBuilder
+import isomeria.aichat.core.ContextWindow
+import isomeria.aichat.core.MemoryPolicy
 import isomeria.aichat.core.ReplySplitter
+import isomeria.aichat.core.TokenEstimator
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.ContactDao
+import isomeria.aichat.data.db.MemoryDao
+import isomeria.aichat.data.db.ThinkingLevel
+import isomeria.aichat.data.db.UsagePurpose
 import isomeria.aichat.data.db.ConversationDao
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageDao
@@ -16,9 +22,11 @@ import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.llm.ChatEvent
 import isomeria.aichat.data.llm.ChatRequest
 import isomeria.aichat.data.llm.LlmException
+import isomeria.aichat.data.memory.MemoryScheduler
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.data.repo.FileStorage
 import isomeria.aichat.data.repo.ProviderRepository
+import isomeria.aichat.data.repo.UsageRepository
 import isomeria.aichat.data.settings.SettingsStore
 import java.util.UUID
 import javax.inject.Inject
@@ -38,7 +46,10 @@ class ReplyEngine @Inject constructor(
     private val contactDao: ContactDao,
     private val messageDao: MessageDao,
     private val conversationDao: ConversationDao,
+    private val memoryDao: MemoryDao,
     private val providers: ProviderRepository,
+    private val usage: UsageRepository,
+    private val memoryScheduler: MemoryScheduler,
     private val settings: SettingsStore,
     private val files: FileStorage,
     private val contextBuilder: ContextBuilder,
@@ -50,24 +61,42 @@ class ReplyEngine @Inject constructor(
         val waiting = messageDao.sendingIds(contactId)
         if (waiting.isEmpty()) return
         val contact = contactDao.get(contactId) ?: return
-        val config = providers.config(contact.providerId) ?: providers.llm()
+        val config = providers.config(contact.providerId) ?: providers.defaultLlm()
         val endpoint = providers.endpoint(config)
         if (endpoint == null) {
             fail(waiting, FailReason.NO_API_KEY)
             return
         }
         val supportsImage = providers.supportsImage(config.id, contact.model)
-        val history = messageDao.recent(contactId, contact.contextCount.coerceAtLeast(1))
+        val thinking = if (providers.supportsThinking(config, contact.model)) contact.thinking else ThinkingLevel.OFF
         val startedAt = System.currentTimeMillis()
+        val nickname = settings.nickname.value
+
+        // 预算 = 系统提示词 + 记忆 + 聊天记录。记忆最多占 1/4，放不下的这次先不带
+        val estimator = TokenEstimator.forProtocol(config.provider)
+        val memories = MemoryPolicy.forRequest(
+            memoryDao.listByContact(contactId),
+            MemoryPolicy.memoryBudget(contact.contextTokens),
+            estimator,
+        )
+        val system = contextBuilder.systemPrompt(contact, nickname, startedAt, memories).orEmpty()
+        val historyBudget = contact.contextTokens - estimator.text(system)
+        val history = ContextWindow.select(
+            messageDao.recent(contactId, ContextWindow.maxRows(historyBudget)),
+            historyBudget,
+            estimator,
+            supportsImage,
+        )
         val messages = contextBuilder.build(
             contact = contact,
             history = history,
             supportsImage = supportsImage,
-            nickname = settings.nickname.value,
+            nickname = nickname,
             now = startedAt,
+            memories = memories,
             loadImage = files::readAsDataUrl,
         )
-        val request = ChatRequest(contact.model, messages, contact.thinking, contact.temperature)
+        val request = ChatRequest(contact.model, messages, thinking, contact.temperature)
 
         val content = StringBuilder()
         val reasoning = StringBuilder()
@@ -130,9 +159,17 @@ class ReplyEngine @Inject constructor(
             messageDao.setStatus(waiting, MessageStatus.SUCCESS, 0)
             conversationDao.setLastMessage(contactId, rows.last().createdAt, rows.last().content)
             if (!viewing) conversationDao.addUnread(contactId, rows.size)
+            // 服务商没有返回用量时用估算值
+            usage.record(
+                contactId = contactId,
+                purpose = UsagePurpose.CHAT,
+                promptTokens = promptTokens.takeIf { it > 0 } ?: estimator.request(messages),
+                completionTokens = completionTokens.takeIf { it > 0 } ?: estimator.text(content.toString() + reasoning),
+            )
         }
         debugLog("reply ok: parts=${parts.size} prompt=$promptTokens completion=$completionTokens")
         if (!activeChat.isViewing(contactId)) notifier.notifyReply(contact, parts)
+        if (contact.autoMemory) memoryScheduler.enqueue(contactId)
     }
 
     /** 任务被系统中断后重新调度：不再自动重试，标记失败 */

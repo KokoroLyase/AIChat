@@ -2,6 +2,7 @@ package isomeria.aichat.data.db
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import androidx.room.Upsert
@@ -97,6 +98,9 @@ interface ConversationDao {
     @Query("UPDATE conversation SET draft = :draft WHERE contactId = :contactId")
     suspend fun setDraft(contactId: Long, draft: String)
 
+    @Query("UPDATE conversation SET memoryCursor = :cursor, memoryStart = :start WHERE contactId = :contactId")
+    suspend fun setMemoryRange(contactId: Long, cursor: Long?, start: Long)
+
     @Query(
         """
         UPDATE conversation SET lastMessageTime = :time, lastMessagePreview = :preview
@@ -154,6 +158,27 @@ interface MessageDao {
 
     @Query("SELECT * FROM message WHERE contactId = :contactId ORDER BY createdAt DESC, id DESC LIMIT 1")
     suspend fun latest(contactId: Long): Message?
+
+    /** 比 [time] 新的消息，按时间正序：还没总结进记忆的部分 */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND createdAt > :time ORDER BY createdAt, id")
+    suspend fun after(contactId: Long, time: Long): List<Message>
+
+    /** 比 [time] 早的最近 [limit] 条，按时间正序：记忆页「总结更早的聊天」 */
+    @Query(
+        """
+        SELECT * FROM (
+            SELECT * FROM message WHERE contactId = :contactId AND createdAt < :time
+            ORDER BY createdAt DESC, id DESC LIMIT :limit
+        ) ORDER BY createdAt, id
+        """,
+    )
+    suspend fun before(contactId: Long, time: Long, limit: Int): List<Message>
+
+    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND createdAt < :time")
+    fun observeCountBefore(contactId: Long, time: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND createdAt < :time")
+    suspend fun countBefore(contactId: Long, time: Long): Int
 
     @Query("SELECT * FROM message WHERE id = :id")
     suspend fun get(id: Long): Message?
@@ -238,11 +263,14 @@ interface MessageDao {
 
 @Dao
 interface ProviderDao {
-    @Query("SELECT * FROM provider_config WHERE kind = 'LLM' ORDER BY id LIMIT 1")
-    fun observeLlm(): Flow<ProviderConfig?>
+    @Query("SELECT * FROM provider_config WHERE kind = 'LLM' ORDER BY id")
+    fun observeLlmList(): Flow<List<ProviderConfig>>
 
-    @Query("SELECT * FROM provider_config WHERE kind = 'LLM' ORDER BY id LIMIT 1")
-    suspend fun getLlm(): ProviderConfig?
+    @Query("SELECT * FROM provider_config WHERE kind = 'LLM' ORDER BY id")
+    suspend fun llmList(): List<ProviderConfig>
+
+    @Query("SELECT * FROM provider_config WHERE id = :id")
+    fun observe(id: Long): Flow<ProviderConfig?>
 
     @Query("SELECT * FROM provider_config WHERE id = :id")
     suspend fun get(id: Long): ProviderConfig?
@@ -250,8 +278,20 @@ interface ProviderDao {
     @Query("SELECT * FROM provider_config ORDER BY id")
     suspend fun listConfigs(): List<ProviderConfig>
 
+    @Insert
+    suspend fun insert(config: ProviderConfig): Long
+
     @Update
     suspend fun update(config: ProviderConfig)
+
+    @Query("DELETE FROM provider_config WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM provider_config WHERE kind = 'LLM'")
+    suspend fun deleteAllLlm()
+
+    @Query("SELECT COUNT(*) FROM contact WHERE providerId = :providerId")
+    suspend fun contactCount(providerId: Long): Int
 
     @Query("SELECT * FROM provider_model WHERE providerId = :providerId ORDER BY sortOrder, modelId")
     fun observeModels(providerId: Long): Flow<List<ProviderModel>>
@@ -268,8 +308,12 @@ interface ProviderDao {
     @Query("DELETE FROM provider_model WHERE providerId = :providerId")
     suspend fun deleteModels(providerId: Long)
 
-    @Query("DELETE FROM provider_model WHERE providerId = :providerId AND modelId NOT IN (:keep)")
+    /** 刷新模型列表：接口不再返回的模型删掉，手动添加的保留 */
+    @Query("DELETE FROM provider_model WHERE providerId = :providerId AND manual = 0 AND modelId NOT IN (:keep)")
     suspend fun deleteModelsExcept(providerId: Long, keep: List<String>)
+
+    @Query("DELETE FROM provider_model WHERE providerId = :providerId AND modelId = :modelId")
+    suspend fun deleteModel(providerId: Long, modelId: String)
 
     @Query(
         """
@@ -278,6 +322,99 @@ interface ProviderDao {
         """,
     )
     suspend fun setImageMark(providerId: Long, modelId: String, mark: Boolean)
+
+    @Query(
+        """
+        UPDATE provider_model SET thinkingUserMark = :mark
+        WHERE providerId = :providerId AND modelId = :modelId
+        """,
+    )
+    suspend fun setThinkingMark(providerId: Long, modelId: String, mark: Boolean)
+}
+
+@Dao
+interface MemoryDao {
+    /** 按聊天时间正序 */
+    @Query("SELECT * FROM memory WHERE contactId = :contactId ORDER BY fromTime, id")
+    fun observeByContact(contactId: Long): Flow<List<Memory>>
+
+    @Query("SELECT * FROM memory WHERE contactId = :contactId ORDER BY fromTime, id")
+    suspend fun listByContact(contactId: Long): List<Memory>
+
+    @Query("SELECT COUNT(*) FROM memory WHERE contactId = :contactId")
+    fun observeCount(contactId: Long): Flow<Int>
+
+    @Query("SELECT * FROM memory WHERE id = :id")
+    suspend fun get(id: Long): Memory?
+
+    @Query("SELECT * FROM memory ORDER BY id")
+    suspend fun listAll(): List<Memory>
+
+    @Insert
+    suspend fun insert(memory: Memory): Long
+
+    @Insert
+    suspend fun insertAll(memories: List<Memory>): List<Long>
+
+    @Update
+    suspend fun update(memory: Memory)
+
+    @Query("DELETE FROM memory WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM memory WHERE id IN (:ids)")
+    suspend fun deleteIds(ids: List<Long>)
+
+    @Query("DELETE FROM memory WHERE contactId = :contactId")
+    suspend fun deleteByContact(contactId: Long)
+
+    @Query("DELETE FROM memory")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface UsageDao {
+    @Query("SELECT * FROM usage_daily ORDER BY day DESC, contactId, purpose")
+    fun observeAll(): Flow<List<UsageDaily>>
+
+    @Query("SELECT * FROM usage_daily ORDER BY day, contactId, purpose")
+    suspend fun listAll(): List<UsageDaily>
+
+    /** 累加一次请求的用量 */
+    @Query(
+        """
+        INSERT INTO usage_daily (day, contactId, purpose, promptTokens, completionTokens, requests)
+        VALUES (:day, :contactId, :purpose, :promptTokens, :completionTokens, 1)
+        ON CONFLICT (day, contactId, purpose) DO UPDATE SET
+            promptTokens = promptTokens + excluded.promptTokens,
+            completionTokens = completionTokens + excluded.completionTokens,
+            requests = requests + 1
+        """,
+    )
+    suspend fun add(day: Long, contactId: Long, purpose: UsagePurpose, promptTokens: Long, completionTokens: Long)
+
+    /** 删除联系人时，把它的用量并到「已删除的联系人」，总量不变 */
+    @Query(
+        """
+        INSERT INTO usage_daily (day, contactId, purpose, promptTokens, completionTokens, requests)
+        SELECT day, 0, purpose, promptTokens, completionTokens, requests
+        FROM usage_daily WHERE contactId = :contactId
+        ON CONFLICT (day, contactId, purpose) DO UPDATE SET
+            promptTokens = promptTokens + excluded.promptTokens,
+            completionTokens = completionTokens + excluded.completionTokens,
+            requests = requests + excluded.requests
+        """,
+    )
+    suspend fun mergeIntoDeleted(contactId: Long)
+
+    @Query("DELETE FROM usage_daily WHERE contactId = :contactId")
+    suspend fun deleteByContact(contactId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(rows: List<UsageDaily>)
+
+    @Query("DELETE FROM usage_daily")
+    suspend fun deleteAll()
 }
 
 /**

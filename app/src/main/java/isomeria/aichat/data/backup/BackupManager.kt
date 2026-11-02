@@ -7,8 +7,10 @@ import isomeria.aichat.BuildConfig
 import isomeria.aichat.R
 import isomeria.aichat.data.crypto.SecretCipher
 import isomeria.aichat.data.db.AppDatabase
+import isomeria.aichat.core.MemoryPolicy
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Conversation
+import isomeria.aichat.data.db.Memory
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageKey
 import isomeria.aichat.data.db.MessageStatus
@@ -16,7 +18,9 @@ import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderKind
 import isomeria.aichat.data.db.ProviderModel
+import isomeria.aichat.data.db.UsageDaily
 import isomeria.aichat.data.reply.ReplyControl
+import isomeria.aichat.data.repo.BaseUrlRules
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.data.repo.FileStorage
 import isomeria.aichat.data.repo.MediaKind
@@ -66,10 +70,8 @@ data class BackupPreview(
     val manifest: BackupManifest,
     val data: BackupData,
 ) {
-    private val apiKey: SecretDto? get() = data.providers.firstOrNull { it.kind == ProviderKind.LLM }?.apiKey
-
     /** 备份里有用密码加密的 API Key，恢复它需要输入导出时设的密码 */
-    val needsPassword: Boolean get() = apiKey?.scheme == SecretDto.SCHEME_PASSWORD
+    val needsPassword: Boolean get() = data.providers.any { it.apiKey?.scheme == SecretDto.SCHEME_PASSWORD }
 
     val contactCount: Int get() = data.contacts.size
     val messageCount: Int get() = data.messages.size
@@ -96,6 +98,9 @@ data class RestoreSummary(val contactsAdded: Int, val messagesAdded: Int, val ap
  *
  * 合并时「同一个联系人 / 同一条消息」要求 id 和创建时间都相同：两台手机上的 id 都从 1 开始，
  * 只比 id 会把别的手机上同 id 的联系人混进本机联系人里。
+ *
+ * 「同一个服务商」要求请求格式和 Base URL 都相同。本机的 Key 只会留给同一个服务商：
+ * 否则别人做的备份文件可以把 Base URL 改掉，让本机的 Key 发到别的地址。
  */
 @Singleton
 class BackupManager @Inject constructor(
@@ -114,6 +119,8 @@ class BackupManager @Inject constructor(
     private val conversationDao get() = db.conversationDao()
     private val messageDao get() = db.messageDao()
     private val providerDao get() = db.providerDao()
+    private val memoryDao get() = db.memoryDao()
+    private val usageDao get() = db.usageDao()
 
     /** 恢复前自动备份的位置 */
     val snapshotFile: File get() = File(files.backupsDir, SNAPSHOT_NAME)
@@ -137,10 +144,10 @@ class BackupManager @Inject constructor(
     suspend fun restore(preview: BackupPreview, mode: RestoreMode, password: CharArray?): RestoreSummary =
         mutex.withLock {
             withContext(Dispatchers.IO) {
-                val apiKey = importedApiKey(preview, password)
+                val apiKeys = importedApiKeys(preview, password)
                 writeSnapshot()
                 if (mode == RestoreMode.OVERWRITE) stopAllReplies()
-                apply(preview, mode, apiKey, exactKey = false, rollback = snapshotFile)
+                apply(preview, mode, apiKeys, exactKey = false, rollback = snapshotFile)
             }
         }
 
@@ -152,6 +159,8 @@ class BackupManager @Inject constructor(
         val messages: List<Message>,
         val configs: List<ProviderConfig>,
         val models: Map<Long, List<ProviderModel>>,
+        val memories: List<Memory>,
+        val usage: List<UsageDaily>,
     )
 
     private sealed interface KeyExport {
@@ -162,7 +171,7 @@ class BackupManager @Inject constructor(
     }
 
     private suspend fun writeBackup(out: OutputStream, key: KeyExport): ExportSummary {
-        val (contacts, conversations, messages, configs, models) = db.withTransaction {
+        val tables = db.withTransaction {
             val configs = providerDao.listConfigs()
             Tables(
                 contactDao.listAll(),
@@ -170,8 +179,11 @@ class BackupManager @Inject constructor(
                 messageDao.listAll(),
                 configs,
                 configs.associate { it.id to providerDao.models(it.id) },
+                memoryDao.listAll(),
+                usageDao.listAll(),
             )
         }
+        val (contacts, conversations, messages, configs, models) = tables
         val appSettings = settings.read()
 
         val media = MediaCollector()
@@ -191,6 +203,8 @@ class BackupManager @Inject constructor(
             conversations = conversations.map { it.toDto() },
             messages = messages.map { it.toDto(media.add(it.imagePath, BackupFormat.IMAGES_DIR)) },
             providers = providers,
+            memories = tables.memories.map { it.toDto() },
+            usage = tables.usage.map { it.toDto() },
             settings = appSettings.toDto(media.add(appSettings.avatarPath, BackupFormat.AVATARS_DIR)),
         )
         val summary = ExportSummary(
@@ -312,6 +326,18 @@ class BackupManager @Inject constructor(
             .map { it.copy(avatar = it.avatar?.takeIf(BackupFormat.mediaNamePattern::matches)) }
         val ids = contacts.mapTo(HashSet()) { it.id }
         return data.copy(
+            providers = data.providers.distinctBy { it.id },
+            memories = data.memories.filter { it.contactId in ids && it.content.isNotBlank() }.distinctBy { it.id }
+                .map { it.copy(content = it.content.take(MemoryPolicy.CONTENT_MAX_LENGTH)) },
+            usage = data.usage.filter { it.contactId in ids || it.contactId == UsageDaily.DELETED_CONTACT }
+                .distinctBy { Triple(it.day, it.contactId, it.purpose) }
+                .map {
+                    it.copy(
+                        promptTokens = it.promptTokens.coerceAtLeast(0),
+                        completionTokens = it.completionTokens.coerceAtLeast(0),
+                        requests = it.requests.coerceAtLeast(0),
+                    )
+                },
             contacts = contacts,
             conversations = data.conversations.filter { it.contactId in ids }.distinctBy { it.contactId },
             messages = data.messages.filter { it.contactId in ids }.distinctBy { it.id }
@@ -322,17 +348,22 @@ class BackupManager @Inject constructor(
 
     // ---------- 恢复 ----------
 
-    /** 要写进数据库的 API Key（Keystore 密文）；备份里没有或没给密码时为 null */
-    private fun importedApiKey(preview: BackupPreview, password: CharArray?): String? {
-        val secret = preview.data.providers.firstOrNull { it.kind == ProviderKind.LLM }?.apiKey ?: return null
-        return when (secret.scheme) {
-            SecretDto.SCHEME_PASSWORD ->
-                if (password == null || password.isEmpty()) null else cipher.encrypt(PasswordCipher.decrypt(secret, password))
-            // 只有在同一台设备上才能解开
-            SecretDto.SCHEME_KEYSTORE -> secret.data.takeIf { cipher.decrypt(it) != null }
-            else -> null
-        }
-    }
+    /**
+     * 要写进数据库的 API Key（Keystore 密文）：备份里的服务商 id → 密文。
+     * 备份里没有或没给密码时没有这一项；密码错误时抛 [WrongPasswordException]。
+     */
+    private fun importedApiKeys(preview: BackupPreview, password: CharArray?): Map<Long, String> =
+        preview.data.providers.mapNotNull { provider ->
+            val secret = provider.apiKey ?: return@mapNotNull null
+            val key = when (secret.scheme) {
+                SecretDto.SCHEME_PASSWORD ->
+                    if (password == null || password.isEmpty()) null else cipher.encrypt(PasswordCipher.decrypt(secret, password))
+                // 只有在同一台设备上才能解开
+                SecretDto.SCHEME_KEYSTORE -> secret.data.takeIf { cipher.decrypt(it) != null }
+                else -> null
+            }
+            key?.let { provider.id to it }
+        }.toMap()
 
     /** 覆盖前停掉所有等待中的回复，最多等 3 秒，免得旧任务把回复写进新数据 */
     private suspend fun stopAllReplies() {
@@ -345,19 +376,19 @@ class BackupManager @Inject constructor(
 
     /**
      * [exactKey] 为 true 时（用自动备份回滚）API Key 也恢复成备份里的样子，备份里没有就清掉；
-     * 否则备份里没有 Key 时保留本机的。
+     * 否则备份里没有 Key 时保留本机同一个服务商的。
      */
     private suspend fun apply(
         preview: BackupPreview,
         mode: RestoreMode,
-        apiKey: String?,
+        apiKeys: Map<Long, String>,
         exactKey: Boolean,
         rollback: File?,
     ): RestoreSummary {
         val created = ArrayList<File>()
         try {
             val paths = ZipFile(preview.file).use { zip -> extractMedia(zip, preview.data, created) }
-            val summary = writeDatabase(preview.data, mode, paths, apiKey, exactKey)
+            val summary = writeDatabase(preview.data, mode, paths, apiKeys, exactKey)
             try {
                 writeSettings(preview.data.settings, mode, paths)
             } catch (e: Exception) {
@@ -374,7 +405,7 @@ class BackupManager @Inject constructor(
 
     private suspend fun rollbackFrom(snapshot: File) {
         val preview = readBackup(snapshot)
-        apply(preview, RestoreMode.OVERWRITE, importedApiKey(preview, null), exactKey = true, rollback = null)
+        apply(preview, RestoreMode.OVERWRITE, importedApiKeys(preview, null), exactKey = true, rollback = null)
     }
 
     /** 解压备份里用到的头像和图片，换成随机的新文件名；返回 zip 内路径 → 本机路径 */
@@ -401,51 +432,115 @@ class BackupManager @Inject constructor(
         data: BackupData,
         mode: RestoreMode,
         paths: Map<String, String>,
-        apiKey: String?,
+        apiKeys: Map<Long, String>,
         exactKey: Boolean,
     ): RestoreSummary = db.withTransaction {
-        val llm = providerDao.getLlm() ?: error("缺少默认服务商配置")
-        val source = data.providers.firstOrNull { it.kind == ProviderKind.LLM }
+        val sources = data.providers.filter { it.kind == ProviderKind.LLM }
         when (mode) {
-            RestoreMode.OVERWRITE -> {
-                messageDao.deleteAll()
-                conversationDao.deleteAll()
-                contactDao.deleteAll()
-
-                var config = llm
-                if (source != null) {
-                    config = config.copy(
-                        baseUrl = source.baseUrl.ifBlank { llm.baseUrl },
-                        defaultModel = source.defaultModel.ifBlank { llm.defaultModel },
-                        enabled = source.enabled,
-                    )
-                    providerDao.deleteModels(llm.id)
-                    providerDao.upsertModels(source.models.map { it.toEntity(llm.id) })
-                }
-                // 备份里没有 Key 时保留本机的 Key：Key 不算聊天数据，导出默认也不带
-                if (apiKey != null || exactKey) config = config.copy(apiKeyEncrypted = apiKey)
-                providerDao.update(config)
-
-                contactDao.insertAll(data.contacts.map { it.toEntity(llm.id, it.avatar?.let(paths::get)) })
-                val withConversation = data.conversations.mapTo(HashSet()) { it.contactId }
-                conversationDao.upsertAll(
-                    data.conversations.map { it.toEntity() } +
-                        data.contacts.filter { it.id !in withConversation }.map { Conversation(contactId = it.id) },
-                )
-                messageDao.insertAll(data.messages.map { it.toEntity(it.contactId, it.image?.let(paths::get)) })
-                RestoreSummary(data.contacts.size, data.messages.size, apiKey != null)
-            }
-            RestoreMode.MERGE -> merge(data, paths, apiKey, llm, source)
+            RestoreMode.OVERWRITE -> overwrite(data, sources, paths, apiKeys, exactKey)
+            RestoreMode.MERGE -> merge(data, sources, paths, apiKeys)
         }
+    }
+
+    private suspend fun overwrite(
+        data: BackupData,
+        sources: List<ProviderDto>,
+        paths: Map<String, String>,
+        apiKeys: Map<Long, String>,
+        exactKey: Boolean,
+    ): RestoreSummary {
+        messageDao.deleteAll()
+        memoryDao.deleteAll()
+        usageDao.deleteAll()
+        conversationDao.deleteAll()
+        contactDao.deleteAll()
+
+        val providerIds = overwriteProviders(sources, apiKeys, exactKey)
+        val fallback = providerDao.llmList().firstOrNull()?.id ?: error("缺少服务商配置")
+
+        contactDao.insertAll(
+            data.contacts.map { it.toEntity(providerIds[it.providerId] ?: fallback, it.avatar?.let(paths::get)) },
+        )
+        val withConversation = data.conversations.mapTo(HashSet()) { it.contactId }
+        conversationDao.upsertAll(
+            data.conversations.map { it.toEntity() } +
+                data.contacts.filter { it.id !in withConversation }.map { Conversation(contactId = it.id, memoryCursor = null) },
+        )
+        messageDao.insertAll(data.messages.map { it.toEntity(it.contactId, it.image?.let(paths::get)) })
+        memoryDao.insertAll(data.memories.map { it.toEntity(it.contactId) })
+        usageDao.insertIgnore(data.usage.map { it.toEntity(it.contactId) })
+        return RestoreSummary(data.contacts.size, data.messages.size, apiKeys.isNotEmpty())
+    }
+
+    /**
+     * 服务商换成备份里的，id 不变。备份里没有服务商时（不应该出现）保留本机的。
+     * 备份没带 Key 时保留本机同一个服务商的 Key：Key 不算聊天数据，导出默认也不带。
+     */
+    private suspend fun overwriteProviders(
+        sources: List<ProviderDto>,
+        apiKeys: Map<Long, String>,
+        exactKey: Boolean,
+    ): Map<Long, Long> {
+        if (sources.isEmpty()) return emptyMap()
+        val local = providerDao.llmList()
+        local.forEach { providerDao.deleteModels(it.id) }
+        providerDao.deleteAllLlm()
+        return sources.associate { source ->
+            val key = apiKeys[source.id]
+                ?: if (exactKey) null else local.firstOrNull { it.isSameAs(source) }?.apiKeyEncrypted
+            val id = insertProvider(source, key, keepId = true)
+            source.id to id
+        }
+    }
+
+    private suspend fun insertProvider(source: ProviderDto, apiKey: String?, keepId: Boolean): Long {
+        val id = providerDao.insert(source.toEntity(if (keepId) source.id else 0, apiKey))
+        providerDao.upsertModels(source.models.map { it.toEntity(id) })
+        return id
+    }
+
+    private fun ProviderConfig.isSameAs(source: ProviderDto) =
+        provider == source.provider && BaseUrlRules.isSameUrl(baseUrl, source.baseUrl)
+
+    /**
+     * 合并服务商：同一个服务商保留本机的配置，只补本机没有的 Key 和模型；其他的作为新服务商加入。
+     * 返回备份里的 id → 本机的 id，以及有没有恢复 Key。
+     */
+    private suspend fun mergeProviders(sources: List<ProviderDto>, apiKeys: Map<Long, String>): Pair<Map<Long, Long>, Boolean> {
+        val local = providerDao.llmList().toMutableList()
+        val ids = HashMap<Long, Long>()
+        var keyRestored = false
+        for (source in sources) {
+            val key = apiKeys[source.id]
+            val same = local.firstOrNull { it.isSameAs(source) }
+            if (same == null) {
+                val id = insertProvider(source, key, keepId = false)
+                local += providerDao.get(id) ?: continue
+                ids[source.id] = id
+                keyRestored = keyRestored || key != null
+                continue
+            }
+            ids[source.id] = same.id
+            if (same.apiKeyEncrypted.isNullOrEmpty() && key != null) {
+                providerDao.update(same.copy(apiKeyEncrypted = key))
+                keyRestored = true
+            }
+            val known = providerDao.models(same.id).mapTo(HashSet()) { it.modelId }
+            providerDao.upsertModels(source.models.filter { it.modelId !in known }.map { it.toEntity(same.id) })
+        }
+        return ids to keyRestored
     }
 
     private suspend fun merge(
         data: BackupData,
+        sources: List<ProviderDto>,
         paths: Map<String, String>,
-        apiKey: String?,
-        llm: ProviderConfig,
-        source: ProviderDto?,
+        apiKeys: Map<Long, String>,
     ): RestoreSummary {
+        val (providerIds, keyRestored) = mergeProviders(sources, apiKeys)
+        val fallback = providerDao.llmList().firstOrNull()?.id ?: error("缺少服务商配置")
+        fun providerOf(contact: ContactDto) = providerIds[contact.providerId] ?: fallback
+
         val local = contactDao.listAll().associateBy { it.id }
         val idMap = HashMap<Long, Long>()
         val same = HashSet<Long>()
@@ -460,7 +555,7 @@ class BackupManager @Inject constructor(
                     same += contact.id
                 }
                 existing == null -> {
-                    contactDao.insert(contact.toEntity(llm.id, contact.avatar?.let(paths::get)))
+                    contactDao.insert(contact.toEntity(providerOf(contact), contact.avatar?.let(paths::get)))
                     idMap[contact.id] = contact.id
                     contactsAdded++
                 }
@@ -468,7 +563,7 @@ class BackupManager @Inject constructor(
             }
         }
         for (contact in needNewId) {
-            idMap[contact.id] = contactDao.insert(contact.toEntity(llm.id, contact.avatar?.let(paths::get)).copy(id = 0))
+            idMap[contact.id] = contactDao.insert(contact.toEntity(providerOf(contact), contact.avatar?.let(paths::get)).copy(id = 0))
             contactsAdded++
         }
 
@@ -481,7 +576,7 @@ class BackupManager @Inject constructor(
             localConversations += target
         }
         for (target in idMap.values) {
-            if (target !in localConversations) conversationDao.upsert(Conversation(contactId = target))
+            if (target !in localConversations) conversationDao.upsert(Conversation(contactId = target, memoryCursor = null))
         }
 
         val localKeys = messageDao.allKeys().toHashSet()
@@ -497,17 +592,22 @@ class BackupManager @Inject constructor(
         val sameTargets = same.mapNotNullTo(HashSet()) { idMap[it] }
         newMessages.mapTo(HashSet()) { it.contactId }.filter { it in sameTargets }.forEach { refreshLastMessage(it) }
 
-        var config = llm
-        var keyRestored = false
-        if (config.apiKeyEncrypted.isNullOrEmpty() && apiKey != null) {
-            config = config.copy(apiKeyEncrypted = apiKey)
-            keyRestored = true
-        }
-        providerDao.update(config)
-        if (source != null) {
-            val known = providerDao.models(llm.id).mapTo(HashSet()) { it.modelId }
-            providerDao.upsertModels(source.models.filter { it.modelId !in known }.map { it.toEntity(llm.id) })
-        }
+        // 记忆：同一条（时间范围和内容都相同）不重复加入
+        val existingMemories = memoryDao.listAll().mapTo(HashSet()) { listOf(it.contactId, it.fromTime, it.toTime, it.content) }
+        memoryDao.insertAll(
+            data.memories.mapNotNull { memory ->
+                val target = idMap[memory.contactId] ?: return@mapNotNull null
+                if (listOf(target, memory.fromTime, memory.toTime, memory.content) in existingMemories) return@mapNotNull null
+                memory.toEntity(target).copy(id = 0)
+            },
+        )
+        // 用量：本机已有的那一天、那个联系人保留本机的
+        usageDao.insertIgnore(
+            data.usage.mapNotNull { row ->
+                val target = if (row.contactId == UsageDaily.DELETED_CONTACT) row.contactId else idMap[row.contactId]
+                target?.let { row.toEntity(it) }
+            },
+        )
         return RestoreSummary(contactsAdded, newMessages.size, keyRestored)
     }
 
@@ -552,24 +652,47 @@ class BackupManager @Inject constructor(
 
     private fun Contact.toDto(avatar: String?) = ContactDto(
         id = id, name = name, avatar = avatar, avatarColor = avatarColor, providerId = providerId, model = model,
-        thinking = thinking, temperature = temperature, systemPrompt = systemPrompt, contextCount = contextCount,
-        splitReplies = splitReplies, createdAt = createdAt, updatedAt = updatedAt,
+        thinking = thinking, temperature = temperature, systemPrompt = systemPrompt, contextTokens = contextTokens,
+        splitReplies = splitReplies, autoMemory = autoMemory, createdAt = createdAt, updatedAt = updatedAt,
     )
 
     private fun ContactDto.toEntity(providerId: Long, avatarPath: String?) = Contact(
         id = id, name = name, avatarPath = avatarPath, avatarColor = avatarColor, providerId = providerId, model = model,
-        thinking = thinking, temperature = temperature, systemPrompt = systemPrompt, contextCount = contextCount,
-        splitReplies = splitReplies, createdAt = createdAt, updatedAt = updatedAt,
+        thinking = thinking, temperature = temperature, systemPrompt = systemPrompt,
+        contextTokens = contextTokens.coerceIn(Contact.MIN_CONTEXT_TOKENS, Contact.MAX_CONTEXT_TOKENS),
+        splitReplies = splitReplies, autoMemory = autoMemory, createdAt = createdAt, updatedAt = updatedAt,
     )
 
     private fun Conversation.toDto() = ConversationDto(
         contactId = contactId, pinned = pinned, unreadCount = unreadCount, markedUnread = markedUnread,
         draft = draft, lastMessageTime = lastMessageTime, lastMessagePreview = lastMessagePreview,
+        memoryCursor = memoryCursor, memoryStart = memoryStart,
     )
 
     private fun ConversationDto.toEntity() = Conversation(
         contactId = contactId, pinned = pinned, unreadCount = unreadCount, markedUnread = markedUnread,
         draft = draft, lastMessageTime = lastMessageTime, lastMessagePreview = lastMessagePreview,
+        memoryCursor = memoryCursor, memoryStart = memoryStart,
+    )
+
+    private fun Memory.toDto() = MemoryDto(
+        id = id, contactId = contactId, content = content, fromTime = fromTime, toTime = toTime,
+        edited = edited, createdAt = createdAt, updatedAt = updatedAt,
+    )
+
+    private fun MemoryDto.toEntity(contactId: Long) = Memory(
+        id = id, contactId = contactId, content = content, fromTime = fromTime, toTime = toTime,
+        edited = edited, createdAt = createdAt, updatedAt = updatedAt,
+    )
+
+    private fun UsageDaily.toDto() = UsageDto(
+        day = day, contactId = contactId, purpose = purpose, promptTokens = promptTokens,
+        completionTokens = completionTokens, requests = requests,
+    )
+
+    private fun UsageDto.toEntity(contactId: Long) = UsageDaily(
+        day = day, contactId = contactId, purpose = purpose, promptTokens = promptTokens,
+        completionTokens = completionTokens, requests = requests,
     )
 
     private fun Message.toDto(image: String?) = MessageDto(
@@ -593,16 +716,26 @@ class BackupManager @Inject constructor(
     }
 
     private fun ProviderConfig.toDto(models: List<ProviderModel>, apiKey: SecretDto?) = ProviderDto(
-        id = id, kind = kind, provider = provider, baseUrl = baseUrl, defaultModel = defaultModel, enabled = enabled,
+        id = id, kind = kind, provider = provider, name = name, baseUrl = baseUrl, defaultModel = defaultModel,
+        enabled = enabled,
         models = models.map {
-            ProviderModelDto(it.modelId, it.displayName, it.imageInput, it.imageInputUserMark, it.sortOrder)
+            ProviderModelDto(
+                it.modelId, it.displayName, it.imageInput, it.imageInputUserMark, it.sortOrder,
+                it.thinkingInput, it.thinkingUserMark, it.manual,
+            )
         },
         apiKey = apiKey,
     )
 
+    private fun ProviderDto.toEntity(id: Long, apiKey: String?) = ProviderConfig(
+        id = id, kind = kind, provider = provider, name = name, baseUrl = baseUrl, apiKeyEncrypted = apiKey,
+        defaultModel = defaultModel, enabled = enabled,
+    )
+
     private fun ProviderModelDto.toEntity(providerId: Long) = ProviderModel(
         providerId = providerId, modelId = modelId, displayName = displayName, imageInput = imageInput,
-        imageInputUserMark = imageInputUserMark, sortOrder = sortOrder,
+        imageInputUserMark = imageInputUserMark, sortOrder = sortOrder, thinkingInput = thinkingInput,
+        thinkingUserMark = thinkingUserMark, manual = manual,
     )
 
     private fun AppSettingsSnapshot.toDto(avatar: String?) = SettingsDto(

@@ -108,6 +108,7 @@ class SettingsViewModel @Inject constructor(
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenLlm: () -> Unit,
+    onOpenUsage: () -> Unit,
     onOpenLicenses: () -> Unit,
     onOpenExport: () -> Unit,
     onOpenRestore: () -> Unit,
@@ -154,8 +155,13 @@ fun SettingsScreen(
             SectionHeader(stringResource(R.string.settings_group_models))
             WeListRow(
                 title = stringResource(R.string.settings_llm),
-                value = if (hasKey) stringResource(R.string.llm_provider_deepseek) else stringResource(R.string.llm_api_key_missing),
+                value = if (hasKey) stringResource(R.string.llm_api_key_set) else stringResource(R.string.llm_api_key_missing),
                 onClick = onOpenLlm,
+                showDivider = true,
+            )
+            WeListRow(
+                title = stringResource(R.string.usage_title),
+                onClick = onOpenUsage,
                 showDivider = true,
             )
             WeListRow(

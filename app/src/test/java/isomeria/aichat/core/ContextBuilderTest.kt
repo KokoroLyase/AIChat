@@ -1,6 +1,7 @@
 package isomeria.aichat.core
 
 import isomeria.aichat.data.db.Contact
+import isomeria.aichat.data.db.Memory
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -25,6 +26,8 @@ class ContextBuilderTest {
             nicknameLine = "对方的昵称是「%1\$s」。",
             weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
             imagePlaceholder = "[图片]",
+            memoryHeader = "下面是记忆：",
+            memoryItem = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
         ),
         zone,
     )
@@ -94,9 +97,35 @@ class ContextBuilderTest {
     @Test
     fun emptyPrompt_sendsNoSystemMessage() {
         assertNull(builder.systemPrompt(contact(""), "阿哲", now))
-        val messages = builder.build(contact("  "), listOf(text(Role.USER, "hi")), true, "阿哲", now, loader)
+        val messages = builder.build(contact("  "), listOf(text(Role.USER, "hi")), true, "阿哲", now, loadImage = loader)
         assertEquals(1, messages.size)
         assertEquals(ChatRole.USER, messages[0].role)
+    }
+
+    private fun memory(content: String) = Memory(
+        contactId = 1, content = content, fromTime = now - 1000, toTime = now - 500, createdAt = now, updatedAt = now,
+    )
+
+    @Test
+    fun memories_comeAfterPersona_beforeTime() {
+        val prompt = builder.systemPrompt(contact("人设"), "", now, listOf(memory("喜欢拿铁"), memory("养了猫")))!!
+        assertEquals(
+            "人设\n\n下面是记忆：\n- [2026年11月1日] 喜欢拿铁\n- [2026年11月1日] 养了猫\n\n现在是 2026年11月1日 星期日 23:40。",
+            prompt,
+        )
+    }
+
+    @Test
+    fun emptyPersonaWithMemories_stillSendsSystemMessage() {
+        val prompt = builder.systemPrompt(contact(""), "", now, listOf(memory("喜欢拿铁")))!!
+        assertEquals("下面是记忆：\n- [2026年11月1日] 喜欢拿铁\n\n现在是 2026年11月1日 星期日 23:40。", prompt)
+    }
+
+    @Test
+    fun build_includesMemoriesInSystemMessage() {
+        val messages = builder.build(contact(), listOf(text(Role.USER, "hi")), true, "", now, listOf(memory("喜欢拿铁")), loader)
+        assertEquals(ChatRole.SYSTEM, messages[0].role)
+        assertTrue(messages[0].plainText().contains("喜欢拿铁"))
     }
 
     @Test
@@ -108,7 +137,7 @@ class ContextBuilderTest {
             text(Role.ASSISTANT, "怎么啦", group = "g1"),
             text(Role.USER, "没事"),
         )
-        val messages = builder.build(contact(), history, true, "", now, loader)
+        val messages = builder.build(contact(), history, true, "", now, loadImage = loader)
         assertEquals(listOf(ChatRole.SYSTEM, ChatRole.USER, ChatRole.ASSISTANT, ChatRole.USER), messages.map { it.role })
         assertEquals("在吗\n想你了", messages[1].plainText())
         assertEquals("在呀\n\n怎么啦", messages[2].plainText())
@@ -118,7 +147,7 @@ class ContextBuilderTest {
     @Test
     fun onlyLastThreeImagesCarryData() {
         val history = listOf(image("p1"), image("p2"), image("p3"), image("p4"), text(Role.USER, "看看这些"))
-        val user = builder.build(contact(""), history, true, "", now, loader).single()
+        val user = builder.build(contact(""), history, true, "", now, loadImage = loader).single()
         assertEquals(ChatRole.USER, user.role)
         val parts = user.parts
         // 第一张替换为文字，后三张带原图，最后是文字
@@ -133,7 +162,7 @@ class ContextBuilderTest {
     @Test
     fun modelWithoutImageSupport_getsPlaceholdersOnly() {
         val history = listOf(image("p1"), text(Role.USER, "这是什么"))
-        val user = builder.build(contact(""), history, false, "", now, loader).single()
+        val user = builder.build(contact(""), history, false, "", now, loadImage = loader).single()
         assertFalse(user.hasImage)
         assertEquals("[图片]\n这是什么", user.plainText())
     }
@@ -141,14 +170,14 @@ class ContextBuilderTest {
     @Test
     fun unreadableImage_becomesPlaceholder() {
         val history = listOf(image("missing"))
-        val user = builder.build(contact(""), history, true, "", now) { null }.single()
+        val user = builder.build(contact(""), history, true, "", now, loadImage = { null }).single()
         assertEquals("[图片]", user.plainText())
     }
 
     @Test
     fun blankTextMessages_areSkipped() {
         val history = listOf(text(Role.USER, "  "), text(Role.USER, "你好"))
-        val user = builder.build(contact(""), history, true, "", now, loader).single()
+        val user = builder.build(contact(""), history, true, "", now, loadImage = loader).single()
         assertEquals("你好", user.plainText())
     }
 }

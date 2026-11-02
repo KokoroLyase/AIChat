@@ -5,14 +5,20 @@ import androidx.room.Room
 import isomeria.aichat.data.crypto.SecretCipher
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.Contact
+import isomeria.aichat.data.db.Capability
 import isomeria.aichat.data.db.Conversation
+import isomeria.aichat.data.db.Memory
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.ProviderConfig
+import isomeria.aichat.data.db.ProviderKind
 import isomeria.aichat.data.db.ProviderModel
+import isomeria.aichat.data.db.ProviderProtocol
 import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.db.ThinkingLevel
+import isomeria.aichat.data.db.UsageDaily
+import isomeria.aichat.data.db.UsagePurpose
 import isomeria.aichat.data.reply.ReplyControl
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.data.repo.FileStorage
@@ -89,7 +95,7 @@ class BackupManagerTest {
 
         assertEquals(before, dump())
         assertTrue(summary.apiKeyRestored)
-        assertEquals("sk-real-key", cipher.decrypt(db.providerDao().getLlm()!!.apiKeyEncrypted!!))
+        assertEquals("sk-real-key", cipher.decrypt(deepSeek().apiKeyEncrypted!!))
         // 覆盖前停掉了等待中的回复
         assertTrue(replies.cancelled.isNotEmpty())
         // 只留下被引用的图片和头像
@@ -119,20 +125,20 @@ class BackupManagerTest {
     fun overwriteWithoutKeyInBackup_keepsLocalKey() = runBlocking {
         seed()
         val zip = export(password = null)
-        db.providerDao().update(db.providerDao().getLlm()!!.copy(apiKeyEncrypted = cipher.encrypt("sk-new-local")))
+        db.providerDao().update(deepSeek().copy(apiKeyEncrypted = cipher.encrypt("sk-new-local")))
         val summary = backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
         assertFalse(summary.apiKeyRestored)
-        assertEquals("sk-new-local", cipher.decrypt(db.providerDao().getLlm()!!.apiKeyEncrypted!!))
+        assertEquals("sk-new-local", cipher.decrypt(deepSeek().apiKeyEncrypted!!))
     }
 
     @Test
     fun skippingPassword_restoresEverythingButKey() = runBlocking {
         seed()
         val zip = export(password = "pw123456")
-        db.providerDao().update(db.providerDao().getLlm()!!.copy(apiKeyEncrypted = null))
+        db.providerDao().update(deepSeek().copy(apiKeyEncrypted = null))
         val summary = backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
         assertFalse(summary.apiKeyRestored)
-        assertEquals(null, db.providerDao().getLlm()!!.apiKeyEncrypted)
+        assertEquals(null, deepSeek().apiKeyEncrypted)
         assertEquals(2, db.contactDao().listAll().size)
     }
 
@@ -211,6 +217,175 @@ class BackupManagerTest {
         assertEquals(before, dump())
     }
 
+    // ---------- 多服务商、记忆、用量 ----------
+
+    @Test
+    fun export_withPassword_encryptsEveryProviderKey_andNoPlainKeyInFile() = runBlocking {
+        seed()
+        val zip = export(password = "pw123456")
+        val preview = backup.inspect(zip)
+        assertTrue(preview.manifest.includesApiKey)
+        val secrets = preview.data.providers.map { it.apiKey }
+        assertEquals(2, secrets.size)
+        assertTrue(secrets.all { it?.scheme == SecretDto.SCHEME_PASSWORD })
+        ZipFile(zip).use { z ->
+            val data = z.getInputStream(z.getEntry(BackupFormat.DATA)).readBytes().toString(Charsets.UTF_8)
+            assertFalse(data.contains("sk-real-key"))
+            assertFalse(data.contains("sk-second"))
+        }
+    }
+
+    @Test
+    fun overwrite_restoresBothProviderKeys_andContactBindings() = runBlocking {
+        seed()
+        val zip = export(password = "pw123456")
+        scramble()
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, "pw123456".toCharArray())
+
+        assertEquals("sk-second", cipher.decrypt(db.providerDao().get(secondProviderId)!!.apiKeyEncrypted!!))
+        assertEquals(secondProviderId, db.contactDao().get(2)!!.providerId)
+        assertEquals("第二家", db.providerDao().get(secondProviderId)!!.name)
+        val model = db.providerDao().model(secondProviderId, "vision")!!
+        assertEquals(true, model.thinkingUserMark)
+        assertTrue(db.providerDao().model(secondProviderId, "local")!!.manual)
+    }
+
+    @Test
+    fun overwrite_keepsLocalKeyOnlyForSameProvider_notWhenBackupChangesBaseUrl() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        // 本机同一家（Base URL 没变）保留本机的 Key
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals("sk-real-key", cipher.decrypt(deepSeek().apiKeyEncrypted!!))
+
+        // 本机的 Base URL 和备份不一样：不是同一家，本机的 Key 不能发到备份里的地址
+        db.providerDao().update(deepSeek().copy(baseUrl = "https://my-own-proxy.example.com"))
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        val restored = deepSeek()
+        assertEquals("https://api.deepseek.com/v1", restored.baseUrl)
+        assertEquals(null, restored.apiKeyEncrypted)
+    }
+
+    @Test
+    fun merge_mapsProvidersByProtocolAndUrl_addsNew_fillsMissingKey() = runBlocking {
+        seed()
+        val zip = export(password = "pw123456")
+
+        // 另一台手机：只有自己的 DeepSeek（同一家，但没有 Key）和一个 id 恰好相同的别的服务商
+        db.messageDao().deleteAll()
+        db.memoryDao().deleteAll()
+        db.usageDao().deleteAll()
+        db.conversationDao().deleteAll()
+        db.contactDao().deleteAll()
+        db.providerDao().deleteModels(secondProviderId)
+        db.providerDao().delete(secondProviderId)
+        db.providerDao().update(deepSeek().copy(apiKeyEncrypted = null, defaultModel = "本机默认"))
+        val localOther = db.providerDao().insert(
+            ProviderConfig(
+                kind = ProviderKind.LLM, provider = ProviderProtocol.OPENAI, name = "本机另一家",
+                baseUrl = "https://other.example.com/v1", apiKeyEncrypted = cipher.encrypt("sk-local-other"), defaultModel = "x",
+            ),
+        )
+
+        val summary = backup.restore(backup.inspect(zip), RestoreMode.MERGE, "pw123456".toCharArray())
+        assertTrue(summary.apiKeyRestored)
+
+        val providers = db.providerDao().llmList()
+        assertEquals(3, providers.size)
+        // 同一家：保留本机配置，只补 Key
+        assertEquals("本机默认", deepSeek().defaultModel)
+        assertEquals("sk-real-key", cipher.decrypt(deepSeek().apiKeyEncrypted!!))
+        // 本机另一家不动
+        assertEquals("sk-local-other", cipher.decrypt(db.providerDao().get(localOther)!!.apiKeyEncrypted!!))
+        // 备份里的第二家作为新服务商加入，联系人跟着它走
+        val added = providers.first { it.name == "第二家" }
+        assertEquals("sk-second", cipher.decrypt(added.apiKeyEncrypted!!))
+        assertTrue(added.id != localOther)
+        val azhe = db.contactDao().listAll().first { it.name == "阿哲" }
+        assertEquals(added.id, azhe.providerId)
+        assertEquals(setOf("vision", "local"), db.providerDao().models(added.id).map { it.modelId }.toSet())
+        assertEquals(1L, db.contactDao().listAll().first { it.name == "小雨" }.providerId)
+    }
+
+    @Test
+    fun merge_doesNotOverwriteLocalKey_withBackupKey() = runBlocking {
+        seed()
+        val zip = export(password = "pw123456")
+        db.providerDao().update(deepSeek().copy(apiKeyEncrypted = cipher.encrypt("sk-mine")))
+        val summary = backup.restore(backup.inspect(zip), RestoreMode.MERGE, "pw123456".toCharArray())
+        assertFalse(summary.apiKeyRestored)
+        assertEquals("sk-mine", cipher.decrypt(deepSeek().apiKeyEncrypted!!))
+    }
+
+    @Test
+    fun merge_memoriesAndUsage_followContacts_localWins() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        // 本机：联系人 2 被删掉后，新建的联系人恰好也拿到 id 2；联系人 1 同一天的用量变了，多了一条记忆
+        db.contactDao().delete(2)
+        db.contactDao().insert(contact(id = 2, name = "另一个人", createdAt = 77_777))
+        db.conversationDao().upsert(Conversation(contactId = 2))
+        db.usageDao().deleteByContact(2)
+        db.usageDao().add(20_000, 1, UsagePurpose.CHAT, 1, 1)
+        db.memoryDao().insert(Memory(contactId = 1, content = "本机的记忆", fromTime = 9_000, toTime = 9_100, createdAt = 9_200, updatedAt = 9_200))
+
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+
+        // 记忆：同一条不重复，本机的保留
+        assertEquals(listOf("喜欢拿铁", "本机的记忆"), db.memoryDao().listByContact(1).map { it.content })
+        // 用量：本机已有的那一天保留本机的（累加之后的数），其他的加入；阿哲的跟着新 id 走
+        val usage = db.usageDao().listAll()
+        val readded = db.contactDao().listAll().first { it.name == "阿哲" }
+        assertEquals(101L, usage.first { it.day == 20_000L && it.contactId == 1L && it.purpose == UsagePurpose.CHAT }.promptTokens)
+        assertEquals(50L, usage.first { it.purpose == UsagePurpose.MEMORY }.promptTokens)
+        assertEquals(70L, usage.first { it.contactId == readded.id }.promptTokens)
+        assertTrue("不会算到「另一个人」头上", usage.none { it.contactId == 2L })
+        assertEquals(9L, usage.first { it.contactId == UsageDaily.DELETED_CONTACT }.promptTokens)
+    }
+
+    @Test
+    fun overwrite_contactWithMissingProvider_fallsBackToFirst() = runBlocking {
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"1","appVersionCode":1,"formatVersion":${BackupFormat.VERSION},"exportedAt":1}""",
+            BackupFormat.DATA to """
+                {"contacts":[{"id":5,"name":"甲","avatarColor":0,"providerId":77,"model":"m","temperature":1.0,"createdAt":1,"updatedAt":1}],
+                 "providers":[{"id":3,"kind":"LLM","provider":"openai","name":"乙","baseUrl":"https://b.example.com/v1","defaultModel":"m"}],
+                 "memories":[{"id":1,"contactId":404,"content":"找不到联系人","fromTime":1,"toTime":1,"createdAt":1,"updatedAt":1},
+                             {"id":2,"contactId":5,"content":"  ","fromTime":1,"toTime":1,"createdAt":1,"updatedAt":1}],
+                 "usage":[{"day":1,"contactId":404,"promptTokens":1},{"day":1,"contactId":5,"promptTokens":-5}]}
+            """.trimIndent(),
+        )
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(3L, db.contactDao().get(5)!!.providerId)
+        // 新恢复的联系人没有会话时也要建一个；记忆起点留空
+        assertEquals(null, db.conversationDao().get(5)!!.memoryCursor)
+        // 找不到联系人的、空的记忆和用量都去掉，负数归零
+        assertTrue(db.memoryDao().listAll().isEmpty())
+        assertEquals(listOf(UsageDaily(1, 5, UsagePurpose.CHAT, 0, 0, 0)), db.usageDao().listAll())
+    }
+
+    @Test
+    fun v1Backup_restoresIntoCurrentFormat() = runBlocking {
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.2.0","appVersionCode":200,"formatVersion":1,"exportedAt":1}""",
+            BackupFormat.DATA to """
+                {"contacts":[{"id":1,"name":"小雨","avatarColor":0,"providerId":1,"model":"deepseek-flash","temperature":1.3,
+                              "contextCount":50,"createdAt":1,"updatedAt":1}],
+                 "conversations":[{"contactId":1,"pinned":true}],
+                 "messages":[{"id":1,"contactId":1,"role":"ASSISTANT","type":"TEXT","content":"你好","status":"SUCCESS",
+                              "promptTokens":8,"completionTokens":2,"createdAt":1793448000000}],
+                 "providers":[{"id":1,"kind":"LLM","provider":"deepseek","baseUrl":"https://api.deepseek.com","defaultModel":"deepseek-flash",
+                               "models":[{"modelId":"deepseek-flash","displayName":"Flash","imageInput":"YES"}]}]}
+            """.trimIndent(),
+        )
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(10_000, db.contactDao().get(1)!!.contextTokens)
+        assertEquals(null, db.conversationDao().get(1)!!.memoryCursor)
+        assertEquals("DeepSeek", deepSeek().name)
+        assertTrue(db.providerDao().model(1, "deepseek-flash")!!.supportsThinking)
+        assertEquals(8L, db.usageDao().listAll().single().promptTokens)
+    }
+
     // ---------- 拒绝与回滚 ----------
 
     @Test
@@ -268,7 +443,7 @@ class BackupManagerTest {
     // ---------- 测试数据 ----------
 
     private suspend fun seed() {
-        val llm = db.providerDao().getLlm()!!
+        val llm = deepSeek()
         db.providerDao().update(llm.copy(apiKeyEncrypted = cipher.encrypt("sk-real-key"), baseUrl = "https://api.deepseek.com/v1"))
         db.providerDao().setImageMark(llm.id, "deepseek-v4-pro", true)
 
@@ -282,13 +457,17 @@ class BackupManagerTest {
                 thinking = ThinkingLevel.HIGH,
                 temperature = 0.7f,
                 systemPrompt = "你是小雨\n说话温柔",
-                contextCount = 30,
+                contextTokens = 6000,
                 splitReplies = false,
+                autoMemory = false,
             ),
         )
         db.contactDao().insert(contact(id = 2, name = "阿哲", createdAt = 2_000))
         db.conversationDao().upsert(
-            Conversation(contactId = 1, pinned = true, unreadCount = 2, draft = "还没发出去", lastMessageTime = 5_000, lastMessagePreview = "[图片]"),
+            Conversation(
+                contactId = 1, pinned = true, unreadCount = 2, draft = "还没发出去", lastMessageTime = 5_000,
+                lastMessagePreview = "[图片]", memoryCursor = 3_500, memoryStart = 2_000,
+            ),
         )
         db.conversationDao().upsert(Conversation(contactId = 2, markedUnread = true, lastMessageTime = 6_000, lastMessagePreview = "在吗"))
         db.messageDao().insert(text(contactId = 1, content = "你好", createdAt = 3_000))
@@ -312,6 +491,33 @@ class BackupManagerTest {
         db.messageDao().insert(
             text(contactId = 2, content = "在吗", createdAt = 6_000).copy(status = MessageStatus.FAILED, errorCode = FailReason.NETWORK.code),
         )
+        // 第二个服务商，带 Key、带手动添加的模型和标记；阿哲用它
+        val second = db.providerDao().insert(
+            ProviderConfig(
+                kind = ProviderKind.LLM, provider = ProviderProtocol.OPENAI, name = "第二家",
+                baseUrl = "https://second.example.com/v1", apiKeyEncrypted = cipher.encrypt("sk-second"), defaultModel = "vision",
+            ),
+        )
+        db.providerDao().upsertModels(
+            listOf(
+                ProviderModel(second, "vision", "Vision", Capability.YES, thinkingInput = Capability.NO, thinkingUserMark = true),
+                ProviderModel(second, "local", "local", manual = true, sortOrder = 1),
+            ),
+        )
+        db.contactDao().update(db.contactDao().get(2)!!.copy(providerId = second, model = "vision"))
+        secondProviderId = second
+
+        db.memoryDao().insert(
+            Memory(contactId = 1, content = "喜欢拿铁", fromTime = 3_000, toTime = 3_500, edited = true, createdAt = 3_600, updatedAt = 3_700),
+        )
+        db.usageDao().insertIgnore(
+            listOf(
+                UsageDaily(20_000, 1, UsagePurpose.CHAT, 100, 10, 3),
+                UsageDaily(20_000, 1, UsagePurpose.MEMORY, 50, 5, 1),
+                UsageDaily(20_001, 2, UsagePurpose.CHAT, 70, 7, 2),
+                UsageDaily(20_001, UsageDaily.DELETED_CONTACT, UsagePurpose.CHAT, 9, 9, 1),
+            ),
+        )
         settings.value = AppSettingsSnapshot(
             themeMode = ThemeMode.DARK,
             fontSize = FontSize.LARGE,
@@ -331,8 +537,14 @@ class BackupManagerTest {
         db.contactDao().insert(contact(id = 5, name = "新联系人", createdAt = 50_000))
         db.conversationDao().upsert(Conversation(contactId = 5))
         db.messageDao().insert(text(contactId = 1, content = "新消息", createdAt = 7_000))
-        db.providerDao().update(db.providerDao().getLlm()!!.copy(apiKeyEncrypted = null, baseUrl = "https://example.com"))
+        db.providerDao().update(deepSeek().copy(apiKeyEncrypted = null, baseUrl = "https://example.com"))
         db.providerDao().deleteModels(1)
+        db.providerDao().deleteModels(secondProviderId)
+        db.providerDao().delete(secondProviderId)
+        db.memoryDao().deleteAll()
+        db.memoryDao().insert(Memory(contactId = 1, content = "本机后来的记忆", fromTime = 7_000, toTime = 7_000, createdAt = 7_000, updatedAt = 7_000))
+        db.usageDao().deleteAll()
+        db.usageDao().add(30_000, 1, UsagePurpose.CHAT, 1, 1)
         settings.value = settings.value.copy(themeMode = ThemeMode.LIGHT, nickname = "别人", avatarPath = null)
     }
 
@@ -369,20 +581,28 @@ class BackupManagerTest {
         val contacts: List<Contact>,
         val conversations: List<Conversation>,
         val messages: List<Message>,
-        val provider: ProviderConfig,
+        val providers: List<ProviderConfig>,
         val models: List<ProviderModel>,
+        val memories: List<Memory>,
+        val usage: List<UsageDaily>,
         val settings: AppSettingsSnapshot,
     )
 
+    private var secondProviderId = 0L
+
+    private suspend fun deepSeek() = db.providerDao().get(1)!!
+
     private suspend fun dump(): Dump {
         fun content(path: String?) = path?.let { "bytes:" + File(it).readBytes().joinToString(",") }
-        val llm = db.providerDao().getLlm()!!
+        val providers = db.providerDao().llmList()
         return Dump(
             contacts = db.contactDao().listAll().map { it.copy(avatarPath = content(it.avatarPath)) },
             conversations = db.conversationDao().listAll(),
             messages = db.messageDao().listAll().map { it.copy(imagePath = content(it.imagePath)) },
-            provider = llm.copy(apiKeyEncrypted = llm.apiKeyEncrypted?.let(cipher::decrypt)),
-            models = db.providerDao().models(llm.id),
+            providers = providers.map { it.copy(apiKeyEncrypted = it.apiKeyEncrypted?.let(cipher::decrypt)) },
+            models = providers.flatMap { db.providerDao().models(it.id) },
+            memories = db.memoryDao().listAll(),
+            usage = db.usageDao().listAll(),
             settings = settings.value.copy(avatarPath = content(settings.value.avatarPath)),
         )
     }

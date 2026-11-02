@@ -88,7 +88,7 @@ fun UpdateDialog(
 }
 
 @Composable
-private fun UpdateButton(text: String, color: Color, onClick: () -> Unit, bold: Boolean = false) {
+internal fun UpdateButton(text: String, color: Color, onClick: () -> Unit, bold: Boolean = false) {
     WeDivider(Modifier.background(WeTheme.colors.dialogBackground))
     Box(
         Modifier

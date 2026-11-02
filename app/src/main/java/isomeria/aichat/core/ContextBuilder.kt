@@ -1,6 +1,7 @@
 package isomeria.aichat.core
 
 import isomeria.aichat.data.db.Contact
+import isomeria.aichat.data.db.Memory
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.Role
@@ -24,13 +25,17 @@ data class ContextLabels(
     val weekdays: List<String>,
     /** 不带原图的图片在请求里的文字：[图片] */
     val imagePlaceholder: String,
+    /** 记忆前面的说明 */
+    val memoryHeader: String,
+    /** 一条记忆。参数：年、月、日、内容 */
+    val memoryItem: String,
 )
 
 /**
- * 每次请求 = 系统提示词 + 最近 N 条消息。
+ * 每次请求 = 系统提示词 + 记忆 + 预算内的聊天记录（由 [ContextWindow] 选出）。
  *
- * - 系统提示词里的 {名称} 换成联系人名称；模板里没改过的人设占位行去掉；为空时不发送
- * - 系统提示词末尾附上当前日期、星期、时间和自己的昵称
+ * - 系统提示词里的 {名称} 换成联系人名称；模板里没改过的人设占位行去掉；为空且没有记忆时不发送
+ * - 人设之后是长期记忆，再后面附上当前日期、星期、时间和自己的昵称
  * - 历史回复里的思考内容不回传
  * - 只有最近 [MAX_IMAGES] 张图片带原图，更早的替换为「[图片]」；模型不支持图片时全部替换
  * - 连续同一角色的消息合并成一条（文字和图片作为同一条消息的不同部分）
@@ -40,7 +45,8 @@ class ContextBuilder(
     private val zone: ZoneId = ZoneId.systemDefault(),
 ) {
     /**
-     * @param history 按时间正序、已截取最近 N 条
+     * @param history 按时间正序、已按预算选好
+     * @param memories 这次带上的记忆，按时间正序
      * @param loadImage 读取图片文件并返回 data URL；读不到时返回 null
      */
     fun build(
@@ -49,19 +55,13 @@ class ContextBuilder(
         supportsImage: Boolean,
         nickname: String,
         now: Long,
+        memories: List<Memory> = emptyList(),
         loadImage: (String) -> String?,
     ): List<ChatMessage> {
         val result = mutableListOf<ChatMessage>()
-        systemPrompt(contact, nickname, now)?.let { result += ChatMessage(ChatRole.SYSTEM, it) }
+        systemPrompt(contact, nickname, now, memories)?.let { result += ChatMessage(ChatRole.SYSTEM, it) }
 
-        val imagesWithData = if (supportsImage) {
-            history.filter { it.type == MessageType.IMAGE && it.imagePath != null }
-                .takeLast(MAX_IMAGES)
-                .map { it.id }
-                .toSet()
-        } else {
-            emptySet()
-        }
+        val imagesWithData = if (supportsImage) ContextWindow.imagesWithData(history) else emptySet()
 
         var currentRole: ChatRole? = null
         val currentParts = mutableListOf<ChatPart>()
@@ -99,9 +99,9 @@ class ContextBuilder(
         return result
     }
 
-    fun systemPrompt(contact: Contact, nickname: String, now: Long): String? {
+    fun systemPrompt(contact: Contact, nickname: String, now: Long, memories: List<Memory> = emptyList()): String? {
         val prompt = resolvePrompt(contact.systemPrompt, contact.name)
-        if (prompt.isBlank()) return null
+        if (prompt.isBlank() && memories.isEmpty()) return null
         val time = Instant.ofEpochMilli(now).atZone(zone)
         val extra = buildString {
             append(
@@ -116,7 +116,15 @@ class ContextBuilder(
             )
             if (nickname.isNotBlank()) append(labels.nicknameLine.format(nickname.trim()))
         }
-        return prompt + "\n\n" + extra
+        return listOf(prompt, memoryBlock(memories), extra).filter { it.isNotEmpty() }.joinToString("\n\n")
+    }
+
+    private fun memoryBlock(memories: List<Memory>): String {
+        if (memories.isEmpty()) return ""
+        return memories.joinToString("\n", prefix = labels.memoryHeader + "\n") { memory ->
+            val date = Instant.ofEpochMilli(memory.toTime).atZone(zone)
+            labels.memoryItem.format(date.year, date.monthValue, date.dayOfMonth, memory.content)
+        }
     }
 
     /** 替换 {名称}，去掉没改过的人设占位行 */

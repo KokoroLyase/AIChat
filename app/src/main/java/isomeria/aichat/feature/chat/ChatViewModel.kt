@@ -118,13 +118,22 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /** 这个联系人用的服务商有没有 Key */
+    private val hasApiKey: Flow<Boolean> = contactFlow.flatMapLatest { contact ->
+        if (contact == null) {
+            flowOf(true)
+        } else {
+            providers.observeConfig(contact.providerId).map { !it?.apiKeyEncrypted.isNullOrEmpty() }
+        }
+    }
+
     private val me = combine(settings.avatarPath, settings.nickname) { path, name -> path to name }
 
     val state: StateFlow<ChatUiState> = combine(
         contactFlow,
         revealed,
         supportsImage,
-        providers.hasApiKey,
+        hasApiKey,
         me,
     ) { contact, (messages, pending), image, hasKey, (avatar, nickname) ->
         val waiting = messages.any { it.role == Role.USER && it.status == MessageStatus.SENDING }

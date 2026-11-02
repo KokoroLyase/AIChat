@@ -26,9 +26,14 @@ import isomeria.aichat.feature.contactedit.ContactDetailScreen
 import isomeria.aichat.feature.contactedit.ContactEditScreen
 import isomeria.aichat.feature.main.MainScreen
 import isomeria.aichat.feature.me.ProfileScreen
+import isomeria.aichat.feature.memory.MemoryEditScreen
+import isomeria.aichat.feature.memory.MemoryScreen
 import isomeria.aichat.feature.settings.LicensesScreen
-import isomeria.aichat.feature.settings.LlmSettingsScreen
+import isomeria.aichat.feature.settings.ProviderEditScreen
+import isomeria.aichat.feature.settings.ProviderListScreen
 import isomeria.aichat.feature.settings.SettingsScreen
+import isomeria.aichat.feature.usage.UsageDetailScreen
+import isomeria.aichat.feature.usage.UsageScreen
 import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
@@ -41,7 +46,16 @@ import kotlinx.serialization.Serializable
 /** contactId 为 -1 时是新建 */
 @Serializable data class ContactEditRoute(val contactId: Long = NEW_CONTACT)
 @Serializable data object SettingsRoute
-@Serializable data object LlmSettingsRoute
+@Serializable data object ProviderListRoute
+
+/** providerId 为 -1 时是添加新服务商 */
+@Serializable data class ProviderEditRoute(val providerId: Long = NEW_PROVIDER)
+@Serializable data class MemoryRoute(val contactId: Long)
+@Serializable data class MemoryEditRoute(val memoryId: Long)
+@Serializable data object UsageRoute
+
+/** 某一天各联系人的用量，或某个联系人每天的用量；不用的条件是 [NO_USAGE_FILTER] */
+@Serializable data class UsageDetailRoute(val day: Long = NO_USAGE_FILTER, val contactId: Long = NO_USAGE_FILTER)
 @Serializable data object LicensesRoute
 @Serializable data object ProfileRoute
 @Serializable data object SearchRoute
@@ -54,6 +68,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class ImageViewerRoute(val path: String)
 
 const val NEW_CONTACT = -1L
+const val NEW_PROVIDER = -1L
+const val NO_USAGE_FILTER = -1L
 
 /**
  * 单 Activity + Navigation Compose。二级页面从右侧推入；返回按微信的动画滑出，
@@ -97,7 +113,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenContact = { nav.navigate(ContactDetailRoute(it)) },
                 onOpenChatInfo = { nav.navigate(ChatInfoRoute(it)) },
                 onOpenImage = { nav.navigate(ImageViewerRoute(it)) },
-                onOpenLlmSettings = { nav.navigate(LlmSettingsRoute) },
+                onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
             )
         }
         page<ChatInfoRoute>(nav) {
@@ -129,8 +145,13 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                     }
                 },
                 onEdit = { nav.navigate(ContactEditRoute(route.contactId)) },
+                onOpenMemory = { nav.navigate(MemoryRoute(route.contactId)) },
             )
         }
+        page<MemoryRoute>(nav) {
+            MemoryScreen(onBack = nav::popBackStackSafely, onOpen = { nav.navigate(MemoryEditRoute(it)) })
+        }
+        page<MemoryEditRoute>(nav) { MemoryEditScreen(onBack = nav::popBackStackSafely) }
         page<ContactEditRoute>(nav) {
             ContactEditScreen(
                 onBack = nav::popBackStackSafely,
@@ -143,7 +164,8 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
         page<SettingsRoute>(nav) {
             SettingsScreen(
                 onBack = nav::popBackStackSafely,
-                onOpenLlm = { nav.navigate(LlmSettingsRoute) },
+                onOpenLlm = { nav.navigate(ProviderListRoute) },
+                onOpenUsage = { nav.navigate(UsageRoute) },
                 onOpenLicenses = { nav.navigate(LicensesRoute) },
                 onOpenExport = { nav.navigate(ExportRoute) },
                 onOpenRestore = { nav.navigate(RestoreRoute) },
@@ -151,7 +173,22 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
         }
         page<ExportRoute>(nav) { ExportScreen(onBack = nav::popBackStackSafely) }
         page<RestoreRoute>(nav) { RestoreScreen(onBack = nav::popBackStackSafely) }
-        page<LlmSettingsRoute>(nav) { LlmSettingsScreen(onBack = nav::popBackStackSafely) }
+        page<ProviderListRoute>(nav) {
+            ProviderListScreen(
+                onBack = nav::popBackStackSafely,
+                onOpen = { nav.navigate(ProviderEditRoute(it)) },
+                onAdd = { nav.navigate(ProviderEditRoute()) },
+            )
+        }
+        page<ProviderEditRoute>(nav) { ProviderEditScreen(onBack = nav::popBackStackSafely) }
+        page<UsageRoute>(nav) {
+            UsageScreen(
+                onBack = nav::popBackStackSafely,
+                onOpenDay = { nav.navigate(UsageDetailRoute(day = it)) },
+                onOpenContact = { nav.navigate(UsageDetailRoute(contactId = it)) },
+            )
+        }
+        page<UsageDetailRoute>(nav) { UsageDetailScreen(onBack = nav::popBackStackSafely) }
         page<LicensesRoute>(nav) { LicensesScreen(onBack = nav::popBackStackSafely) }
         page<ProfileRoute>(nav) { ProfileScreen(onBack = nav::popBackStackSafely) }
         page<SearchRoute>(nav) {

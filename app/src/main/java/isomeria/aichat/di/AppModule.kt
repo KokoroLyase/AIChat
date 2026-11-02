@@ -23,14 +23,22 @@ import isomeria.aichat.data.crypto.SecretCipher
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.ContactDao
 import isomeria.aichat.data.db.ConversationDao
+import isomeria.aichat.data.db.MIGRATION_1_2
+import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.MessageDao
 import isomeria.aichat.data.db.ProviderDao
+import isomeria.aichat.data.db.UsageDao
 import isomeria.aichat.data.llm.DeepSeekProvider
+import isomeria.aichat.data.llm.GenericOpenAiProvider
 import isomeria.aichat.data.llm.LlmProvider
+import isomeria.aichat.data.memory.MemoryLabels
+import isomeria.aichat.data.memory.NicknameSource
 import isomeria.aichat.data.reply.ReplyControl
 import isomeria.aichat.data.reply.ReplyScheduler
 import isomeria.aichat.data.settings.SettingsStore
+import isomeria.aichat.update.ApkVerifier
 import isomeria.aichat.update.GitHubUpdateSource
+import isomeria.aichat.update.PackageManagerApkVerifier
 import isomeria.aichat.update.UpdatePrefs
 import isomeria.aichat.update.UpdateSource
 import kotlinx.serialization.json.Json
@@ -46,6 +54,7 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
+            .addMigrations(MIGRATION_1_2)
             .addCallback(AppDatabase.seedCallback)
             .build()
 
@@ -56,6 +65,10 @@ object AppModule {
     @Provides fun messageDao(db: AppDatabase): MessageDao = db.messageDao()
 
     @Provides fun providerDao(db: AppDatabase): ProviderDao = db.providerDao()
+
+    @Provides fun memoryDao(db: AppDatabase): MemoryDao = db.memoryDao()
+
+    @Provides fun usageDao(db: AppDatabase): UsageDao = db.usageDao()
 
     @Provides
     @Singleton
@@ -91,7 +104,21 @@ object AppModule {
                 nicknameLine = res.getString(R.string.prompt_nickname_line),
                 weekdays = res.getStringArray(R.array.weekdays).toList(),
                 imagePlaceholder = res.getString(R.string.preview_image),
+                memoryHeader = res.getString(R.string.prompt_memory_header),
+                memoryItem = res.getString(R.string.prompt_memory_item),
             ),
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun memoryLabels(@ApplicationContext context: Context): MemoryLabels {
+        val res = context.resources
+        return MemoryLabels(
+            summaryPrompt = res.getString(R.string.memory_summary_prompt),
+            mergePrompt = res.getString(R.string.memory_merge_prompt),
+            defaultMyName = res.getString(R.string.memory_default_my_name),
+            imagePlaceholder = res.getString(R.string.preview_image),
         )
     }
 
@@ -119,6 +146,10 @@ abstract class BindingsModule {
 
     @Binds @IntoSet abstract fun deepSeek(impl: DeepSeekProvider): LlmProvider
 
+    @Binds @IntoSet abstract fun genericOpenAi(impl: GenericOpenAiProvider): LlmProvider
+
+    @Binds abstract fun nicknameSource(impl: SettingsStore): NicknameSource
+
     @Binds abstract fun replyControl(impl: ReplyScheduler): ReplyControl
 
     @Binds abstract fun backupSettings(impl: SettingsStoreBackupAccess): BackupSettingsAccess
@@ -126,4 +157,6 @@ abstract class BindingsModule {
     @Binds abstract fun updatePrefs(impl: SettingsStore): UpdatePrefs
 
     @Binds abstract fun updateSource(impl: GitHubUpdateSource): UpdateSource
+
+    @Binds abstract fun apkVerifier(impl: PackageManagerApkVerifier): ApkVerifier
 }
