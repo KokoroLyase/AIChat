@@ -4,7 +4,7 @@
 
 - 包名 `isomeria.aichat`，需要 Android 14（API 34）及以上
 - 原生 Kotlin + Jetpack Compose，单 Activity，MVVM + StateFlow，Hilt 依赖注入
-- 大语言模型：DeepSeek（兼容 OpenAI Chat Completions 格式）
+- 大语言模型：DeepSeek 和任意兼容 OpenAI Chat Completions 格式的服务商
 - 设计方案见 [智信 AIChat 设计方案.md](智信%20AIChat%20设计方案.md)
 
 > 本项目与腾讯、微信没有任何关系。界面只参考布局与配色，不使用微信的图标、素材和名称。
@@ -32,6 +32,18 @@
 | 搜索 | 同时搜联系人名称和聊天内容；点结果跳到对应消息并高亮 |
 | 表情面板 | 系统 emoji（列表由 `tools/generate_emoji.py` 从 Unicode 官方数据生成）、分类标签、最近使用；面板和键盘同高 |
 | 草稿 | 退出聊天时保存，聊天列表显示红色「[草稿]」 |
+
+## 0.3.0 功能
+
+| 功能 | 说明 |
+| --- | --- |
+| 上下文预算 | 每个联系人可设 token 上限（默认 4000）；系统提示词、记忆和聊天记录合计不超过它，超出时丢弃最早的消息。估算不用分词库：DeepSeek 按官方比例（汉字 0.6、其他 0.3），其他服务商汉字按 1 |
+| 长期记忆 | 未总结的消息超过可用预算的 80% 时，把最早的一半总结成一条记忆，每次请求都带上；最多占预算的 1/4，超出时合并。可查看、编辑、删除；每个联系人可关闭。老聊天不自动回溯，可手动分批总结 |
+| 多服务商 | 添加任意兼容 OpenAI 格式的服务商（名称、Base URL、Key），拉取模型列表或手动添加模型；每个模型可标记是否支持图片和思考。Base URL 只支持 https |
+| 联系人选服务商 | 编辑页先选服务商，再选模型；Key 各自加密保存 |
+| 用量统计 | 设置里按天、按联系人查看 token 用量；记忆总结单独标出，清空聊天不影响统计 |
+| 应用内更新 | 下载 APK，用 `.sha256` 校验，核对包名、版本和签名后拉起系统安装；失败时可在浏览器中打开发布页 |
+| 备份格式 v2 | 服务商、记忆和用量也会导出和恢复；各服务商的 Key 默认不导出，勾选后用密码加密；v1 备份自动迁移 |
 
 ## 构建
 
@@ -92,17 +104,18 @@ GitHub Actions 从仓库 Secrets 读取签名，需要配置：
 isomeria.aichat
 ├─ ui/theme        微信风格主题：颜色、尺寸、字号
 ├─ ui/components   通用组件：顶栏、Tab 栏、头像、气泡、输入栏、列表行、对话框、菜单
-├─ feature/        main · chatlist · chat · chatinfo · contacts · contactedit · me · settings · backup
+├─ feature/        main · chatlist · chat · chatinfo · contacts · contactedit · memory · me · settings · usage · backup
 ├─ navigation      路由与页面切换
-├─ core            纯逻辑：时间显示、链接识别、分条拆分、上下文拼装、拼音分组
+├─ core            纯逻辑：时间显示、链接识别、分条拆分、上下文拼装与预算、记忆策略、用量汇总、拼音分组
 ├─ data/db         Room 表与 DAO
 ├─ data/repo       仓库层（页面只依赖这里）
-├─ data/llm        模型服务接口与 DeepSeek 实现
+├─ data/llm        模型服务接口：OpenAI 兼容格式，DeepSeek 和通用两种请求体
+├─ data/memory     长期记忆：自动总结、合并，后台任务
 ├─ data/reply      后台等待回复（WorkManager）与通知
 ├─ data/settings   MMKV 设置
 ├─ data/crypto     Android Keystore 加密
 ├─ data/backup     导出与恢复（格式、密码加密、迁移）
-└─ update          检查更新（GitHub Release）
+└─ update          检查更新与应用内更新（GitHub Release、下载、校验、安装）
 ```
 
 ## 许可
