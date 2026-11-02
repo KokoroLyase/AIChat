@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +37,15 @@ import isomeria.aichat.ui.theme.WeTheme
 
 data class MenuItem(val label: String, val icon: ImageVector? = null, val onClick: () -> Unit)
 
+/** 菜单也是独立窗口，要和 [WeDialogWindow] 一样带上 App 内的字体大小。 */
+@Composable
+private fun WePopup(provider: PopupPositionProvider, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    Popup(popupPositionProvider = provider, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+        CompositionLocalProvider(LocalDensity provides density, content = content)
+    }
+}
+
 /**
  * 聊天消息的长按菜单：深色圆角，横向排列图标和文字，出现在消息上方；上方放不下时出现在下方。
  * 要放在消息气泡所在的布局里调用，菜单以它为锚点。
@@ -45,7 +56,7 @@ fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
     val dimens = WeTheme.dimens
     val gap = with(LocalDensity.current) { 6.dp.roundToPx() }
     val provider = remember(gap) { AboveAnchorProvider(gap) }
-    Popup(popupPositionProvider = provider, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+    WePopup(provider, onDismiss) {
         Row(
             Modifier
                 .clip(RoundedCornerShape(dimens.popupCorner))
@@ -83,7 +94,7 @@ fun WeContextMenu(pressOffset: IntOffset, items: List<MenuItem>, onDismiss: () -
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     val provider = remember(pressOffset) { AtPointProvider(pressOffset) }
-    Popup(popupPositionProvider = provider, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+    WePopup(provider, onDismiss) {
         Column(
             Modifier
                 .width(IntrinsicSize.Max)
@@ -100,7 +111,7 @@ fun WeContextMenu(pressOffset: IntOffset, items: List<MenuItem>, onDismiss: () -
                             onDismiss()
                             item.onClick()
                         }
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .padding(horizontal = 20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -121,7 +132,7 @@ fun WeDropdownMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
     val dimens = WeTheme.dimens
     val margin = with(LocalDensity.current) { 4.dp.roundToPx() }
     val provider = remember(margin) { BelowEndProvider(margin) }
-    Popup(popupPositionProvider = provider, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+    WePopup(provider, onDismiss) {
         Column(
             Modifier
                 .clip(RoundedCornerShape(dimens.popupCorner))
@@ -135,7 +146,7 @@ fun WeDropdownMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
                             onDismiss()
                             item.onClick()
                         }
-                        .height(52.dp)
+                        .heightIn(min = 52.dp)
                         .padding(start = 20.dp, end = 28.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

@@ -15,7 +15,10 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import isomeria.aichat.feature.chat.ChatPageSample
@@ -234,6 +237,7 @@ class ScreenshotTest {
             ModelParameterControls(modelProvider, configuredModel, "low", 1.3f, {}, {})
             ModelParameterControls(modelProvider, configuredModel, "off", 1.8f, {}, {})
             ModelParameterControls(modelProvider, configuredModel.copy(userConfig = ModelRules.encode(ModelRules.effective(configuredModel).copy(temperature = TemperatureRule(TemperatureSpec(TemperatureMode.UNSUPPORTED))))), "off", 1.3f, {}, {})
+            ModelParameterControls(modelProvider, configuredModel.copy(userConfig = ModelRules.encode(ModelRules.effective(configuredModel).copy(temperature = TemperatureRule(TemperatureSpec(TemperatureMode.FIXED, fixed = 1f))))), "off", 1.3f, {}, {})
         }
     }
     @Test fun parametersLight() = shot("18-model-parameters", false) { ParameterSample() }
@@ -271,6 +275,99 @@ class ScreenshotTest {
     private val fetchFailed = previewProviderState.copy(messageRes = isomeria.aichat.R.string.fetch_failed_not_found, messageIsError = true)
     @Test fun fetchFailedLight() = shot("29-provider-fetch-failed", false) { ProviderEditSample(fetchFailed) }
     @Test fun fetchFailedDark() = shot("29-provider-fetch-failed", true) { ProviderEditSample(fetchFailed) }
+
+    private val longModelList = listOf(configuredModel, configuredModel.copy(modelId = "same-name", displayName = "same-name")) +
+        (1..30).map { ProviderModel(2, "vendor/candidate-model-$it", "vendor/candidate-model-$it", legacy = false) } +
+        ProviderModel(2, "gone-model", "下架的模型", legacy = false, missingFromList = true)
+    private val modelListState = previewProviderState.copy(savedForm = ProviderSavedForm("OpenRouter", "https://openrouter.ai/api/v1", "GENERIC"))
+    private fun scrolledTo(text: String) = compose.onNodeWithText(text).performScrollTo()
+    private fun modelListShot(name: String, dark: Boolean, expandPending: Boolean = false) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark) {
+                Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) { ProviderEditSample(modelListState, longModelList) }
+            }
+        }
+        val pending = compose.onNodeWithText("待配置（31）").performScrollTo()
+        if (expandPending) {
+            pending.performClick()
+            compose.onNodeWithText("vendor/candidate-model-4", substring = true).performScrollTo()
+        }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun modelListLongLight() = modelListShot("30-model-list-long", false)
+    @Test fun modelListLongDark() = modelListShot("30-model-list-long", true)
+    @Test fun modelListExpandedLight() = modelListShot("31-model-list-expanded", false, expandPending = true)
+    @Test fun modelListExpandedDark() = modelListShot("31-model-list-expanded", true, expandPending = true)
+
+    private fun advancedShot(dark: Boolean) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark) {
+                Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) { ProviderEditSample(modelListState.copy(presetId = "openrouter", compatibility = "OPENROUTER")) }
+            }
+        }
+        scrolledTo("高级连接设置").performClick()
+        compose.onNodeWithText("兼容方案", substring = true).performClick()
+        compose.waitForIdle()
+        captureScreenRoboImage("screenshots/32-compat-sheet-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun compatSheetLight() = advancedShot(false)
+    @Test fun compatSheetDark() = advancedShot(true)
+
+    private fun modelAdvancedShot(dark: Boolean) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark) {
+                Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) { ModelEditContent(ModelEditState(configuredModel, modelProvider), {}, {}, {}) }
+            }
+        }
+        scrolledTo("模型级高级设置").performClick()
+        scrolledTo("恢复继承")
+        compose.onRoot().captureRoboImage("screenshots/33-model-advanced-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun modelAdvancedLight() = modelAdvancedShot(false)
+    @Test fun modelAdvancedDark() = modelAdvancedShot(true)
+
+    private fun largeDialogShot(dark: Boolean) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark, fontScale = 1.6f) {
+                Me()
+                ConflictDialog(listOf(ModelReference("小雨", ReferencePurpose.CHAT), ModelReference("小雨", ReferencePurpose.MEMORY)), {}) {}
+            }
+        }
+        captureScreenRoboImage("screenshots/34-large-dialog-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun largeDialogLight() = largeDialogShot(false)
+    @Test fun largeDialogDark() = largeDialogShot(true)
+
+    private fun largeSheetShot(dark: Boolean) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark, fontScale = 1.6f) {
+                Me()
+                isomeria.aichat.ui.components.WeActionSheet(
+                    title = "选择模型",
+                    options = listOf(
+                        isomeria.aichat.ui.components.SheetOption("示例模型", selected = true, subtitle = "example-chat") {},
+                        isomeria.aichat.ui.components.SheetOption("另一个模型", subtitle = "another-chat") {},
+                    ),
+                    onDismiss = {},
+                )
+            }
+        }
+        captureScreenRoboImage("screenshots/35-large-sheet-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun largeSheetLight() = largeSheetShot(false)
+    @Test fun largeSheetDark() = largeSheetShot(true)
+
+    @Composable private fun LargeFormSample() {
+        Column {
+            isomeria.aichat.ui.components.FormRow("最低温度", showDivider = true) { androidx.compose.material3.Text("0.2", color = WeTheme.colors.textPrimary, style = WeTheme.typography.listTitle) }
+            isomeria.aichat.ui.components.FormRow("API Key") { androidx.compose.material3.Text("••••••", color = WeTheme.colors.textSecondary, style = WeTheme.typography.listTitle) }
+            ConfigActionRow("默认模型", "示例模型", showDivider = true) {}
+            ConfigActionRow("思考时使用不同规则", "单独设置思考温度规则", "用户设置") {}
+        }
+    }
+    @Test fun largeFormLight() = shot("36-large-form", false) { AIChatTheme(darkTheme = false, fontScale = 2f) { LargeFormSample() } }
+    @Test fun largeFormDark() = shot("36-large-form", true) { AIChatTheme(darkTheme = true, fontScale = 2f) { LargeFormSample() } }
 
     @Test fun longConfigurationLargeFontLight() = shot("22-large-config", false) {
         AIChatTheme(darkTheme = false, fontScale = 2.5f) {

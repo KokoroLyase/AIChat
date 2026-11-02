@@ -66,6 +66,7 @@ import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.configurationIssueText
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
+import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeDivider
 import isomeria.aichat.ui.components.WeListRow
@@ -242,14 +243,29 @@ fun MemoryContent(
                 val model = state.models.firstOrNull { it.modelId == actual }
                 val follow = stringResource(R.string.memory_follow)
                 val issue = config?.let { ModelRules.validate(it, model, contact.memoryThinkingOption, 0.3f) }
-                ChoiceRow(stringResource(R.string.memory_model), if (contact.memoryModel == null) follow else stringResource(R.string.memory_independent),
-                    options = listOf(follow to null) + state.models.filter { config != null && ModelRules.usable(config, it) }.map { it.displayName to it.modelId },
-                    valueColor = if (issue == ConfigurationIssue.MODEL) colors.danger else colors.textTertiary, onPick = onModel)
-                FootnoteText(stringResource(R.string.memory_actual, config?.name.orEmpty(), model?.displayName ?: actual))
-                if (contact.memoryModel == null) FootnoteText(stringResource(R.string.memory_follow_fallback))
+                val usable = state.models.filter { config != null && ModelRules.usable(config, it) }
+                // 服务商没有默认模型时，“跟随默认”实际用的是聊天模型
+                val fellBack = contact.memoryModel == null && config?.defaultModel.isNullOrBlank()
+                val name = model?.displayName ?: actual
+                SectionHeader(stringResource(R.string.memory_section_settings))
+                ChoiceRow(stringResource(R.string.memory_model),
+                    when {
+                        name.isBlank() -> follow
+                        contact.memoryModel != null -> name
+                        fellBack -> stringResource(R.string.memory_value_fallback, name)
+                        else -> stringResource(R.string.memory_value_follow, name)
+                    },
+                    options = listOf(follow to null) + usable.map { it.displayName to it.modelId },
+                    valueColor = if (issue == ConfigurationIssue.MODEL) colors.danger else colors.textTertiary,
+                    showDivider = true,
+                    isSelected = { _, id -> id == contact.memoryModel },
+                    // 同名的模型靠 ID 区分
+                    subtitle = { id -> usable.firstOrNull { it.modelId == id }?.takeIf { it.displayName != it.modelId }?.modelId },
+                    onPick = onModel)
+                if (fellBack && name.isNotBlank()) FootnoteText(stringResource(R.string.memory_follow_fallback))
                 // 没有模型时不展示虚构的档位；旧服务商（LEGACY）没有模型也沿用原有选项
                 if (model != null || config?.compatibility == "LEGACY") {
-                    ThinkingSelector(model, contact.memoryThinkingOption, stringResource(R.string.memory_thinking), onThinking)
+                    ThinkingSelector(model, contact.memoryThinkingOption, stringResource(R.string.memory_thinking), showDivider = true, onChange = onThinking)
                 }
                 // 只说实际的原因；档位的问题已经在思考那一行下面说明了
                 if (issue != null && issue != ConfigurationIssue.THINKING) ErrorNote(stringResource(configurationIssueText(issue, memory = true)))
@@ -257,8 +273,22 @@ fun MemoryContent(
                 else WeListRow(stringResource(R.string.memory_open_provider), onClick = { onOpenProvider(contact.providerId) })
                 FootnoteText(stringResource(R.string.memory_model_note))
             }
-            MemoryTaskFeedback(state.task)
+            if (state.task.hasRecord) {
+                SectionHeader(stringResource(R.string.memory_section_tasks))
+                MemoryTaskFeedback(state.task)
+            }
 
+            SectionHeader(stringResource(R.string.memory_section_list))
+            // 入口放在列表上面：记忆多的时候不用翻到底，也离任务状态近
+            if (state.backlog > 0) {
+                ConfigActionRow(
+                    title = stringResource(R.string.memory_backlog),
+                    value = if (state.task.manual) stringResource(R.string.memory_backlog_running) else stringResource(R.string.memory_backlog_count, state.backlog),
+                    enabled = !state.task.manual,
+                    showDivider = state.rows.isNotEmpty(),
+                    onClick = onSummarizeBacklog,
+                )
+            }
             if (state.rows.isEmpty()) {
                 Text(
                     stringResource(R.string.memory_empty),
@@ -268,7 +298,6 @@ fun MemoryContent(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = dimens.horizontalPadding, vertical = 48.dp),
                 )
             } else {
-                GroupSpacer()
                 state.rows.forEachIndexed { index, row ->
                     Column(
                         Modifier
@@ -303,15 +332,6 @@ fun MemoryContent(
                 stringResource(if (state.autoMemory) R.string.memory_hint else R.string.memory_hint_off),
             )
 
-            if (state.backlog > 0) {
-                GroupSpacer()
-                ConfigActionRow(
-                    title = stringResource(R.string.memory_backlog),
-                    value = if (state.task.manual) stringResource(R.string.memory_backlog_running) else stringResource(R.string.memory_backlog_count, state.backlog),
-                    enabled = !state.task.manual,
-                    onClick = onSummarizeBacklog,
-                )
-            }
             if (state.rows.isNotEmpty()) {
                 GroupSpacer()
                 Box(
@@ -330,9 +350,11 @@ fun MemoryContent(
     }
 }
 
+/** 有进行中的任务或最近的结果。没有时整组都不显示。 */
+private val MemoryTaskState.hasRecord: Boolean get() = generating || queued > 0 || lastSuccess != null || (failure != null && lastFailure != null)
+
 @Composable
 internal fun MemoryTaskFeedback(task: MemoryTaskState) {
-    if (!task.generating && task.queued == 0 && task.lastSuccess == null && task.lastFailure == null) FootnoteText(stringResource(R.string.memory_idle))
     if (task.generating) TaskProgress(stringResource(R.string.memory_generating))
     if (task.queued > 0) TaskProgress(stringResource(R.string.memory_queue, task.queued))
     val date = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)

@@ -177,6 +177,55 @@ class ModelEditUiTest {
     }
 
     @Test
+    fun summaryShowsNameIdAndStatus() {
+        page()
+        compose.onNodeWithText("示例模型").assertExists()
+        compose.onNodeWithText("m").assertExists()
+        compose.onNodeWithText("已配置").assertExists()
+    }
+
+    @Test
+    fun unknownSourceIsNotShownTwice() {
+        val pending = ProviderModel(1, "p", "待配置模型", legacy = false)
+        compose.setContent { AIChatTheme(darkTheme = false) { ModelEditContent(ModelEditState(pending, provider, original = pending), {}, {}, {}) } }
+        compose.onNodeWithText("待确认 · 待确认").assertDoesNotExist()
+        compose.onNodeWithText("聊天用途", substring = true).assertExists()
+    }
+
+    @Test
+    fun sourceFollowsTheValue() {
+        page()
+        compose.onNodeWithText("确认可聊天 · 用户设置").performScrollTo().assertExists()
+    }
+
+    @Test
+    fun separateThinkingTemperatureWaitsForAConfirmedMode() {
+        val noMode = ModelRules.encode(ModelConfig(true, null, TemperatureRule(TemperatureSpec(TemperatureMode.ADJUSTABLE))))
+        val pending = ProviderModel(1, "p", "待配置模型", imageInputUserMark = false, legacy = false, userConfig = noMode)
+        compose.setContent { AIChatTheme(darkTheme = false) { ModelEditContent(ModelEditState(pending, provider, original = pending), {}, {}, {}) } }
+        compose.onNodeWithText("思考时使用不同规则", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun advancedShowsRealFieldNamesAndRestoreIsDisabledWithoutOverride() {
+        page()
+        compose.onNodeWithText("模型级高级设置").performScrollTo().performClick()
+        compose.onNodeWithText("REASONING_EFFORT", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("思考开关字段", substring = true).performScrollTo().assertExists()
+        compose.onNodeWithText("恢复继承").performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun restoreIsEnabledWithOverride() {
+        val overridden = original.copy(compatibilityOverride = ModelRules.encode(isomeria.aichat.data.llm.CompatibilityOverride(streamOptions = false)))
+        current = overridden
+        page()
+        compose.onNodeWithText("模型级高级设置").performScrollTo().performClick()
+        compose.onNodeWithText("恢复继承").performScrollTo().assertIsEnabled().performClick()
+        assertEquals(null, current.compatibilityOverride)
+    }
+
+    @Test
     fun defaultReferenceKeepsItsOwnLine() {
         compose.setContent {
             AIChatTheme(darkTheme = false) { ConflictDialog(listOf(ModelReference(null, ReferencePurpose.DEFAULT), ModelReference("小雨", ReferencePurpose.CHAT)), {}) {} }

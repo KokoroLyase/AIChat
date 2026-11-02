@@ -31,13 +31,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -173,6 +176,8 @@ fun WeListRow(
     showDivider: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
     enabled: Boolean = true,
+    /** 可展开的行：null 表示不是，展开后箭头朝下 */
+    expanded: Boolean? = null,
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -226,7 +231,7 @@ fun WeListRow(
                 WeIcons.ChevronRight,
                 contentDescription = null,
                 tint = colors.arrow,
-                modifier = Modifier.padding(start = 4.dp).size(18.dp),
+                modifier = Modifier.padding(start = 4.dp).size(18.dp).rotate(if (expanded == true) 90f else 0f),
             )
         }
     }
@@ -390,7 +395,7 @@ fun ErrorNote(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** 带左侧标题的白色卡片行，内容自定义（用于表单） */
+/** 带左侧标题的白色卡片行，内容自定义（用于表单）。标题放不下时换到内容上方，不把字挤成两行。 */
 @Composable
 fun FormRow(
     label: String,
@@ -400,8 +405,12 @@ fun FormRow(
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
-    Row(
-        modifier
+    Layout(
+        content = {
+            Text(label, style = WeTheme.typography.listTitle, color = colors.textPrimary)
+            Box { content() }
+        },
+        modifier = modifier
             .fillMaxWidth()
             .background(colors.listBackground)
             .heightIn(min = dimens.listRowHeight)
@@ -417,16 +426,30 @@ fun FormRow(
                 }
             }
             .padding(horizontal = dimens.horizontalPadding),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Start,
-    ) {
-        Text(
-            label,
-            style = WeTheme.typography.listTitle,
-            color = colors.textPrimary,
-            // 右侧留空：大字体下标签换行，不和右边的内容贴在一起
-            modifier = Modifier.width(96.dp).padding(end = 8.dp),
-        )
-        Box(Modifier.weight(1f)) { content() }
+    ) { measurables, constraints ->
+        val (labelMeasurable, contentMeasurable) = measurables
+        val contentStart = 96.dp.roundToPx()
+        // 右边留 8dp，标题和内容不贴在一起
+        val labelWidth = contentStart - 8.dp.roundToPx()
+        val width = constraints.maxWidth
+        fun contentConstraints(w: Int) = Constraints(minWidth = w, maxWidth = w, maxHeight = constraints.maxHeight)
+        if (labelMeasurable.maxIntrinsicWidth(Constraints.Infinity) <= labelWidth) {
+            val labelPlaceable = labelMeasurable.measure(Constraints(maxWidth = labelWidth, maxHeight = constraints.maxHeight))
+            val contentPlaceable = contentMeasurable.measure(contentConstraints(width - contentStart))
+            val height = maxOf(labelPlaceable.height, contentPlaceable.height, constraints.minHeight)
+            layout(width, height) {
+                labelPlaceable.placeRelative(0, (height - labelPlaceable.height) / 2)
+                contentPlaceable.placeRelative(contentStart, (height - contentPlaceable.height) / 2)
+            }
+        } else {
+            val top = 10.dp.roundToPx()
+            val labelPlaceable = labelMeasurable.measure(Constraints(maxWidth = width, maxHeight = constraints.maxHeight))
+            val contentPlaceable = contentMeasurable.measure(contentConstraints(width))
+            val height = maxOf(top + labelPlaceable.height + contentPlaceable.height, constraints.minHeight)
+            layout(width, height) {
+                labelPlaceable.placeRelative(0, top)
+                contentPlaceable.placeRelative(0, top + labelPlaceable.height)
+            }
+        }
     }
 }

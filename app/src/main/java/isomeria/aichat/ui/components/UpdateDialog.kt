@@ -23,7 +23,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import isomeria.aichat.R
 import isomeria.aichat.update.ReleaseInfo
@@ -42,7 +41,7 @@ fun UpdateDialog(
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
-    Dialog(onDismissRequest = onLater, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    WeDialogWindow(onDismissRequest = onLater, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier
                 .padding(horizontal = 40.dp)

@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -29,11 +30,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,6 +45,18 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import isomeria.aichat.R
 import isomeria.aichat.ui.theme.WeTheme
+
+/**
+ * 弹窗是独立窗口，系统会给它重新提供 [LocalDensity]，App 内的“字体大小”不会跟过来。
+ * 所有弹窗都走这里，和页面用同一个字号。
+ */
+@Composable
+fun WeDialogWindow(onDismissRequest: () -> Unit, properties: DialogProperties = DialogProperties(), content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    Dialog(onDismissRequest = onDismissRequest, properties = properties) {
+        CompositionLocalProvider(LocalDensity provides density, content = content)
+    }
+}
 
 /**
  * 微信式对话框：上面是标题和说明，下面是左右两个按钮，确认按钮为绿色（危险操作为红色）。
@@ -60,7 +75,7 @@ fun WeDialog(
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    WeDialogWindow(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier
                 .padding(horizontal = 40.dp, vertical = 24.dp)
@@ -157,11 +172,11 @@ fun WeActionSheet(
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
-    Dialog(
+    WeDialogWindow(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxSize()
                 .clickable(
@@ -171,6 +186,8 @@ fun WeActionSheet(
                 ),
             contentAlignment = Alignment.BottomCenter,
         ) {
+            // 按屏幕比例限高，选项少的菜单不用滚动就能看全
+            val optionsMaxHeight = maxHeight * 0.7f
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -185,7 +202,7 @@ fun WeActionSheet(
             ) {
                 Column(
                     Modifier
-                        .heightIn(max = 480.dp)
+                        .heightIn(max = optionsMaxHeight)
                         .verticalScroll(rememberScrollState()),
                 ) {
                     if (title != null) {
@@ -250,7 +267,7 @@ fun WeActionSheet(
                         .fillMaxWidth()
                         .background(colors.listBackground)
                         .clickable(onClick = onDismiss)
-                        .height(dimens.listRowHeight),
+                        .heightIn(min = dimens.listRowHeight),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(stringResource(R.string.action_cancel), style = WeTheme.typography.listTitle, color = colors.textPrimary)
@@ -264,7 +281,7 @@ fun WeActionSheet(
 @Composable
 fun WeLoading(text: String) {
     val colors = WeTheme.colors
-    Dialog(
+    WeDialogWindow(
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
     ) {
@@ -280,7 +297,7 @@ fun WeLoading(text: String) {
         ) {
             CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
             Spacer(Modifier.height(16.dp))
-            Text(text, style = WeTheme.typography.small, color = Color.White, textAlign = TextAlign.Center, maxLines = 2)
+            Text(text, style = WeTheme.typography.small, color = Color.White, textAlign = TextAlign.Center)
         }
     }
 }

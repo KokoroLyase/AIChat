@@ -32,6 +32,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,7 +42,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -69,6 +75,7 @@ import isomeria.aichat.navigation.NEW_PROVIDER
 import isomeria.aichat.navigation.ProviderEditRoute
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.FormRow
+import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.SheetOption
@@ -76,6 +83,7 @@ import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeButton
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeDivider
+import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeSmallButton
 import isomeria.aichat.ui.components.WeTopBar
@@ -330,6 +338,41 @@ internal fun fetchFailureText(e: LlmException): Int = when {
     }
 }
 
+/** 模型超过这个数量才显示搜索框；待配置的也默认折起来。 */
+internal const val MODEL_LIST_LONG = 20
+
+/** 模型列表里的一行和它缺的配置。 */
+internal data class ModelListRow(val model: ProviderModel, val gaps: List<ModelGap>)
+
+internal fun modelListRows(config: ProviderConfig, models: List<ProviderModel>): List<ModelListRow> = models.map { ModelListRow(it, ModelRules.gaps(config, it)) }
+
+/** 按名称或 ID 在本机过滤，不区分大小写。 */
+internal fun List<ModelListRow>.matching(query: String): List<ModelListRow> {
+    val text = query.trim()
+    return if (text.isEmpty()) this else filter { it.model.displayName.contains(text, ignoreCase = true) || it.model.modelId.contains(text, ignoreCase = true) }
+}
+
+/**
+ * 可以选的兼容方案。LEGACY 只为 0.3.0 升级的数据保留：已保存的就是它才显示，其他服务商不能切过去。
+ */
+internal fun compatibilityChoices(saved: String): List<Compatibility> = Compatibility.entries.filter { it != Compatibility.LEGACY || saved == Compatibility.LEGACY.name }
+
+internal fun compatibilityLabel(value: Compatibility): Int = when (value) {
+    Compatibility.LEGACY -> R.string.compat_legacy
+    Compatibility.GENERIC -> R.string.compat_generic
+    Compatibility.DEEPSEEK -> R.string.compat_deepseek
+    Compatibility.QWEN -> R.string.compat_qwen
+    Compatibility.ZHIPU -> R.string.compat_zhipu
+    Compatibility.KIMI -> R.string.compat_kimi
+    Compatibility.MIMO -> R.string.compat_mimo
+    Compatibility.SILICONFLOW -> R.string.compat_siliconflow
+    Compatibility.OPENROUTER -> R.string.compat_openrouter
+}
+
+/** 官方文档：优先看预置，其次看兼容方案对应的服务商。 */
+internal fun docsPreset(presetId: String?, compatibility: String?): ProviderPreset? =
+    ProviderPresets.all.firstOrNull { it.id == presetId } ?: ProviderPresets.all.firstOrNull { it.compatibility.name == compatibility }
+
 /** 一个服务商：名称、Base URL、API Key、获取模型列表、默认模型、模型列表（点开逐个配置）。 */
 @Composable
 fun ProviderEditScreen(onBack: () -> Unit, onOpenModel: (Long, String) -> Unit = { _, _ -> }, viewModel: ProviderEditViewModel = hiltViewModel()) {
@@ -432,7 +475,6 @@ fun ProviderEditContent(
                     onPreset(it, choices.first { pair -> pair.second == it }.first)
                 }
             }
-            FootnoteText(stringResource(R.string.provider_protocol))
             SectionHeader(stringResource(R.string.llm_provider))
             Column(Modifier.bringIntoViewRequester(formLocation)) {
                 FormRow(stringResource(R.string.llm_name), showDivider = true) {
@@ -458,13 +500,25 @@ fun ProviderEditContent(
                 if (urlEditable) FootnoteText(stringResource(R.string.llm_base_url_note))
             }
 
-            var advanced by remember { mutableStateOf(false) }
-            WeListRow(stringResource(R.string.provider_advanced), onClick = { advanced = !advanced })
+            val uri = LocalUriHandler.current
+            docsPreset(state.presetId, state.compatibility)?.let { docs ->
+                WeListRow(stringResource(R.string.provider_docs), onClick = { uri.openUri(docs.docs) }, showDivider = true)
+            }
+            var advanced by rememberSaveable { mutableStateOf(false) }
+            WeListRow(stringResource(R.string.provider_advanced), onClick = { advanced = !advanced }, expanded = advanced)
             if (advanced) {
-                ChoiceRow(stringResource(R.string.provider_compatibility), state.compatibility, options = Compatibility.entries.map { it.name to it }, onPick = onCompatibility)
+                WeDivider(startIndent = dimens.horizontalPadding)
+                ChoiceRow(
+                    stringResource(R.string.provider_compatibility),
+                    Compatibility.entries.firstOrNull { it.name == state.compatibility }?.let { stringResource(compatibilityLabel(it)) } ?: state.compatibility,
+                    options = compatibilityChoices(state.savedForm.compatibility).map { stringResource(compatibilityLabel(it)) to it },
+                    onPick = onCompatibility,
+                )
+                if (state.savedForm.compatibility == Compatibility.LEGACY.name) FootnoteText(stringResource(R.string.compat_legacy_note))
+                FootnoteText(stringResource(R.string.provider_protocol))
             }
 
-            SectionHeader(stringResource(R.string.llm_api_key))
+            GroupSpacer()
             FormRow(stringResource(R.string.llm_api_key), showDivider = state.savedKeyMasked != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f).padding(vertical = 12.dp)) {
@@ -526,7 +580,7 @@ fun ProviderEditContent(
                 )
             }
 
-            SectionHeader(stringResource(R.string.llm_default_model))
+            Spacer(Modifier.height(16.dp))
             ConfigActionRow(
                 title = stringResource(R.string.llm_default_model),
                 value = models.firstOrNull { it.modelId == state.defaultModel }?.displayName
@@ -536,15 +590,6 @@ fun ProviderEditContent(
             FootnoteText(stringResource(R.string.llm_default_model_hint))
 
             SectionHeader(stringResource(R.string.llm_models))
-            models.forEachIndexed { index, model ->
-                ModelRow(
-                    model = model,
-                    gaps = remember(model, state.compatibility) { ModelRules.gaps(editorConfig, model) },
-                    showDivider = index != models.lastIndex,
-                    onConfigure = { onConfigureModel(model) },
-                )
-            }
-            if (models.isNotEmpty()) WeDivider(startIndent = dimens.horizontalPadding)
             FormRow(stringResource(R.string.llm_add_model)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) {
@@ -559,6 +604,7 @@ fun ProviderEditContent(
                 }
             }
             FootnoteText(stringResource(R.string.model_list_note))
+            ModelList(editorConfig, models, onConfigureModel)
 
             if (state.providerId != null) {
                 Spacer(Modifier.height(8.dp))
@@ -635,14 +681,103 @@ private fun TextInput(
     }
 }
 
-/** 一个模型：名称和配置状态、模型 ID。点开进入配置，移除也在配置页里。 */
+/**
+ * 模型列表：已配置的在上，待配置的可以折叠。候选很多时待配置默认折起来，并提供搜索。
+ * 搜索和折叠只影响显示，不算对服务商的修改。
+ */
+@Composable
+private fun ModelList(config: ProviderConfig, models: List<ProviderModel>, onConfigure: (ProviderModel) -> Unit) {
+    val rows = remember(models, config.compatibility, config.provider) { modelListRows(config, models) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val searchable = models.size > MODEL_LIST_LONG
+    val active = if (searchable) query.trim() else ""
+    val (configured, pending) = remember(rows, active) { rows.matching(active).partition { it.gaps.isEmpty() } }
+    // 用户没动过时按数量决定；动过就记住，从模型页回来还是原样
+    var pendingChoice by rememberSaveable { mutableStateOf<Boolean?>(null) }
+
+    if (searchable) ModelSearchField(query) { query = it }
+    if (active.isNotEmpty() && configured.isEmpty() && pending.isEmpty()) FootnoteText(stringResource(R.string.model_search_empty))
+    if (configured.isNotEmpty()) {
+        SectionHeader(stringResource(R.string.model_group_ready, configured.size))
+        ModelRows(configured, onConfigure)
+    }
+    if (pending.isNotEmpty()) {
+        val title = stringResource(R.string.model_group_pending, pending.size)
+        val expanded = active.isNotEmpty() || (pendingChoice ?: (pending.size <= MODEL_LIST_LONG))
+        if (active.isNotEmpty()) {
+            SectionHeader(title)
+        } else {
+            GroupSpacer()
+            WeListRow(title, onClick = { pendingChoice = !expanded }, expanded = expanded, showDivider = expanded)
+        }
+        if (expanded) ModelRows(pending, onConfigure)
+    }
+}
+
+@Composable
+private fun ModelRows(rows: List<ModelListRow>, onConfigure: (ProviderModel) -> Unit) {
+    rows.forEachIndexed { index, row ->
+        key(row.model.modelId) {
+            ModelRow(row.model, row.gaps, showDivider = index != rows.lastIndex) { onConfigure(row.model) }
+        }
+    }
+}
+
+/** 一个模型：名称、配置状态和箭头，下面一行小字是 ID（和名称相同时不重复）。点开进入配置，移除也在配置页里。 */
 @Composable
 private fun ModelRow(model: ProviderModel, gaps: List<ModelGap>, showDivider: Boolean, onConfigure: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(WeTheme.colors.listBackground)) {
-        ConfigActionRow(model.displayName, modelStatusText(gaps), onClick = onConfigure)
-        FootnoteText(model.modelId)
-        if (model.missingFromList) FootnoteText(stringResource(R.string.model_missing))
-        if (showDivider) WeDivider(startIndent = WeTheme.dimens.horizontalPadding)
+    val missing = if (model.missingFromList) stringResource(R.string.model_missing) else null
+    val detail = listOfNotNull(model.modelId.takeIf { it != model.displayName }, missing).joinToString(stringResource(R.string.model_detail_separator))
+    ConfigActionRow(
+        title = model.displayName,
+        value = modelStatusText(gaps),
+        valueStyle = WeTheme.typography.small,
+        detail = detail.ifEmpty { null },
+        showDivider = showDivider,
+        onClick = onConfigure,
+    )
+}
+
+/** 列表上方的搜索框。 */
+@Composable
+private fun ModelSearchField(query: String, onChange: (String) -> Unit) {
+    val colors = WeTheme.colors
+    val hint = stringResource(R.string.model_search_hint)
+    Box(Modifier.fillMaxWidth().background(colors.listBackground).padding(horizontal = WeTheme.dimens.horizontalPadding, vertical = 8.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 36.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(colors.pageBackground)
+                .padding(start = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(WeIcons.Search, null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.size(6.dp))
+            Box(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                if (query.isEmpty()) {
+                    Text(hint, style = WeTheme.typography.small, color = colors.textSecondary, softWrap = false, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                BasicTextField(
+                    value = query,
+                    onValueChange = onChange,
+                    singleLine = true,
+                    textStyle = WeTheme.typography.small.copy(color = colors.textPrimary),
+                    cursorBrush = SolidColor(colors.brand),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, autoCorrectEnabled = false),
+                    // 占位文字读屏读不到，这里单独说明这个输入框是做什么的
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = hint },
+                )
+            }
+            if (query.isNotEmpty()) {
+                Box(Modifier.clickable { onChange("") }.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    Icon(WeIcons.Close, stringResource(R.string.action_clear), tint = colors.textSecondary, modifier = Modifier.size(16.dp))
+                }
+            } else {
+                Spacer(Modifier.size(10.dp))
+            }
+        }
     }
 }
 
@@ -662,7 +797,7 @@ internal val previewProviderModels = listOf(
 )
 
 @Composable
-internal fun ProviderEditSample(state: ProviderEditState = previewProviderState) = ProviderEditContent(
-    state = state, models = previewProviderModels, onBack = {}, onSave = {}, onNameChange = {}, onKeyChange = {},
+internal fun ProviderEditSample(state: ProviderEditState = previewProviderState, models: List<ProviderModel> = previewProviderModels) = ProviderEditContent(
+    state = state, models = models, onBack = {}, onSave = {}, onNameChange = {}, onKeyChange = {},
     onClearKey = {}, onBaseUrlChange = {}, onDefaultModel = {}, onModelInput = {}, onAddModel = {}, onTest = {}, onDelete = {},
 )

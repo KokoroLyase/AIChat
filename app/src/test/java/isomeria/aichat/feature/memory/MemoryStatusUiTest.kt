@@ -159,6 +159,60 @@ class MemoryStatusUiTest {
     }
 
     @Test
+    fun rowShowsTheModelActuallyUsed() {
+        page(base)
+        compose.onNodeWithText("可用模型").assertExists()
+        compose.onNodeWithText(text(R.string.memory_section_settings)).assertExists()
+        compose.onNodeWithText(text(R.string.memory_section_list)).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun followingDefaultSaysSoWithoutFallbackNote() {
+        val second = ready.copy(modelId = "second", displayName = "默认模型")
+        page(base.copy(contact = contact.copy(memoryModel = null), provider = provider.copy(defaultModel = "second"), models = listOf(ready, second)))
+        compose.onNodeWithText(app.getString(R.string.memory_value_follow, "默认模型")).assertExists()
+        compose.onNodeWithText(text(R.string.memory_follow_fallback)).assertDoesNotExist()
+    }
+
+    @Test
+    fun fallbackNoteOnlyWhenItReallyFallsBack() {
+        page(base.copy(contact = contact.copy(memoryModel = null)))
+        compose.onNodeWithText(app.getString(R.string.memory_value_fallback, "可用模型")).assertExists()
+        compose.onNodeWithText(text(R.string.memory_follow_fallback)).assertExists()
+    }
+
+    @Test
+    fun noTaskGroupWithoutRecords() {
+        page(base)
+        compose.onNodeWithText(text(R.string.memory_section_tasks)).assertDoesNotExist()
+    }
+
+    @Test
+    fun taskGroupAppearsWithRecords() {
+        page(base.copy(task = MemoryTaskState(generating = true)))
+        compose.onNodeWithText(text(R.string.memory_section_tasks)).assertExists()
+        compose.onNodeWithText(text(R.string.memory_generating), useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun modelSheetShowsIdSoSameNamesCanBeTold() {
+        val twin = ready.copy(modelId = "twin")
+        page(base.copy(models = listOf(ready, twin)))
+        compose.onNodeWithText(text(R.string.memory_model)).performClick()
+        compose.onNodeWithText("twin").assertExists()
+        // 当前选中的 ready 在行上不显示 ID，在菜单里才有
+        compose.onNodeWithText("ready").assertExists()
+    }
+
+    @Test
+    fun backlogRowComesBeforeTheMemories() {
+        page(base.copy(backlog = 5, rows = listOf(MemoryRow(1, "10月1日", "一条记忆", false))))
+        val entry = compose.onNode(hasText(text(R.string.memory_backlog)) and hasClickAction()).fetchSemanticsNode().boundsInRoot
+        val memory = compose.onNodeWithText("一条记忆").fetchSemanticsNode().boundsInRoot
+        assert(entry.top < memory.top) { "总结入口应在记忆列表之前" }
+    }
+
+    @Test
     fun backlogRowWorksWhenIdle() {
         page(base.copy(backlog = 5))
         compose.onNodeWithText(app.getString(R.string.memory_backlog_count, 5)).assertExists()

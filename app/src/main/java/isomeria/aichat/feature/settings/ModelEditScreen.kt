@@ -9,17 +9,27 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -142,20 +152,21 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
         val effective = user.over(reported)
         fun change(value: ModelConfig) = onChange(model.copy(userConfig = ModelRules.encode(value)))
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
-            FootnoteText(model.modelId)
-            FootnoteText(if (model.legacy) stringResource(R.string.model_legacy) else modelStatusText(state.provider?.let { ModelRules.gaps(it, model) } ?: listOf(ModelGap.ENCODING)))
-            FootnoteText(stringResource(R.string.model_incomplete_save))
+            val gaps = state.provider?.let { ModelRules.gaps(it, model) } ?: listOf(ModelGap.ENCODING)
+            ModelSummary(model, if (model.legacy) stringResource(R.string.model_legacy) else modelStatusText(gaps))
+            if (gaps.isNotEmpty() && !model.legacy) FootnoteText(stringResource(R.string.model_incomplete_save))
             val uri = LocalUriHandler.current
-            val docs = ProviderPresets.all.firstOrNull { it.id == state.provider?.presetId }
-                ?: ProviderPresets.all.firstOrNull { it.compatibility.name == state.provider?.compatibility }
-            if (docs != null) WeListRow(stringResource(R.string.provider_docs), onClick = { uri.openUri(docs.docs) })
-            FootnoteText(stringResource(R.string.model_config_source_note))
+            val docs = docsPreset(state.provider?.presetId, state.provider?.compatibility)
+            if (docs != null) {
+                GroupSpacer()
+                WeListRow(stringResource(R.string.provider_docs), onClick = { uri.openUri(docs.docs) })
+            }
             SectionHeader(stringResource(R.string.model_capabilities))
             ChoiceRow(stringResource(R.string.model_chat), stringResource(when (effective.chat) { true -> R.string.model_chat_yes; false -> R.string.model_chat_no; null -> R.string.rule_unknown }), sourceLabel(user.chat != null, reported.chat != null),
-                listOf(stringResource(R.string.model_chat_yes) to true, stringResource(R.string.model_chat_no) to false)) { change(user.copy(chat = it)) }
+                listOf(stringResource(R.string.model_chat_yes) to true, stringResource(R.string.model_chat_no) to false), showDivider = true) { change(user.copy(chat = it)) }
             val image = model.imageInputUserMark ?: when (model.imageInput) { Capability.YES -> true; Capability.NO -> false; Capability.UNKNOWN -> null }
             ChoiceRow(stringResource(R.string.llm_mark_image), booleanLabel(image), sourceLabel(model.imageInputUserMark != null, model.imageInput != Capability.UNKNOWN),
-                listOf(stringResource(R.string.rule_yes) to true, stringResource(R.string.rule_no) to false)) { onChange(model.copy(imageInputUserMark = it)) }
+                listOf(stringResource(R.string.rule_yes) to true, stringResource(R.string.rule_no) to false), showDivider = true) { onChange(model.copy(imageInputUserMark = it)) }
             val thinking = effective.thinking
             ChoiceRow(stringResource(R.string.model_thinking_mode), thinkingModeLabel(thinking?.mode), sourceLabel(user.thinking != null, reported.thinking != null),
                 ThinkingMode.entries.filter { it != ThinkingMode.UNKNOWN }.map { thinkingModeLabel(it) to it }) {
@@ -179,34 +190,35 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
                 }, enabled = issue == null)
             }
             SectionHeader(stringResource(R.string.contact_temperature))
-            FootnoteText(sourceLabel(user.temperature != null, reported.temperature != null))
-            TemperatureForm(stringResource(R.string.temperature_normal), effective.temperature?.normal, onInvalid) {
+            TemperatureForm(stringResource(R.string.temperature_normal), effective.temperature?.normal, onInvalid, note = sourceLabel(user.temperature != null, reported.temperature != null)) {
                 change(user.copy(temperature = TemperatureRule(it, effective.temperature?.thinking)))
             }
-            if (thinking?.mode != ThinkingMode.NONE && effective.temperature != null) {
+            if ((thinking?.mode == ThinkingMode.SWITCH || thinking?.mode == ThinkingMode.ALWAYS) && effective.temperature != null) {
                 val separate = effective.temperature.thinking != null
                 ChoiceRow(stringResource(R.string.temperature_thinking_override),
                     stringResource(if (separate) R.string.temperature_use_separate else R.string.temperature_use_default),
-                    options = listOf(stringResource(R.string.temperature_use_separate) to true, stringResource(R.string.temperature_use_default) to false)) { value ->
+                    options = listOf(stringResource(R.string.temperature_use_separate) to true, stringResource(R.string.temperature_use_default) to false), showDivider = separate) { value ->
                     change(user.copy(temperature = effective.temperature.copy(thinking = if (value) effective.temperature.thinking ?: effective.temperature.normal else null)))
                 }
                 if (separate) TemperatureForm(stringResource(R.string.temperature_thinking), effective.temperature.thinking, onInvalid) {
                     change(user.copy(temperature = effective.temperature.copy(thinking = it)))
                 }
             }
-            var advanced by remember { mutableStateOf(false) }
-            WeListRow(stringResource(R.string.model_advanced), onClick = { advanced = !advanced })
+            FootnoteText(stringResource(R.string.model_config_source_note))
+            var advanced by rememberSaveable { mutableStateOf(false) }
+            WeListRow(stringResource(R.string.model_advanced), onClick = { advanced = !advanced }, expanded = advanced, showDivider = advanced)
             if (advanced) {
                 val override = ModelRules.override(model.compatibilityOverride)
                 val inherited = state.provider?.let { ModelRules.encoding(it, model.copy(compatibilityOverride = null)) } ?: Compatibility.GENERIC.encoding
                 fun set(value: CompatibilityOverride) = onChange(model.copy(compatibilityOverride = ModelRules.encode(value)))
-                ChoiceRow(stringResource(R.string.thinking_field), (override.thinkingField ?: inherited.thinkingField).name, stringResource(if (override.thinkingField == null) R.string.rule_inherited else R.string.rule_user),
-                    ThinkingField.entries.map { it.name to it }) { set(override.copy(thinkingField = it)) }
-                ChoiceRow(stringResource(R.string.effort_field), (override.effortField ?: inherited.effortField).name, stringResource(if (override.effortField == null) R.string.rule_inherited else R.string.rule_user),
-                    EffortField.entries.map { it.name to it }) { set(override.copy(effortField = it)) }
+                ChoiceRow(stringResource(R.string.thinking_field), thinkingFieldLabel(override.thinkingField ?: inherited.thinkingField), stringResource(if (override.thinkingField == null) R.string.rule_inherited else R.string.rule_user),
+                    ThinkingField.entries.map { thinkingFieldLabel(it) to it }, showDivider = true) { set(override.copy(thinkingField = it)) }
+                ChoiceRow(stringResource(R.string.effort_field), effortFieldLabel(override.effortField ?: inherited.effortField), stringResource(if (override.effortField == null) R.string.rule_inherited else R.string.rule_user),
+                    EffortField.entries.map { effortFieldLabel(it) to it }, showDivider = true) { set(override.copy(effortField = it)) }
                 ChoiceRow(stringResource(R.string.stream_options), stringResource(if (override.streamOptions ?: inherited.streamOptions) R.string.rule_send else R.string.rule_no_send), stringResource(if (override.streamOptions == null) R.string.rule_inherited else R.string.rule_user),
-                    listOf(stringResource(R.string.rule_send) to true, stringResource(R.string.rule_no_send) to false)) { set(override.copy(streamOptions = it)) }
-                WeListRow(stringResource(R.string.rule_restore_inheritance), onClick = { onChange(model.copy(compatibilityOverride = null)) })
+                    listOf(stringResource(R.string.rule_send) to true, stringResource(R.string.rule_no_send) to false), showDivider = true) { set(override.copy(streamOptions = it)) }
+                // 这是一个动作，不进入下一页；没有覆盖时没什么可恢复的
+                WeListRow(stringResource(R.string.rule_restore_inheritance), onClick = { onChange(model.copy(compatibilityOverride = null)) }, showArrow = false, enabled = model.compatibilityOverride != null)
                 FootnoteText(stringResource(R.string.model_advanced_note))
             }
             Spacer(Modifier.height(8.dp))
@@ -219,7 +231,30 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
 }
 
 @Composable internal fun booleanLabel(value: Boolean?): String = stringResource(when (value) { true -> R.string.rule_yes; false -> R.string.rule_no; null -> R.string.rule_unknown })
-@Composable internal fun sourceLabel(user: Boolean, reported: Boolean): String = stringResource(when { user -> R.string.rule_user; reported -> R.string.rule_reported; else -> R.string.rule_unknown })
+/** 字段的来源；来源未知时不显示，否则会和值一起变成“待确认 · 待确认”。 */
+@Composable internal fun sourceLabel(user: Boolean, reported: Boolean): String? = when { user -> stringResource(R.string.rule_user); reported -> stringResource(R.string.rule_reported); else -> null }
+/** 实际发送的字段名是协议的一部分，不翻译。 */
+@Composable internal fun thinkingFieldLabel(field: ThinkingField): String = when (field) {
+    ThinkingField.NONE -> stringResource(R.string.rule_no_send)
+    ThinkingField.THINKING_TYPE -> "thinking.type"
+    ThinkingField.ENABLE_THINKING -> "enable_thinking"
+    ThinkingField.REASONING_ENABLED -> "reasoning.enabled"
+    ThinkingField.REASONING_EFFORT -> "reasoning_effort"
+}
+@Composable internal fun effortFieldLabel(field: EffortField): String = when (field) {
+    EffortField.NONE -> stringResource(R.string.rule_no_send)
+    EffortField.REASONING_EFFORT -> "reasoning_effort"
+    EffortField.REASONING_OBJECT -> "reasoning.effort"
+}
+/** 模型页顶部的摘要：名称、ID（和名称相同时不重复）、状态。 */
+@Composable private fun ModelSummary(model: ProviderModel, status: String) {
+    val d = WeTheme.dimens
+    Column(Modifier.fillMaxWidth().background(WeTheme.colors.listBackground).padding(horizontal = d.horizontalPadding, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(model.displayName, style = WeTheme.typography.listTitle, color = WeTheme.colors.textPrimary)
+        if (model.modelId != model.displayName) Text(model.modelId, style = WeTheme.typography.small, color = WeTheme.colors.textTertiary)
+        Text(status, style = WeTheme.typography.small, color = WeTheme.colors.textTertiary)
+    }
+}
 @Composable internal fun thinkingModeLabel(mode: ThinkingMode?): String = stringResource(when (mode) {
     ThinkingMode.NONE -> R.string.thinking_none; ThinkingMode.SWITCH -> R.string.thinking_switch; ThinkingMode.ALWAYS -> R.string.thinking_always; else -> R.string.rule_unknown
 })
@@ -239,18 +274,87 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
         }) }.joinToString(separator))
     }
 }
-@Composable internal fun <T> ChoiceRow(title: String, value: String, note: String? = null, options: List<Pair<String, T>>, valueColor: Color = WeTheme.colors.textTertiary, onPick: (T) -> Unit) {
+/**
+ * 点开选择的行。菜单里默认按文字标出当前项；行上显示的文字和选项不同时，用 [isSelected] 说明。
+ * [subtitle] 是选项的小字，比如同名模型的 ID。
+ */
+@Composable internal fun <T> ChoiceRow(title: String, value: String, note: String? = null, options: List<Pair<String, T>>, valueColor: Color = WeTheme.colors.textTertiary, showDivider: Boolean = false,
+    isSelected: (String, T) -> Boolean = { label, _ -> label == value }, subtitle: (T) -> String? = { null }, onPick: (T) -> Unit) {
     var show by remember { mutableStateOf(false) }
     // 没有可选项时点开只会是一个空菜单
-    ConfigActionRow(title, value, note, valueColor = valueColor, enabled = options.isNotEmpty()) { show = true }
-    if (show) WeActionSheet(title = title, options = options.map { (label, value) -> SheetOption(label) { show = false; onPick(value) } }, onDismiss = { show = false })
+    ConfigActionRow(title, value, note, valueColor = valueColor, enabled = options.isNotEmpty(), showDivider = showDivider) { show = true }
+    if (show) WeActionSheet(title = title, options = options.map { (label, option) -> SheetOption(label, selected = isSelected(label, option), subtitle = subtitle(option)) { show = false; onPick(option) } }, onDismiss = { show = false })
 }
-@Composable internal fun ConfigActionRow(title: String, value: String, note: String? = null, titleColor: Color = WeTheme.colors.textPrimary, valueColor: Color = WeTheme.colors.textTertiary, enabled: Boolean = true, onClick: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(WeTheme.colors.listBackground).clickable(enabled = enabled, onClick = onClick)
-        .heightIn(min = WeTheme.dimens.listRowHeight).padding(WeTheme.dimens.horizontalPadding)) {
-        Text(title, style = WeTheme.typography.listTitle, color = titleColor)
-        Text(value, style = WeTheme.typography.small, color = valueColor)
-        if (note != null) Text(note, style = WeTheme.typography.listTime, color = WeTheme.colors.textTertiary)
+/**
+ * 配置行：放得下时和普通列表行一样“左标题、右值、箭头”，放不下时值换到标题下方。
+ * 高度随内容变化，不靠缩小文字或隐藏状态解决大字体。[note] 是值后面的来源小字，[detail] 是整行下方的小字。
+ */
+@Composable internal fun ConfigActionRow(title: String, value: String, note: String? = null, titleColor: Color = WeTheme.colors.textPrimary, valueColor: Color = WeTheme.colors.textTertiary, enabled: Boolean = true,
+    showDivider: Boolean = false, valueStyle: TextStyle = WeTheme.typography.listTitle, detail: String? = null, onClick: () -> Unit) {
+    val colors = WeTheme.colors
+    val d = WeTheme.dimens
+    val noteSize = WeTheme.typography.listTime.fontSize
+    Row(
+        Modifier.fillMaxWidth().background(colors.listBackground).clickable(enabled = enabled, onClick = onClick)
+            .heightIn(min = d.listRowHeight)
+            .drawBehind {
+                if (showDivider) {
+                    val y = size.height - d.dividerThickness.toPx() / 2
+                    drawLine(colors.divider, Offset(d.horizontalPadding.toPx(), y), Offset(size.width, y), d.dividerThickness.toPx())
+                }
+            }
+            .padding(horizontal = d.horizontalPadding, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TitleAndValue(
+            modifier = Modifier.weight(1f),
+            title = { Text(title, style = WeTheme.typography.listTitle, color = if (enabled) titleColor else colors.textSecondary) },
+            value = {
+                Text(
+                    buildAnnotatedString {
+                        append(value)
+                        if (note != null) withStyle(SpanStyle(fontSize = noteSize, color = colors.textTertiary)) { append(" · $note") }
+                    },
+                    style = valueStyle,
+                    color = valueColor,
+                )
+            },
+            detail = detail?.let { text -> { Text(text, style = WeTheme.typography.small, color = colors.textTertiary) } },
+        )
+        if (enabled) Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+    }
+}
+/** 一行放得下就左右排，值靠右，并按整行垂直居中（和箭头对齐）；放不下就上下排，值靠左。[detail] 总在标题一侧的最下面。 */
+@Composable private fun TitleAndValue(title: @Composable () -> Unit, value: @Composable () -> Unit, detail: (@Composable () -> Unit)?, modifier: Modifier) {
+    Layout(content = { title(); value(); detail?.invoke() }, modifier = modifier) { measurables, constraints ->
+        val titleMeasurable = measurables[0]
+        val valueMeasurable = measurables[1]
+        val detailMeasurable = measurables.getOrNull(2)
+        val gap = 16.dp.roundToPx()
+        val width = constraints.maxWidth
+        val inline = titleMeasurable.maxIntrinsicWidth(Constraints.Infinity) + gap + valueMeasurable.maxIntrinsicWidth(Constraints.Infinity) <= width
+        val free = Constraints(maxWidth = width, maxHeight = constraints.maxHeight)
+        val titlePlaceable = titleMeasurable.measure(free)
+        val valuePlaceable = valueMeasurable.measure(free)
+        if (inline) {
+            // 小字不能压到右边的值
+            val detailPlaceable = detailMeasurable?.measure(free.copy(maxWidth = width - valuePlaceable.width - gap))
+            val leftHeight = titlePlaceable.height + (detailPlaceable?.height ?: 0)
+            val height = maxOf(leftHeight, valuePlaceable.height)
+            layout(width, height) {
+                val top = (height - leftHeight) / 2
+                titlePlaceable.placeRelative(0, top)
+                detailPlaceable?.placeRelative(0, top + titlePlaceable.height)
+                valuePlaceable.placeRelative(width - valuePlaceable.width, (height - valuePlaceable.height) / 2)
+            }
+        } else {
+            val detailPlaceable = detailMeasurable?.measure(free)
+            layout(width, titlePlaceable.height + valuePlaceable.height + (detailPlaceable?.height ?: 0)) {
+                titlePlaceable.placeRelative(0, 0)
+                valuePlaceable.placeRelative(0, titlePlaceable.height)
+                detailPlaceable?.placeRelative(0, titlePlaceable.height + valuePlaceable.height)
+            }
+        }
     }
 }
 /** 档位行：只有右边的“移除”能点，整行不再是点了就删。 */
@@ -265,6 +369,7 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
             Text(stringResource(R.string.llm_remove_model), style = WeTheme.typography.small, color = WeTheme.colors.danger)
         }
     }
+    WeDivider(startIndent = d.horizontalPadding)
 }
 /** 字段下方的红字提示。 */
 @Composable internal fun FieldError(text: String) = ErrorNote(text)
@@ -290,7 +395,7 @@ internal fun effortIssue(rule: ThinkingRule, value: String, label: String): Effo
 }
 @Composable internal fun RuleInput(title: String, value: String, number: Boolean = false, ascii: Boolean = true, hint: String? = null, onChange: (String) -> Unit) {
     val c = WeTheme.colors
-    FormRow(title) {
+    FormRow(title, showDivider = true) {
         Box(Modifier.fillMaxWidth().padding(vertical = WeTheme.dimens.inputBarVerticalPadding)) {
             if (value.isEmpty() && hint != null) Text(hint, style = WeTheme.typography.listTitle, color = c.textSecondary, softWrap = false, maxLines = 1, overflow = TextOverflow.Ellipsis)
             BasicTextField(value, { onChange(it.take(80)) }, singleLine = true, textStyle = WeTheme.typography.listTitle.copy(color = c.textPrimary), cursorBrush = SolidColor(c.brand),
@@ -299,9 +404,10 @@ internal fun effortIssue(rule: ThinkingRule, value: String, label: String): Effo
         }
     }
 }
-@Composable internal fun TemperatureForm(title: String, spec: TemperatureSpec?, onInvalid: (String, Boolean) -> Unit, onChange: (TemperatureSpec) -> Unit) {
+@Composable internal fun TemperatureForm(title: String, spec: TemperatureSpec?, onInvalid: (String, Boolean) -> Unit, note: String? = null, onChange: (TemperatureSpec) -> Unit) {
     fun label(mode: TemperatureMode?): Int = when(mode) { TemperatureMode.ADJUSTABLE -> R.string.temperature_adjustable; TemperatureMode.FIXED -> R.string.temperature_fixed; TemperatureMode.UNSUPPORTED -> R.string.temperature_unsupported; else -> R.string.rule_unknown }
-    ChoiceRow(title, stringResource(label(spec?.mode)), options = TemperatureMode.entries.map { stringResource(label(it)) to it }) {
+    val hasInputs = spec?.mode == TemperatureMode.ADJUSTABLE || spec?.mode == TemperatureMode.FIXED
+    ChoiceRow(title, stringResource(label(spec?.mode)), note, options = TemperatureMode.entries.map { stringResource(label(it)) to it }, showDivider = hasInputs) {
         onChange((spec ?: TemperatureSpec(it)).copy(mode = it))
     }
     if (spec != null) {
@@ -311,7 +417,7 @@ internal fun effortIssue(rule: ThinkingRule, value: String, label: String): Effo
             val invalid = parseTemperatureInput(input) == null
             val key = "$form/$title"
             DisposableEffect(key, invalid) { onInvalid(key, invalid); onDispose { onInvalid(key, false) } }
-            RuleInput(title, input, true) { input = it; parseTemperatureInput(it)?.let(set) }
+            RuleInput(title, input, true, hint = stringResource(R.string.temperature_input_hint)) { input = it; parseTemperatureInput(it)?.let(set) }
             if (invalid) FieldError(stringResource(R.string.temperature_input_invalid))
         }
         if (spec.mode == TemperatureMode.ADJUSTABLE) {

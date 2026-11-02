@@ -37,7 +37,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.scale
 import isomeria.aichat.R
@@ -55,7 +54,7 @@ fun AvatarCropDialog(source: Bitmap, onDismiss: () -> Unit, onCropped: (Bitmap) 
     var offset by remember { mutableStateOf(Offset.Zero) }
     var frameSize by remember { mutableFloatStateOf(0f) }
 
-    Dialog(
+    WeDialogWindow(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {

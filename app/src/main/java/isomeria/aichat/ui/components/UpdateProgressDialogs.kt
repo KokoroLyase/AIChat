@@ -17,7 +17,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import isomeria.aichat.R
 import isomeria.aichat.ui.theme.WeTheme
@@ -30,7 +29,7 @@ import java.util.Locale
 fun UpdateProgressDialog(state: UpdateInstallState.Downloading, onCancel: () -> Unit) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
-    Dialog(
+    WeDialogWindow(
         onDismissRequest = {},
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
