@@ -101,8 +101,8 @@ class BackupManagerTest {
         assertTrue(replies.cancelled.isNotEmpty())
         // 只留下被引用的图片和头像
         assertEquals(referencedFiles(), mediaFiles())
-        // 恢复前的自动备份在私有目录里
-        assertTrue(backup.snapshotFile.isFile)
+        // 数据库与设置都成功后，立即删除恢复前快照。
+        assertFalse(backup.snapshotFile.exists())
     }
 
     @Test
@@ -478,6 +478,104 @@ class BackupManagerTest {
         assertEquals(referencedFiles(), mediaFiles())
     }
 
+    private suspend fun encryptedExport(includeKeys: Boolean = true): File {
+        val output = ByteArrayOutputStream()
+        val result = backup.export(output, "pw123456".toCharArray(), includeKeys)
+        assertTrue(result.encrypted)
+        return File(context.cacheDir, "encrypted-${System.nanoTime()}.aichat").apply { writeBytes(output.toByteArray()) }
+    }
+
+    @Test fun encryptedContainerRoundTripRemovesSnapshotAndPlaintextTemporary() = runBlocking {
+        seed()
+        val expected = dump()
+        val source = encryptedExport()
+        assertTrue(BackupContainer.isEncrypted(source))
+        try { ZipFile(source).close(); fail("Encrypted export cannot be opened as zip") }
+        catch (_: java.util.zip.ZipException) { }
+        scramble()
+        val preview = backup.inspect(source, "pw123456".toCharArray())
+        assertTrue(preview.decryptedTemporary)
+        assertTrue(preview.file.canonicalPath.startsWith(files.restoreCacheDir.canonicalPath + File.separator))
+        assertTrue(preview.file.isFile)
+        assertEquals(3, preview.manifest.formatVersion)
+        val result = backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray())
+        assertEquals(expected, dump())
+        assertFalse(result.cleanupPending)
+        assertFalse(preview.file.exists())
+        assertFalse(backup.snapshotFile.exists())
+        assertTrue(source.exists())
+    }
+
+    @Test fun wholeFileCanBeEncryptedWithoutIncludingApiKeys() = runBlocking {
+        seed()
+        val source = encryptedExport(includeKeys = false)
+        val preview = backup.inspect(source, "pw123456".toCharArray())
+        assertFalse(preview.manifest.includesApiKey)
+        assertTrue(preview.data.providers.all { it.apiKey == null })
+        assertTrue(backup.discardPreview(preview))
+        assertFalse(preview.file.exists())
+    }
+
+    @Test fun wrongOuterPasswordAndMissingPasswordNeverChangeDataOrCreateSnapshot() = runBlocking {
+        seed()
+        val source = encryptedExport()
+        val expected = dump()
+        try { backup.inspect(source); fail("Password required") }
+        catch (_: EncryptedPasswordRequiredException) { }
+        try { backup.inspect(source, "wrong-pw".toCharArray()); fail("Wrong password must fail") }
+        catch (_: WrongPasswordException) { }
+        assertEquals(expected, dump())
+        assertFalse(backup.snapshotFile.exists())
+        assertTrue(files.restoreCacheDir.listFiles().orEmpty().none { it.name.startsWith("decrypted-") })
+    }
+
+    @Test fun truncatedMultiChunkFileIsRejectedAndPartialPlaintextRemoved() = runBlocking {
+        seed()
+        val image = files.newMediaFile(MediaKind.IMAGE).apply { writeBytes(ByteArray(200_000) { it.toByte() }) }
+        db.messageDao().insert(Message(contactId = 1, role = Role.USER, type = MessageType.IMAGE, imagePath = image.path,
+            status = MessageStatus.SUCCESS, createdAt = 9000))
+        val source = encryptedExport()
+        source.writeBytes(source.readBytes().dropLast(1).toByteArray())
+        val expected = dump()
+        try { backup.inspect(source, "pw123456".toCharArray()); fail("Truncation must fail") }
+        catch (_: InvalidBackupException) { }
+        assertEquals(expected, dump())
+        assertFalse(backup.snapshotFile.exists())
+        assertTrue(files.restoreCacheDir.listFiles().orEmpty().none { it.name.startsWith("decrypted-") })
+    }
+
+    @Test fun settingsFailureRollsBackEncryptedRestoreAndKeepsSnapshotButDeletesPlaintext() = runBlocking {
+        seed()
+        val source = encryptedExport()
+        scramble()
+        val expected = dump()
+        val preview = backup.inspect(source, "pw123456".toCharArray())
+        settings.failNextWrite = true
+        try { backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray()); fail("Settings failure must fail") }
+        catch (_: IllegalStateException) { }
+        assertEquals(expected, dump())
+        assertEquals(referencedFiles(), mediaFiles())
+        assertTrue(backup.snapshotFile.isFile)
+        assertFalse(preview.file.exists())
+    }
+
+    @Test fun authenticatedNonZipIsRejectedAndPlaintextRemoved() = runBlocking {
+        val source = File(context.cacheDir, "invalid-inner-${System.nanoTime()}.aichat")
+        source.outputStream().let { BackupContainer.encrypting(it, "pw123456".toCharArray()) }.use { it.write("not a zip".toByteArray()) }
+        try { backup.inspect(source, "pw123456".toCharArray()); fail("Invalid inner zip") }
+        catch (_: InvalidBackupException) { }
+        assertTrue(files.restoreCacheDir.listFiles().orEmpty().none { it.name.startsWith("decrypted-") })
+    }
+
+    @Test fun startupCleanupDeletesOnlyRestoreCacheAndPreservesFailureSnapshot() {
+        val stale = File(files.restoreCacheDir, "decrypted-stale.zip").apply { writeText("fixture") }
+        val selected = File(files.restoreCacheDir, "selected-stale.backup").apply { writeText("fixture") }
+        val snapshot = backup.snapshotFile.apply { writeText("snapshot fixture") }
+        FileStorage.clearStaleRestoreCache(context)
+        assertFalse(stale.exists()); assertFalse(selected.exists())
+        assertTrue(snapshot.exists())
+    }
+
     // ---------- 测试数据 ----------
 
     private suspend fun seed() {
@@ -596,10 +694,14 @@ class BackupManagerTest {
         status = MessageStatus.SUCCESS, createdAt = createdAt,
     )
 
+    /** Legacy regression fixtures use the unchanged inner zip, including password-encrypted SecretDto. */
     private suspend fun export(password: String?): File {
         val out = ByteArrayOutputStream()
         backup.export(out, password?.toCharArray())
-        return File(context.cacheDir, "backup-${System.nanoTime()}.zip").apply { writeBytes(out.toByteArray()) }
+        val bytes = if (password == null) out.toByteArray() else ByteArrayOutputStream().also {
+            BackupContainer.decrypt(out.toByteArray().inputStream(), it, password.toCharArray())
+        }.toByteArray()
+        return File(context.cacheDir, "backup-${System.nanoTime()}.zip").apply { writeBytes(bytes) }
     }
 
     private fun writeZip(vararg entries: Pair<String, String>): File {

@@ -48,4 +48,11 @@ class CrashLogStoreTest {
         val store = CrashLogStore(temporary.newFolder(), "fixture")
         assertThrows(IllegalArgumentException::class.java) { store.read("../key") }
     }
+    @Test fun sameExitIsIdempotentAcrossIndependentStoreInstances() {
+        val directory = temporary.newFolder()
+        val first = CrashLogStore(directory, "fixture").recordExit(1_700_000_000_000, "ANR", emptySequence())
+        val second = CrashLogStore(directory, "fixture").recordExit(1_700_000_000_000, "ANR", emptySequence())
+        assertEquals(first, second)
+        assertEquals(1, CrashLogStore(directory, "fixture").list().size)
+    }
 }

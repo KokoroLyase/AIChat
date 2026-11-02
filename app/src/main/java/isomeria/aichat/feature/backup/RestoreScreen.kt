@@ -44,6 +44,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import isomeria.aichat.R
+import isomeria.aichat.data.backup.BackupContainer
 import isomeria.aichat.data.backup.BackupManager
 import isomeria.aichat.data.backup.BackupPreview
 import isomeria.aichat.data.backup.BackupTooNewException
@@ -69,6 +70,8 @@ import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -89,6 +92,7 @@ sealed interface RestoreError {
 
 data class RestoreUiState(
     val reading: Boolean = false,
+    val locked: Boolean = false,
     val preview: BackupPreview? = null,
     val mode: RestoreMode = RestoreMode.MERGE,
     val password: String = "",
@@ -109,88 +113,150 @@ class RestoreViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(RestoreUiState())
     val state: StateFlow<RestoreUiState> = _state.asStateFlow()
+    private var selectedFile: File? = null
+    private var readingJob: Job? = null
+    private var closed = false
 
-    private val cacheFile get() = File(files.restoreCacheDir, "selected.zip").also(StorageOperations::pin)
-
-    /** 先把选中的文件复制到应用缓存目录，再读取校验 */
     fun pick(uri: Uri) {
-        _state.update { it.copy(reading = true, error = null, preview = null, password = "", wrongPassword = false) }
-        viewModelScope.launch {
-            val result = try {
-                StorageOperations.gate.activity {
-                withContext(Dispatchers.IO) {
-                    val input = context.contentResolver.openInputStream(uri) ?: error("无法读取所选文件")
-                    input.use { stream -> cacheFile.outputStream().use { stream.copyTo(it) } }
+        if (_state.value.restoring) return
+        readingJob?.cancel()
+        backup.discardPreview(_state.value.preview)
+        releaseFile(selectedFile)
+        val target = File(files.restoreCacheDir, "selected-${java.util.UUID.randomUUID()}.backup")
+        StorageOperations.pin(target)
+        selectedFile = target
+        _state.value = RestoreUiState(reading = true)
+        readingJob = viewModelScope.launch {
+            var keep = false
+            try {
+                val preview = StorageOperations.gate.activity {
+                    withContext(Dispatchers.IO) {
+                        val input = context.contentResolver.openInputStream(uri) ?: error("RestoreInputUnavailable")
+                        input.use { source -> target.outputStream().use { output ->
+                            val buffer = ByteArray(BackupContainer.CHUNK_BYTES)
+                            while (true) {
+                                kotlin.coroutines.coroutineContext.ensureActive()
+                                val count = source.read(buffer)
+                                if (count < 0) break
+                                output.write(buffer, 0, count)
+                            }
+                        } }
+                    }
+                    if (withContext(Dispatchers.IO) { BackupContainer.isEncrypted(target) }) null else backup.inspect(target)
                 }
-                Result.success(backup.inspect(cacheFile))
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
-            _state.update { s ->
-                result.fold(
-                    onSuccess = { s.copy(reading = false, preview = it, mode = RestoreMode.MERGE) },
-                    onFailure = { e ->
-                        s.copy(
-                            reading = false,
-                            error = when (e) {
-                                is BackupTooNewException -> RestoreError.TooNew(e.formatVersion)
-                                is InvalidBackupException -> RestoreError.Invalid
-                                else -> RestoreError.ReadFailed
-                            },
-                        )
-                    },
-                )
+                if (selectedFile == target && !closed) {
+                    _state.value = RestoreUiState(preview = preview, locked = preview == null)
+                    keep = true
+                } else backup.discardPreview(preview)
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (error: Exception) {
+                if (selectedFile == target && !closed) _state.value = RestoreUiState(error = readError(error))
+            } finally {
+                if (!keep || closed || selectedFile != target) releaseFile(target)
             }
         }
     }
 
+    fun unlock() {
+        val current = _state.value
+        val target = selectedFile ?: return
+        if (current.reading || current.restoring || !current.locked) return
+        _state.update { it.copy(reading = true, wrongPassword = false, error = null) }
+        readingJob = viewModelScope.launch {
+            val password = current.password.toCharArray()
+            var preview: BackupPreview? = null
+            var accepted = false
+            try {
+                preview = backup.inspect(target, password)
+                if (selectedFile == target && !closed) {
+                    _state.update { it.copy(reading = false, locked = false, preview = preview) }
+                    accepted = true
+                }
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (_: WrongPasswordException) {
+                if (selectedFile == target && !closed) _state.update { it.copy(reading = false, wrongPassword = true) }
+            } catch (error: Exception) {
+                if (selectedFile == target && !closed) _state.update { it.copy(reading = false, error = readError(error)) }
+            } finally {
+                password.fill('\u0000')
+                if (!accepted) backup.discardPreview(preview)
+                if (closed) releaseFile(target)
+            }
+        }
+    }
+
+    private fun readError(error: Exception): RestoreError = when (error) {
+        is BackupTooNewException -> RestoreError.TooNew(error.formatVersion)
+        is InvalidBackupException -> RestoreError.Invalid
+        else -> RestoreError.ReadFailed
+    }
     fun setMode(mode: RestoreMode) = _state.update { it.copy(mode = mode) }
     fun setPassword(value: String) = _state.update { it.copy(password = value, wrongPassword = false) }
     fun dismissError() = _state.update { it.copy(error = null) }
 
-    /** 恢复放在应用级协程里：离开页面也会做完（或完整回滚），不会停在一半 */
+    /** Application scope preserves transaction/rollback completion after navigation. */
     fun restore() {
-        val s = _state.value
-        val preview = s.preview ?: return
-        if (s.restoring) return
+        val current = _state.value
+        val preview = current.preview ?: return
+        if (current.restoring || current.reading) return
         _state.update { it.copy(restoring = true, wrongPassword = false) }
+        val source = selectedFile
         appScope.launch {
-            val password = s.password.takeIf { preview.needsPassword && it.isNotEmpty() }?.toCharArray()
+            val password = current.password.takeIf { preview.needsPassword && it.isNotEmpty() }?.toCharArray()
             try {
-                val summary = backup.restore(preview, s.mode, password)
-                _state.update { it.copy(restoring = false, done = summary, doneMode = s.mode, preview = null, password = "") }
-                withContext(Dispatchers.IO) { cacheFile.delete(); StorageOperations.unpin(cacheFile) }
+                val summary = backup.restore(preview, current.mode, password)
+                val cleaned = withContext(Dispatchers.IO) { releaseFile(source) }
+                _state.update { it.copy(restoring = false, done = summary.copy(cleanupPending = summary.cleanupPending || !cleaned),
+                    doneMode = current.mode, preview = null, password = "", locked = false) }
             } catch (_: WrongPasswordException) {
-                _state.update { it.copy(restoring = false, wrongPassword = true) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                _state.update { it.copy(restoring = false, error = RestoreError.RestoreFailed) }
+                _state.update { it.copy(restoring = false, wrongPassword = true,
+                    preview = if (preview.decryptedTemporary) null else preview, locked = preview.decryptedTemporary) }
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (_: Exception) {
+                _state.update { it.copy(restoring = false, error = RestoreError.RestoreFailed,
+                    preview = if (preview.decryptedTemporary) null else preview, locked = preview.decryptedTemporary) }
             } finally {
-                password?.fill(' ')
+                password?.fill('\u0000')
+                backup.discardPreview(preview)
+                if (closed) releaseFile(source)
             }
         }
     }
 
+    private fun releaseFile(file: File?): Boolean {
+        if (file == null) return true
+        val deleted = runCatching { !file.exists() || file.delete() }.getOrDefault(false)
+        StorageOperations.unpin(file)
+        if (selectedFile == file) selectedFile = null
+        return deleted
+    }
     override fun onCleared() {
-        if (!_state.value.restoring) { cacheFile.delete(); StorageOperations.unpin(cacheFile) }
+        closed = true
+        readingJob?.cancel()
+        if (!_state.value.restoring) {
+            backup.discardPreview(_state.value.preview)
+            releaseFile(selectedFile)
+        }
     }
 }
 
 /** 设置 → 数据 → 恢复数据 */
 @Composable
 fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewModel()) {
-    val colors = WeTheme.colors
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var confirmOverwrite by remember { mutableStateOf(false) }
     val openDocument = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.pick(uri)
     }
-    fun pickFile() = openDocument.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+    RestoreContent(state, onBack, { openDocument.launch(arrayOf("*/*")) }, viewModel::unlock,
+        viewModel::setPassword, viewModel::setMode, viewModel::restore, viewModel::dismissError)
+}
 
+@Composable
+fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit, onUnlock: () -> Unit,
+    onPassword: (String) -> Unit, onMode: (RestoreMode) -> Unit, onRestore: () -> Unit, onDismissError: () -> Unit,
+) {
+    val colors = WeTheme.colors
+    var confirmOverwrite by remember { mutableStateOf(false) }
     BackHandler(enabled = state.restoring) {}
     ImeBackHandler()
     Column(Modifier.fillMaxSize().background(colors.pageBackground).imePadding()) {
@@ -198,10 +264,13 @@ fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewMode
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
             FootnoteText(stringResource(R.string.restore_intro), Modifier.padding(top = 8.dp))
             val preview = state.preview
-            if (preview == null) {
+            if (state.locked) {
+                EncryptedBackupUnlock(state.password, state.wrongPassword, state.reading, onPassword, onUnlock)
+                WeListRow(stringResource(R.string.restore_pick_again), onClick = onPick, enabled = !state.reading)
+            } else if (preview == null) {
                 Spacer(Modifier.height(40.dp))
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    WeButton(stringResource(R.string.restore_pick), ::pickFile, Modifier.width(184.dp))
+                    WeButton(stringResource(R.string.restore_pick), onPick, Modifier.width(184.dp))
                 }
             } else {
                 BackupInfo(preview)
@@ -210,7 +279,7 @@ fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewMode
                     FormRow(stringResource(R.string.restore_password)) {
                         PasswordField(
                             value = state.password,
-                            onValueChange = viewModel::setPassword,
+                            onValueChange = onPassword,
                             hint = stringResource(R.string.restore_password_hint),
                         )
                     }
@@ -230,14 +299,14 @@ fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewMode
                     description = stringResource(R.string.restore_mode_merge_desc),
                     selected = state.mode == RestoreMode.MERGE,
                     showDivider = true,
-                    onClick = { viewModel.setMode(RestoreMode.MERGE) },
+                    onClick = { onMode(RestoreMode.MERGE) },
                 )
                 ModeRow(
                     title = stringResource(R.string.restore_mode_overwrite),
                     description = stringResource(R.string.restore_mode_overwrite_desc),
                     selected = state.mode == RestoreMode.OVERWRITE,
                     showDivider = false,
-                    onClick = { viewModel.setMode(RestoreMode.OVERWRITE) },
+                    onClick = { onMode(RestoreMode.OVERWRITE) },
                 )
                 if (!preview.manifest.includesApiKey) FootnoteText(stringResource(R.string.restore_key_kept_note))
                 Spacer(Modifier.height(32.dp))
@@ -245,7 +314,7 @@ fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewMode
                     WeButton(
                         stringResource(R.string.restore_button),
                         onClick = {
-                            if (state.mode == RestoreMode.OVERWRITE) confirmOverwrite = true else viewModel.restore()
+                            if (state.mode == RestoreMode.OVERWRITE) confirmOverwrite = true else onRestore()
                         },
                         modifier = Modifier.width(184.dp),
                         enabled = !state.restoring,
@@ -253,7 +322,7 @@ fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewMode
                     Box(
                         Modifier
                             .padding(top = 8.dp)
-                            .clickable(onClick = ::pickFile)
+                            .clickable(onClick = onPick)
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                     ) {
                         Text(stringResource(R.string.restore_pick_again), style = WeTheme.typography.listTitle, color = colors.link)
@@ -274,14 +343,14 @@ fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewMode
             onDismiss = { confirmOverwrite = false },
             onConfirm = {
                 confirmOverwrite = false
-                viewModel.restore()
+                onRestore()
             },
         )
     }
     state.done?.let { summary ->
         WeDialog(
             title = stringResource(R.string.restore_done_title),
-            message = when {
+            message = (when {
                 state.doneMode == RestoreMode.OVERWRITE && summary.apiKeyRestored ->
                     stringResource(R.string.restore_done_overwrite_key, summary.contactsAdded, summary.messagesAdded)
                 state.doneMode == RestoreMode.OVERWRITE ->
@@ -289,7 +358,7 @@ fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewMode
                 summary.apiKeyRestored ->
                     stringResource(R.string.restore_done_message_key, summary.contactsAdded, summary.messagesAdded)
                 else -> stringResource(R.string.restore_done_message, summary.contactsAdded, summary.messagesAdded)
-            },
+            }) + if (summary.cleanupPending) "\n\n" + stringResource(R.string.restore_cleanup_pending) else "",
             dismissText = null,
             onDismiss = onBack,
             onConfirm = onBack,
@@ -304,8 +373,8 @@ fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewMode
                 RestoreError.RestoreFailed -> stringResource(R.string.restore_failed)
             },
             dismissText = null,
-            onDismiss = viewModel::dismissError,
-            onConfirm = viewModel::dismissError,
+            onDismiss = onDismissError,
+            onConfirm = onDismissError,
         )
     }
 }
@@ -393,4 +462,16 @@ private fun ModeRow(title: String, description: String, selected: Boolean, showD
             Icon(Icons.Filled.Check, null, tint = colors.brand, modifier = Modifier.padding(start = 12.dp).size(24.dp))
         }
     }
+}
+
+@Composable
+fun EncryptedBackupUnlock(password: String, wrongPassword: Boolean, reading: Boolean,
+    onPassword: (String) -> Unit, onUnlock: () -> Unit,
+) {
+    FootnoteText(stringResource(R.string.restore_encrypted_notice))
+    FormRow(stringResource(R.string.restore_password)) {
+        PasswordField(password, onPassword, hint = stringResource(R.string.restore_password_hint))
+    }
+    if (wrongPassword) FootnoteText(stringResource(R.string.restore_wrong_password))
+    WeButton(stringResource(R.string.restore_unlock), onUnlock, enabled = !reading && password.isNotEmpty())
 }

@@ -29,6 +29,7 @@ import isomeria.aichat.data.settings.FontSize
 import isomeria.aichat.data.settings.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -70,6 +71,7 @@ data class BackupPreview(
     val file: File,
     val manifest: BackupManifest,
     val data: BackupData,
+    val decryptedTemporary: Boolean = false,
 ) {
     /** 备份里有用密码加密的 API Key，恢复它需要输入导出时设的密码 */
     val needsPassword: Boolean get() = data.providers.any { it.apiKey?.scheme == SecretDto.SCHEME_PASSWORD }
@@ -79,9 +81,9 @@ data class BackupPreview(
     val imageCount: Int get() = data.messages.count { it.type == MessageType.IMAGE }
 }
 
-data class ExportSummary(val contacts: Int, val messages: Int, val images: Int, val includesApiKey: Boolean)
+data class ExportSummary(val contacts: Int, val messages: Int, val images: Int, val includesApiKey: Boolean, val encrypted: Boolean = false)
 
-data class RestoreSummary(val contactsAdded: Int, val messagesAdded: Int, val apiKeyRestored: Boolean)
+data class RestoreSummary(val contactsAdded: Int, val messagesAdded: Int, val apiKeyRestored: Boolean, val cleanupPending: Boolean = false)
 
 /**
  * 导出与恢复。
@@ -127,30 +129,73 @@ class BackupManager @Inject constructor(
     val snapshotFile: File get() = File(files.backupsDir, SNAPSHOT_NAME)
 
     /**
-     * 导出到 [out]（写完后关闭）。[apiKeyPassword] 不为 null 时包含 API Key，用这个密码加密。
+     * A password always encrypts the entire file. Including keys additionally uses the unchanged SecretDto scheme.
      */
-    suspend fun export(out: OutputStream, apiKeyPassword: CharArray?): ExportSummary = mutex.withLock {
+    suspend fun export(out: OutputStream, password: CharArray?, includeApiKey: Boolean = password != null): ExportSummary = mutex.withLock {
         StorageOperations.gate.activity { withContext(Dispatchers.IO) {
-            writeBackup(out, if (apiKeyPassword != null) KeyExport.Password(apiKeyPassword) else KeyExport.None)
+            out.use { target ->
+                require(!includeApiKey || password != null)
+                val key = if (includeApiKey) KeyExport.Password(requireNotNull(password)) else KeyExport.None
+                val stream = if (password != null) BackupContainer.encrypting(target, password) else target
+                stream.use { writeBackup(it, key).copy(encrypted = password != null) }
+            }
         } }
     }
 
     /** 读取并校验备份文件；见类注释第 1 步。 */
-    suspend fun inspect(file: File): BackupPreview = StorageOperations.gate.activity { withContext(Dispatchers.IO) { readBackup(file) } }
+    suspend fun inspect(file: File, password: CharArray? = null): BackupPreview {
+        var temporary: File? = null
+        try { return StorageOperations.gate.activity { withContext(Dispatchers.IO) {
+            if (!BackupContainer.isEncrypted(file)) return@withContext readBackup(file)
+            if (password == null) throw EncryptedPasswordRequiredException()
+            val plain = File(files.restoreCacheDir, "decrypted-${UUID.randomUUID()}.zip")
+            temporary = plain
+            StorageOperations.pin(plain)
+            try {
+                val restoreContext = kotlin.coroutines.coroutineContext
+                file.inputStream().use { input -> plain.outputStream().use { output -> BackupContainer.decrypt(input, output, password) { restoreContext.ensureActive() } } }
+                readBackup(plain).copy(decryptedTemporary = true)
+            } catch (error: Throwable) {
+                plain.delete()
+                StorageOperations.unpin(plain)
+                throw error
+            }
+        } } } catch (error: Throwable) {
+            temporary?.let { it.delete(); StorageOperations.unpin(it) }
+            throw error
+        }
+    }
+
+    /** Only deletes plaintext files created by inspect; never deletes a caller-owned legacy zip. */
+    fun discardPreview(preview: BackupPreview?): Boolean {
+        if (preview == null || !preview.decryptedTemporary) return true
+        return try {
+            val file = preview.file
+            if (!file.name.matches(Regex("decrypted-[a-f0-9-]{36}\\.zip")) ||
+                !file.canonicalPath.startsWith(files.restoreCacheDir.canonicalPath + File.separator)) return false
+            val deleted = !file.exists() || file.delete()
+            StorageOperations.unpin(file)
+            deleted
+        } catch (_: Exception) { false }
+    }
 
     /**
      * 恢复。备份里有加密的 API Key 但 [password] 为空时，跳过 Key、照常恢复其他数据；
      * 密码错误时抛 [WrongPasswordException]，本机数据不变。
      */
     suspend fun restore(preview: BackupPreview, mode: RestoreMode, password: CharArray?): RestoreSummary =
-        mutex.withLock {
+        try { mutex.withLock {
             StorageOperations.gate.activity { withContext(Dispatchers.IO) {
                 val apiKeys = importedApiKeys(preview, password)
                 writeSnapshot()
                 if (mode == RestoreMode.OVERWRITE) stopAllReplies()
-                apply(preview, mode, apiKeys, exactKey = false, rollback = snapshotFile)
+                val summary = apply(preview, mode, apiKeys, exactKey = false, rollback = snapshotFile)
+                // apply includes post-transaction settings writes and any required rollback.
+                val snapshotDeleted = !snapshotFile.exists() || snapshotFile.delete()
+                val temporaryDeleted = discardPreview(preview)
+                summary.copy(cleanupPending = !snapshotDeleted || !temporaryDeleted)
             } }
-        }
+        } } finally { discardPreview(preview) }
 
     // ---------- 导出 ----------
 

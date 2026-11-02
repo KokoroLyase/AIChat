@@ -40,7 +40,7 @@ class TestToolsActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun seed(count: Int): Long = db.withTransaction {
+    private suspend fun seed(count: Int): Long = isomeria.aichat.data.repo.StorageOperations.gate.activity { db.withTransaction {
         val provider = db.providerDao().insert(ProviderConfig(
             kind = ProviderKind.LLM, provider = ProviderProtocol.OPENAI, name = "Local fixture", baseUrl = "https://example.invalid/v1", defaultModel = "fixture",
         ))
@@ -73,5 +73,5 @@ class TestToolsActivity : ComponentActivity() {
         db.conversationDao().upsert(Conversation(contactId = contact, unreadCount = 3, lastMessageTime = now - 1000,
             lastMessagePreview = getString(R.string.tools_message, count - 1)))
         contact
-    }
+    } }
 }

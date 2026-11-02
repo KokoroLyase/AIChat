@@ -164,6 +164,12 @@ interface MessageDao {
     @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' ORDER BY createdAt DESC, id DESC LIMIT 1")
     suspend fun latestAssistant(contactId: Long): Message?
 
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' AND id != :lastId AND (:group IS NULL OR replyGroup IS NULL OR replyGroup != :group) ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun previousAssistant(contactId: Long, lastId: Long, group: String?): Message?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM message WHERE contactId = :contactId AND role = 'USER' AND (createdAt > :time OR (createdAt = :time AND id > :id)))")
+    suspend fun hasUserAfter(contactId: Long, time: Long, id: Long): Boolean
+
     @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' ORDER BY createdAt DESC, id DESC LIMIT 1 OFFSET :offset")
     suspend fun unreadAnchor(contactId: Long, offset: Int): Message?
 

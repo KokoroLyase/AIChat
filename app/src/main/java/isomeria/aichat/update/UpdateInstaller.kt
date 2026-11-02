@@ -82,6 +82,8 @@ class UpdateInstaller @Inject constructor(
                     _state.value = UpdateInstallState.Downloading(release, done, total)
                 }
                 if (verifier.verify(apk)) {
+                    // The system installer may still be reading after Ready is dismissed.
+                    isomeria.aichat.data.repo.StorageOperations.pin(apk)
                     UpdateInstallState.Ready(release, apk)
                 } else {
                     apk.delete()

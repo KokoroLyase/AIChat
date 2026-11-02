@@ -34,6 +34,8 @@ import isomeria.aichat.feature.me.MeContent
 import isomeria.aichat.feature.memory.MemoryContent
 import isomeria.aichat.feature.memory.previewMemoryState
 import isomeria.aichat.feature.settings.*
+import isomeria.aichat.feature.backup.*
+import isomeria.aichat.data.backup.*
 import isomeria.aichat.data.llm.*
 import isomeria.aichat.data.db.*
 import isomeria.aichat.data.memory.MemoryTaskState
@@ -124,6 +126,27 @@ class ScreenshotTest {
     @Test fun crashLogsFailure() = shot("40-crash-failure", true) { CrashLogsContent(CrashLogsState(loading = false, failed = true), {}, {}, {}, {}, {}) }
     @Test fun crashLogsDetail() = shot("40-crash-detail", false) { CrashLogsContent(CrashLogsState(loading = false, selected = "fixture", detail = "java.lang.IllegalStateException\n at fixture.App.run(App.kt:42)"), {}, {}, {}, {}, {}) }
     @Test fun crashLogsCompleted() = shot("40-crash-completed", true) { CrashLogsContent(CrashLogsState(loading = false, completed = true), {}, {}, {}, {}, {}) }
+    @Composable private fun ExportSample(state: ExportUiState) = ExportContent(state, {}, {}, {}, {}, {}, {})
+    @Composable private fun RestoreSample(state: RestoreUiState) = RestoreContent(state, {}, {}, {}, {}, {}, {}, {})
+    private fun backupDialogShot(name: String, dark: Boolean, content: @Composable () -> Unit) {
+        compose.setContent { AIChatTheme(darkTheme = dark, content = content) }
+        captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun exportPlainLight() = shot("43-export-plain", false) { ExportSample(ExportUiState()) }
+    @Test fun exportProtectedDark() = shot("43-export-protected", true) { ExportSample(ExportUiState(password = "123456", confirm = "123456")) }
+    @Test fun exportIncludesKeysLight() = shot("43-export-keys", false) { ExportSample(ExportUiState(hasApiKey = true, includeKey = true, password = "123456", confirm = "123456")) }
+    @Test fun exportMismatchDark() = shot("43-export-mismatch", true) { ExportSample(ExportUiState(password = "123456", confirm = "654321", errorRes = isomeria.aichat.R.string.export_password_mismatch)) }
+    @Test fun exportRunning() = backupDialogShot("43-export-running", false) { ExportSample(ExportUiState(running = true)) }
+    @Test fun exportCompleted() = backupDialogShot("43-export-completed", true) { ExportSample(ExportUiState(result = ExportSummary(2, 1000, 2, false, encrypted = true))) }
+    @Test fun exportFailed() = backupDialogShot("43-export-failed", false) { ExportSample(ExportUiState(failed = true)) }
+    @Test fun restoreLockedLight() = shot("44-restore-locked", false) { RestoreSample(RestoreUiState(locked = true)) }
+    @Test fun restoreLockedDark() = shot("44-restore-locked", true) { RestoreSample(RestoreUiState(locked = true, password = "123456")) }
+    @Test fun restoreWrongPassword() = shot("44-restore-password-failed", false) { RestoreSample(RestoreUiState(locked = true, password = "123456", wrongPassword = true)) }
+    @Test fun restoreReading() = backupDialogShot("44-restore-reading", true) { RestoreSample(RestoreUiState(reading = true, locked = true)) }
+    @Test fun restoreRunning() = backupDialogShot("44-restore-running", false) { RestoreSample(RestoreUiState(restoring = true)) }
+    @Test fun restoreCompleted() = backupDialogShot("44-restore-completed", true) { RestoreSample(RestoreUiState(done = RestoreSummary(2, 1000, true))) }
+    @Test fun restoreCleanupPending() = backupDialogShot("44-restore-cleanup-pending", false) { RestoreSample(RestoreUiState(done = RestoreSummary(2, 1000, true, cleanupPending = true))) }
+    @Test fun restoreInvalidFile() = backupDialogShot("44-restore-invalid", true) { RestoreSample(RestoreUiState(error = RestoreError.Invalid)) }
     private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789))
     @Test fun storageLight() = shot("42-storage", false) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageDark() = shot("42-storage", true) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }

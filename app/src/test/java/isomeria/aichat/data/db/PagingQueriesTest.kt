@@ -111,4 +111,10 @@ class PagingQueriesTest {
         assertFalse(ChatMessageActions(db).regenerate(1))
         assertNotNull(messages.get(2))
     }
+    @Test fun deletingLastUserTurnMakesRegenerationUnavailableWithoutDeletingReply() = runBlocking {
+        messages.insertAll(listOf(message(1, Role.USER), message(2, group = "old"), message(3, group = "last")))
+        assertFalse(ChatPaging(db).timeline(1).first().regenerationAllowed)
+        assertFalse(ChatMessageActions(db).regenerate(1))
+        assertNotNull(messages.get(3))
+    }
 }

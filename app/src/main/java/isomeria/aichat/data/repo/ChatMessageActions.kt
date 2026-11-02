@@ -18,10 +18,11 @@ class ChatMessageActions(private val db: AppDatabase) {
     suspend fun regenerate(contactId: Long, refreshPreview: suspend () -> Unit = {}): Boolean = db.withTransaction {
         val last = messages.latest(contactId) ?: return@withTransaction false
         if (last.role != Role.ASSISTANT || last.createdAt > System.currentTimeMillis() || messages.hasSending(contactId)) return@withTransaction false
-        if (last.replyGroup != null) messages.deleteReplyGroup(contactId, last.replyGroup) else messages.delete(last.id)
-        val previous = messages.latestAssistant(contactId)
+        val previous = messages.previousAssistant(contactId, last.id, last.replyGroup)
         val toResend = messages.trailingUserIds(contactId, previous?.createdAt ?: Long.MIN_VALUE, previous?.id ?: Long.MIN_VALUE, null)
-        if (toResend.isNotEmpty()) messages.setStatus(toResend, MessageStatus.SENDING, 0)
+        if (toResend.isEmpty()) return@withTransaction false
+        if (last.replyGroup != null) messages.deleteReplyGroup(contactId, last.replyGroup) else messages.delete(last.id)
+        messages.setStatus(toResend, MessageStatus.SENDING, 0)
         refreshPreview()
         toResend.isNotEmpty()
     }

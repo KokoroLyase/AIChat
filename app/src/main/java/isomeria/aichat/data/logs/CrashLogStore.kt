@@ -11,18 +11,19 @@ class CrashLogStore(private val directory: File, private val environment: String
 
     @Synchronized
     fun recordExit(time: Long, kind: String, trace: Sequence<String>): File =
-        write(time, kind, mainThreadFrames(trace))
+        write(time, kind, mainThreadFrames(trace), UUID.nameUUIDFromBytes("$kind:$time".toByteArray(Charsets.UTF_8)))
 
-    private fun write(time: Long, kind: String, stack: String): File {
+    private fun write(time: Long, kind: String, stack: String, identity: UUID = UUID.randomUUID()): File {
         check(directory.isDirectory || directory.mkdirs())
-        val target = File(directory, "$time-${UUID.randomUUID()}.txt")
-        val temporary = File(directory, "${target.name}.tmp")
+        val target = File(directory, "$time-$identity.txt")
+        if (target.isFile) return target
+        val temporary = File(directory, "${target.name}-${UUID.randomUUID()}.tmp")
         try {
             temporary.outputStream().use {
                 it.write("time=$time\n$environment\nkind=$kind\n$stack".toByteArray(Charsets.UTF_8))
                 it.fd.sync()
             }
-            check(temporary.renameTo(target))
+            check(temporary.renameTo(target) || target.isFile)
         } finally { temporary.delete() }
         list().drop(LIMIT).forEach { check(it.delete()) }
         return target

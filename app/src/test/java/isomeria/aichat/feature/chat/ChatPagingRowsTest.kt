@@ -21,12 +21,13 @@ class ChatPagingRowsTest {
     }
     @Test fun regenerateOnlyAppliesToLastCompleteReplyGroup() {
         val latest = row(4, 4, group = "last").message
-        val state = ChatTimeline(latest = latest)
+        val state = ChatTimeline(latest = latest, regenerationAllowed = true)
         assertTrue(canRegenerate(latest, state))
         assertTrue(canRegenerate(row(3, 3, group = "last").message, state))
         assertFalse(canRegenerate(row(1, 1, group = "old").message, state))
         assertFalse(canRegenerate(latest, state.copy(waiting = true)))
         assertFalse(canRegenerate(latest, state.copy(pending = true)))
+        assertFalse(canRegenerate(latest, state.copy(regenerationAllowed = false)))
         assertFalse(canRegenerate(latest, state.copy(latest = row(5, 5, Role.USER).message)))
         assertEquals("m4", ChatRow.Item(latest).key)
     }

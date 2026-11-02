@@ -33,6 +33,7 @@ class AIChatApp : Application(), Configuration.Provider {
         appScope.launch(kotlinx.coroutines.Dispatchers.IO) { CrashLogs.collectExits(this@AIChatApp) }
         // The launcher shortcut runs in an independent process and must never open Room/MMKV.
         if (getProcessName() == "$packageName:diagnostics") return
+        isomeria.aichat.data.repo.FileStorage.clearStaleRestoreCache(this)
         notifier.get().createChannels()
         // 上次等待回复时 App 被系统杀掉：把这些请求标记为失败，用户可以点击重试
         appScope.launch { chatRepository.get().markInterruptedRequests() }

@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import isomeria.aichat.data.backup.AppSettingsSnapshot
 import isomeria.aichat.data.backup.BackupManager
+import isomeria.aichat.data.backup.BackupContainer
 import isomeria.aichat.data.backup.BackupSettingsAccess
 import isomeria.aichat.data.backup.RestoreMode
 import isomeria.aichat.data.backup.WrongPasswordException
@@ -26,6 +27,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
@@ -62,6 +64,7 @@ class BackupDeviceTest {
 
     @Before
     fun setUp() {
+        require(context.packageName == "isomeria.aichat.debug")
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .addCallback(AppDatabase.seedCallback)
             .build()
@@ -101,17 +104,20 @@ class BackupDeviceTest {
             db.providerDao().update(db.providerDao().get(deepSeek.id)!!.copy(apiKeyEncrypted = null))
             db.memoryDao().deleteAll()
             db.usageDao().deleteAll()
-            val preview = backup.inspect(file)
-            assertTrue(preview.needsPassword)
             try {
-                backup.restore(preview, RestoreMode.OVERWRITE, "wrong-pw".toCharArray())
+                backup.inspect(file, "wrong-pw".toCharArray())
                 fail("密码错误应该失败")
             } catch (_: WrongPasswordException) {
             }
             assertEquals("密码错误时本机数据不变", null, db.providerDao().get(deepSeek.id)!!.apiKeyEncrypted)
 
+            val preview = backup.inspect(file, "pw123456".toCharArray())
+            assertTrue(preview.needsPassword)
+            assertTrue(preview.decryptedTemporary)
             val summary = backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray())
             assertTrue(summary.apiKeyRestored)
+            assertFalse(preview.file.exists())
+            assertFalse(backup.snapshotFile.exists())
 
             val encrypted = db.providerDao().get(second)!!.apiKeyEncrypted!!
             assertEquals("sk-first", cipher.decrypt(db.providerDao().get(deepSeek.id)!!.apiKeyEncrypted!!))
@@ -124,5 +130,48 @@ class BackupDeviceTest {
             file.delete()
             backup.snapshotFile.delete()
         }
+    }
+
+    @Test
+    fun legacyKeyOnlyZipRetainsWrongPasswordAndCorrectPasswordRecovery() = runBlocking {
+        val config = db.providerDao().llmList().single()
+        db.providerDao().update(config.copy(apiKeyEncrypted = cipher.encrypt("fixture-legacy-key")))
+        val encrypted = ByteArrayOutputStream()
+        backup.export(encrypted, "pw123456".toCharArray())
+        val inner = File(context.cacheDir, "legacy-key-fixture.zip")
+        try {
+            inner.outputStream().use { BackupContainer.decrypt(encrypted.toByteArray().inputStream(), it, "pw123456".toCharArray()) }
+            db.providerDao().update(db.providerDao().get(config.id)!!.copy(apiKeyEncrypted = null))
+            val preview = backup.inspect(inner)
+            assertFalse(preview.decryptedTemporary)
+            try { backup.restore(preview, RestoreMode.OVERWRITE, "wrong-pw".toCharArray()); fail("Wrong legacy password") }
+            catch (_: WrongPasswordException) { }
+            assertEquals(null, db.providerDao().get(config.id)!!.apiKeyEncrypted)
+            backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray())
+            assertEquals("fixture-legacy-key", cipher.decrypt(db.providerDao().get(config.id)!!.apiKeyEncrypted!!))
+            assertFalse(backup.snapshotFile.exists())
+        } finally { inner.delete(); backup.snapshotFile.delete() }
+    }
+
+    @Test
+    fun passwordProtectedFileWithoutKeysRestoresImageAndDeletesPlaintext() = runBlocking {
+        val files = FileStorage(context)
+        val image = files.newMediaFile(isomeria.aichat.data.repo.MediaKind.IMAGE).apply { writeBytes(ByteArray(200_000) { it.toByte() }) }
+        val contact = db.contactDao().insert(Contact(name = "fixture", avatarColor = 0, providerId = 1, model = "fixture", createdAt = 1, updatedAt = 1))
+        db.messageDao().insert(isomeria.aichat.data.db.Message(contactId = contact, role = isomeria.aichat.data.db.Role.USER,
+            type = isomeria.aichat.data.db.MessageType.IMAGE, status = isomeria.aichat.data.db.MessageStatus.SUCCESS, imagePath = image.path, createdAt = 1))
+        val output = ByteArrayOutputStream()
+        backup.export(output, "pw123456".toCharArray(), includeApiKey = false)
+        val source = File(context.cacheDir, "encrypted-no-key-fixture.aichat").apply { writeBytes(output.toByteArray()) }
+        try {
+            val preview = backup.inspect(source, "pw123456".toCharArray())
+            assertFalse(preview.manifest.includesApiKey)
+            val plain = preview.file
+            backup.restore(preview, RestoreMode.OVERWRITE, null)
+            val restored = File(db.messageDao().listAll().single().imagePath!!)
+            assertTrue(restored.readBytes().contentEquals(ByteArray(200_000) { it.toByte() }))
+            assertFalse(plain.exists()); assertFalse(backup.snapshotFile.exists())
+            restored.delete()
+        } finally { source.delete(); image.delete(); backup.snapshotFile.delete() }
     }
 }

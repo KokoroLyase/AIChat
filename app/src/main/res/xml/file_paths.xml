@@ -2,5 +2,4 @@
 <paths>
     <cache-path name="camera" path="camera/" />
     <cache-path name="updates" path="updates/" />
-    <cache-path name="crash_exports" path="crash-exports/" />
 </paths>

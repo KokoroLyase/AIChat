@@ -87,7 +87,9 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
     fun unreferenced(referenced: Set<String>): List<File> {
         val keep = referenced.mapNotNull { runCatching { File(it).canonicalPath }.getOrNull() }.toSet() + StorageOperations.pinnedPaths()
         return listOf(avatarsDir, imagesDir).flatMap { dir ->
-            dir.listFiles().orEmpty().filter { it.isFile && isPrivate(it) && it.canonicalPath !in keep }
+            check(dir.isDirectory && !java.nio.file.Files.isSymbolicLink(dir.toPath()))
+            (dir.listFiles() ?: throw java.io.IOException("MediaDirectoryUnavailable"))
+                .filter { it.isFile && !java.nio.file.Files.isSymbolicLink(it.toPath()) && isPrivate(it) && it.canonicalPath !in keep }
         }
     }
 
@@ -176,9 +178,14 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         }
     }
 
-    private companion object {
-        const val MAX_IMAGE_SIDE = 2048
-        const val MAX_CROP_SOURCE_SIDE = 2048
-        const val JPEG_QUALITY = 85
+    companion object {
+        /** Main-process startup only, before any restore screen or worker can start. */
+        fun clearStaleRestoreCache(context: Context) {
+            val root = File(context.cacheDir, "restore")
+            root.listFiles().orEmpty().filter { it.isFile }.forEach { it.delete() }
+        }
+        private const val MAX_IMAGE_SIDE = 2048
+        private const val MAX_CROP_SOURCE_SIDE = 2048
+        private const val JPEG_QUALITY = 85
     }
 }

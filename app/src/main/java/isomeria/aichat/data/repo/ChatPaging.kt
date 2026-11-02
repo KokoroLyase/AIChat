@@ -17,6 +17,7 @@ data class ChatTimeline(
     val waiting: Boolean = false,
     val pending: Boolean = false,
     val now: Long = 0,
+    val regenerationAllowed: Boolean = false,
 )
 
 /** Entry and reveal queries contain no unbounded message list. Schema and request encoding stay unchanged. */
@@ -31,13 +32,22 @@ class ChatPaging(private val db: AppDatabase) {
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun timeline(contactId: Long): Flow<ChatTimeline> = messages.observeLatest(contactId).transformLatest { latest ->
+    fun timeline(contactId: Long): Flow<ChatTimeline> = messages.observeLatest(contactId).transformLatest {
         while (true) {
             val now = System.currentTimeMillis()
-            val (visible, waiting, next) = db.withTransaction {
-                Triple(messages.latestVisible(contactId, now), messages.hasSending(contactId), messages.nextRevealTime(contactId, now))
+            val (snapshot, next) = db.withTransaction {
+                val latest = messages.latest(contactId)
+                val visible = messages.latestVisible(contactId, now)
+                val waiting = messages.hasSending(contactId)
+                val scheduled = messages.nextRevealTime(contactId, now)
+                val previous = latest?.takeIf { it.role == isomeria.aichat.data.db.Role.ASSISTANT }?.let {
+                    messages.previousAssistant(contactId, it.id, it.replyGroup)
+                }
+                val allowed = latest?.role == isomeria.aichat.data.db.Role.ASSISTANT && !waiting && scheduled == null &&
+                    messages.hasUserAfter(contactId, previous?.createdAt ?: Long.MIN_VALUE, previous?.id ?: Long.MIN_VALUE)
+                ChatTimeline(latest, visible, waiting, scheduled != null, now, allowed) to scheduled
             }
-            emit(ChatTimeline(latest, visible, waiting, next != null, now))
+            emit(snapshot)
             if (next == null) break
             delay((next - System.currentTimeMillis()).coerceAtLeast(1))
         }

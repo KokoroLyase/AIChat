@@ -81,7 +81,7 @@ fun CrashLogsScreen(onBack: () -> Unit, viewModel: CrashLogsViewModel = hiltView
     val shareTitle = stringResource(R.string.crash_export)
     CrashLogsContent(state, onBack, viewModel::refresh, viewModel::select, viewModel::clear) {
         viewModel.export { file ->
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.crashfileprovider", file)
             val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             context.startActivity(Intent.createChooser(send, shareTitle))

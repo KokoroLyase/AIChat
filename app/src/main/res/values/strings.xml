@@ -257,11 +257,11 @@
 
     <!-- 导出数据 -->
     <string name="export_title">导出数据</string>
-    <string name="export_intro">把联系人、聊天记录、记忆、用量统计、服务商、头像、聊天图片和设置导出为一个 zip 文件，可以在新手机上用「恢复数据」导入。</string>
+    <string name="export_intro">导出联系人、聊天记录、记忆、用量、服务商、图片和设置。不设密码时保存为 zip；设置密码后加密整个文件，可在「恢复数据」中导入。卸载后只能依靠导出文件找回数据。</string>
     <string name="export_include_key">包含 API Key</string>
     <string name="export_no_key">还没有保存 API Key</string>
-    <string name="export_key_hint">所有服务商的 API Key 都会用这个密码加密，恢复时需要输入同一个密码。忘记密码只能重新填写 Key。</string>
-    <string name="export_key_off_hint">默认不导出 API Key。在新手机上恢复后，需要重新填写 Key。</string>
+    <string name="export_key_hint">包含 API Key 时必须设置密码。整个导出文件都会被加密；忘记密码将无法恢复其中的任何数据。</string>
+    <string name="export_key_off_hint">默认不导出 API Key。密码可以不填；设置后会保护整个文件，忘记密码无法恢复。换机后需要重新填写 Key。</string>
     <string name="export_password">设置密码</string>
     <string name="export_password_hint">至少 %1$d 位</string>
     <string name="export_password_confirm">确认密码</string>
@@ -310,7 +310,7 @@
     <string name="restore_done_message_key">新增 %1$d 位联系人、%2$d 条消息，API Key 已恢复。</string>
     <string name="restore_done_overwrite">已恢复 %1$d 位联系人、%2$d 条消息。</string>
     <string name="restore_done_overwrite_key">已恢复 %1$d 位联系人、%2$d 条消息，API Key 已恢复。</string>
-    <string name="restore_wrong_password">密码错误</string>
+    <string name="restore_wrong_password">密码不正确或文件已损坏，请重试。</string>
     <string name="restore_too_new">这个备份来自更新版本的智信（数据格式 v%1$d），请先升级 App 再恢复。</string>
     <string name="restore_invalid">不是有效的智信备份文件</string>
     <string name="restore_read_failed">读取文件失败，请重试</string>
@@ -596,4 +596,9 @@
     <string name="storage_no_orphans">没有发现可清理的孤立文件。</string>
     <string name="storage_confirm_orphans">将清理 %1$d 个未被引用的文件（约 %2$s）。确认前会重新核对引用，已开始使用的文件会保留。是否继续？</string>
     <string name="storage_confirm_cache">清理相机临时文件、更新缓存、恢复临时文件和图片缓存？正在使用的临时文件会保留。</string>
+    <string name="export_encrypted_done">整个导出文件已用密码加密。请保管好密码，忘记后无法恢复。</string>
+    <string name="export_plain_done">这是未加密的 zip 文件，请妥善保管。</string>
+    <string name="restore_encrypted_notice">此文件已加密。输入导出时的密码后才能预览和恢复；忘记密码无法找回。恢复需要临时存储空间，结束后会清理解密文件。</string>
+    <string name="restore_unlock">解锁并预览</string>
+    <string name="restore_cleanup_pending">数据已恢复，但部分恢复临时文件未能删除。可稍后在存储空间清理缓存；恢复前快照将在下一次恢复成功后再清理。</string>
 </resources>

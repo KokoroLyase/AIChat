@@ -281,7 +281,7 @@ class ChatViewModel @Inject constructor(
 
 internal fun canRegenerate(message: Message, current: ChatTimeline): Boolean {
     val latest = current.latest ?: return false
-    return !current.waiting && !current.pending && latest.role == Role.ASSISTANT && message.role == Role.ASSISTANT &&
+    return current.regenerationAllowed && !current.waiting && !current.pending && latest.role == Role.ASSISTANT && message.role == Role.ASSISTANT &&
         (message.id == latest.id || (message.replyGroup != null && message.replyGroup == latest.replyGroup))
 }
 

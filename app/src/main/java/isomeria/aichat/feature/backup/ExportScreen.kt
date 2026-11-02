@@ -100,30 +100,25 @@ class ExportViewModel @Inject constructor(
     /** 勾选了「包含 API Key」时检查密码；通过时界面接着打开系统的「保存到」 */
     fun validate(): Boolean {
         val s = _state.value
-        if (!s.includeKey) return true
-        val error = when {
-            s.password.length < PasswordCipher.MIN_PASSWORD_LENGTH -> R.string.export_password_too_short
-            s.password != s.confirm -> R.string.export_password_mismatch
-            else -> null
-        }
+        val error = exportPasswordError(s.includeKey, s.password, s.confirm)
         _state.update { it.copy(errorRes = error) }
         return error == null
     }
 
     /** 默认文件名，如 AIChat-backup-20261101-2130.zip */
     fun fileName(): String =
-        "AIChat-backup-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".zip"
+        "AIChat-backup-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + if (_state.value.password.isEmpty()) ".zip" else ".aichat"
 
     /** 写到用户在系统文件选择器里选的位置。放在应用级协程里，离开页面也会写完，不留半个文件 */
     fun export(uri: Uri) {
         val s = _state.value
-        if (s.running) return
+        if (s.running || !validate()) return
         _state.update { it.copy(running = true, failed = false, result = null) }
         appScope.launch {
-            val password = if (s.includeKey && s.hasApiKey) s.password.toCharArray() else null
+            val password = s.password.takeIf { it.isNotEmpty() }?.toCharArray()
             val result = try {
                 withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri, "wt")?.use { backup.export(it, password) }
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { backup.export(it, password, s.includeKey && s.hasApiKey) }
                 } ?: error("无法写入所选位置")
             } catch (e: CancellationException) {
                 throw e
@@ -150,12 +145,26 @@ class ExportViewModel @Inject constructor(
 /** 设置 → 数据 → 导出数据 */
 @Composable
 fun ExportScreen(onBack: () -> Unit, viewModel: ExportViewModel = hiltViewModel()) {
-    val colors = WeTheme.colors
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val createDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+    val createDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if (uri != null) viewModel.export(uri)
     }
+    ExportContent(state, onBack, viewModel::setIncludeKey, viewModel::setPassword, viewModel::setConfirm,
+        { if (viewModel.validate()) createDocument.launch(viewModel.fileName()) }, viewModel::dismissResult)
+}
 
+internal fun exportPasswordError(includeKey: Boolean, password: String, confirm: String): Int? = when {
+    !includeKey && password.isEmpty() && confirm.isEmpty() -> null
+    password.length < PasswordCipher.MIN_PASSWORD_LENGTH -> R.string.export_password_too_short
+    password != confirm -> R.string.export_password_mismatch
+    else -> null
+}
+
+@Composable
+fun ExportContent(state: ExportUiState, onBack: () -> Unit, onIncludeKey: (Boolean) -> Unit,
+    onPassword: (String) -> Unit, onConfirm: (String) -> Unit, onExport: () -> Unit, onDismissResult: () -> Unit,
+) {
+    val colors = WeTheme.colors
     // 导出过程中不能返回
     BackHandler(enabled = state.running) {}
     ImeBackHandler()
@@ -170,17 +179,17 @@ fun ExportScreen(onBack: () -> Unit, viewModel: ExportViewModel = hiltViewModel(
                 showArrow = false,
                 enabled = state.hasApiKey,
                 trailing = if (state.hasApiKey) {
-                    { WeSwitch(state.includeKey, viewModel::setIncludeKey) }
+                    { WeSwitch(state.includeKey, onIncludeKey) }
                 } else {
                     null
                 },
             )
-            if (state.includeKey) {
+            run {
                 GroupSpacer()
                 FormRow(stringResource(R.string.export_password), showDivider = true) {
                     PasswordField(
                         value = state.password,
-                        onValueChange = viewModel::setPassword,
+                        onValueChange = onPassword,
                         hint = stringResource(R.string.export_password_hint, PasswordCipher.MIN_PASSWORD_LENGTH),
                         imeAction = ImeAction.Next,
                     )
@@ -188,7 +197,7 @@ fun ExportScreen(onBack: () -> Unit, viewModel: ExportViewModel = hiltViewModel(
                 FormRow(stringResource(R.string.export_password_confirm)) {
                     PasswordField(
                         value = state.confirm,
-                        onValueChange = viewModel::setConfirm,
+                        onValueChange = onConfirm,
                         hint = stringResource(R.string.export_password_confirm_hint),
                     )
                 }
@@ -204,15 +213,13 @@ fun ExportScreen(onBack: () -> Unit, viewModel: ExportViewModel = hiltViewModel(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = WeTheme.dimens.horizontalPadding, vertical = 8.dp),
                     )
                 }
-                FootnoteText(stringResource(R.string.export_key_hint))
-            } else {
-                FootnoteText(stringResource(R.string.export_key_off_hint))
+                FootnoteText(stringResource(if (state.includeKey) R.string.export_key_hint else R.string.export_key_off_hint))
             }
             Spacer(Modifier.height(40.dp))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 WeButton(
                     stringResource(R.string.export_button),
-                    onClick = { if (viewModel.validate()) createDocument.launch(viewModel.fileName()) },
+                    onClick = onExport,
                     modifier = Modifier.width(184.dp),
                     enabled = !state.running,
                 )
@@ -225,22 +232,22 @@ fun ExportScreen(onBack: () -> Unit, viewModel: ExportViewModel = hiltViewModel(
     state.result?.let { result ->
         WeDialog(
             title = stringResource(R.string.export_done_title),
-            message = if (result.includesApiKey) {
+            message = (if (result.includesApiKey) {
                 stringResource(R.string.export_done_message_key, result.contacts, result.messages)
             } else {
                 stringResource(R.string.export_done_message, result.contacts, result.messages)
-            },
+            }) + "\n\n" + stringResource(if (result.encrypted) R.string.export_encrypted_done else R.string.export_plain_done),
             dismissText = null,
-            onDismiss = viewModel::dismissResult,
-            onConfirm = viewModel::dismissResult,
+            onDismiss = onDismissResult,
+            onConfirm = onDismissResult,
         )
     }
     if (state.failed) {
         WeDialog(
             message = stringResource(R.string.export_failed),
             dismissText = null,
-            onDismiss = viewModel::dismissResult,
-            onConfirm = viewModel::dismissResult,
+            onDismiss = onDismissResult,
+            onConfirm = onDismissResult,
         )
     }
 }
