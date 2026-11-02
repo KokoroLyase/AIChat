@@ -57,6 +57,13 @@ jobs:
           AICHAT_KEY_PASSWORD: ${{ secrets.AICHAT_KEY_PASSWORD }}
         run: ./gradlew testDebugUnitTest assembleRelease -PrequireReleaseSigning=true --stacktrace
 
+      - name: 归档 R8 mapping（仅 CI 产物，不放入 Release）
+        uses: actions/upload-artifact@v6
+        with:
+          name: mapping-${{ env.VERSION }}
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+
       - name: 校验签名、改名并计算 SHA-256
         run: |
           APK=app/build/outputs/apk/release/app-release.apk

@@ -112,6 +112,7 @@ fun SettingsScreen(
     onOpenLicenses: () -> Unit,
     onOpenExport: () -> Unit,
     onOpenRestore: () -> Unit,
+    onOpenCrashLogs: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -231,6 +232,7 @@ fun SettingsScreen(
             FootnoteText(stringResource(R.string.settings_data_notice))
 
             SectionHeader(stringResource(R.string.settings_group_about))
+            WeListRow(title = stringResource(R.string.crash_title), onClick = onOpenCrashLogs, showDivider = true)
             WeListRow(
                 title = stringResource(R.string.settings_version),
                 value = BuildConfig.VERSION_NAME,

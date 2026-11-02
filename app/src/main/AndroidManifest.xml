@@ -22,6 +22,12 @@
         android:theme="@style/Theme.AIChat">
 
         <activity
+            android:name=".feature.settings.CrashLogsActivity"
+            android:exported="true"
+            android:process=":diagnostics"
+            android:label="@string/crash_title" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
@@ -30,6 +36,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- 拍照：把相机输出写到应用缓存目录；应用内更新：把下载的 APK 交给系统安装 -->

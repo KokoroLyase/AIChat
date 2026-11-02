@@ -1,5 +1,6 @@
 # kotlinx.serialization：保留序列化器（库自带规则已覆盖大部分情况，这里补充导航路由等用到的类）
 -keepattributes *Annotation*, InnerClasses
+-keepattributes SourceFile,LineNumberTable
 -dontnote kotlinx.serialization.**
 
 -keepclassmembers @kotlinx.serialization.Serializable class isomeria.aichat.** {

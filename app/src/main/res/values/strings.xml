@@ -570,4 +570,14 @@
     <string name="action_fix_contact">修正联系人参数</string>
     <string name="temperature_use_separate">单独设置思考温度规则</string>
     <string name="temperature_use_default">沿用默认温度规则</string>
+    <string name="crash_title">崩溃日志</string>
+    <string name="crash_notice">仅保留最近 20 份本地日志，含版本、设备和堆栈，不含异常说明、聊天正文或 API Key。</string>
+    <string name="crash_empty">暂无崩溃日志</string>
+    <string name="crash_export">分享这份日志</string>
+    <string name="crash_clear_confirm">清空全部崩溃日志？此操作无法撤销。</string>
+    <string name="local_loading">正在加载…</string>
+    <string name="local_failed">操作失败，请重试。</string>
+    <string name="local_completed">操作完成</string>
+    <string name="local_refresh">刷新 / 重试</string>
+    <string name="local_working">正在处理…</string>
 </resources>

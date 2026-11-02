@@ -12,7 +12,7 @@ plugins {
 
 // 版本号：语义化版本；versionCode = 主版本×10000 + 次版本×100 + 修订号。
 // 改版本时只改这一行，versionCode 自动跟着变。
-val appVersionName = "0.3.1"
+val appVersionName = "0.4.0"
 val appVersionCode = appVersionName.split(".").map { it.toInt() }.let { (major, minor, patch) ->
     major * 10000 + minor * 100 + patch
 }
@@ -47,6 +47,7 @@ android {
 
         buildConfigField("String", "GITHUB_REPO", "\"KokoroLyase/AIChat\"")
         buildConfigField("String", "UPDATE_API_BASE", "\"https://api.github.com/\"")
+        resValue("string", "shortcut_target_package", "isomeria.aichat")
     }
 
     signingConfigs {
@@ -64,6 +65,7 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            resValue("string", "shortcut_target_package", "isomeria.aichat.debug")
             // 测试应用内更新：-PdebugUpdateApiBase=http://localhost:端口/ 换成本机的假 Release（只影响 debug 包）
             providers.gradleProperty("debugUpdateApiBase").orNull?.let {
                 buildConfigField("String", "UPDATE_API_BASE", "\"$it\"")
@@ -80,6 +82,27 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        create("perf") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".perf"
+            versionNameSuffix = "-perf"
+            resValue("string", "shortcut_target_package", "isomeria.aichat.perf")
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+            buildConfigField("String", "UPDATE_API_BASE", "\"http://localhost:1/\"")
+        }
+    }
+
+    sourceSets {
+        getByName("debug") {
+            kotlin.directories.add("src/testTools/java")
+            res.directories.add("src/testTools/res")
+        }
+        getByName("perf") {
+            kotlin.directories.add("src/testTools/java")
+            res.directories.add("src/testTools/res")
+        }
     }
 
     compileOptions {
@@ -90,6 +113,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 
     testOptions {

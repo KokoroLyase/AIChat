@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 只有 debug 包：允许明文连接本机，用来测试本机的模拟接口和假 Release。正式包不受影响 -->
-    <application android:networkSecurityConfig="@xml/debug_network_security_config" />
+    <application android:networkSecurityConfig="@xml/debug_network_security_config">
+        <activity android:name=".testtools.TestToolsActivity" android:exported="true" />
+    </application>
 </manifest>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tools_running">正在生成本地虚构数据…</string>
+    <string name="tools_seeded">完成：联系人 %1$d，消息 %2$d 条</string>
+    <string name="tools_failed">本地测试工具失败</string>
+    <string name="tools_usage">参数 action=seed|crash，count=1..50000</string>
+    <string name="tools_contact">本地虚构测试联系人</string>
+    <string name="tools_message">虚构消息 %1$d，仅用于本地分页测试。</string>
+</resources>

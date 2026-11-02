@@ -118,6 +118,17 @@ class ScreenshotTest {
 
     @Test fun chatListLight() = shot("1-chatlist", false) { ChatList() }
 
+    @Test fun crashLogsLight() = shot("40-crash-logs", false) { CrashLogsContent(CrashLogsState(loading = false, names = listOf("fixture.txt")), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsDark() = shot("40-crash-logs", true) { CrashLogsContent(CrashLogsState(loading = false), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsLoading() = shot("40-crash-loading", false) { CrashLogsContent(CrashLogsState(), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsFailure() = shot("40-crash-failure", true) { CrashLogsContent(CrashLogsState(loading = false, failed = true), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsDetail() = shot("40-crash-detail", false) { CrashLogsContent(CrashLogsState(loading = false, selected = "fixture", detail = "java.lang.IllegalStateException\n at fixture.App.run(App.kt:42)"), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsCompleted() = shot("40-crash-completed", true) { CrashLogsContent(CrashLogsState(loading = false, completed = true), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsWorking() {
+        compose.setContent { AIChatTheme(darkTheme = false) { CrashLogsContent(CrashLogsState(loading = false, busy = true), {}, {}, {}, {}, {}) } }
+        captureScreenRoboImage("screenshots/40-crash-working-light.png")
+    }
+
     @Test fun chatListDark() = shot("1-chatlist", true) { ChatList() }
 
     @Test fun chatLight() = shot("2-chat", false) { ChatPageSample() }
