@@ -44,7 +44,13 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import isomeria.aichat.R
 import isomeria.aichat.core.ChatTimeFormatter
 import isomeria.aichat.core.MemoryPolicy
-import isomeria.aichat.data.db.Memory
+import isomeria.aichat.data.db.*
+import isomeria.aichat.data.llm.*
+import isomeria.aichat.data.repo.ProviderRepository
+import isomeria.aichat.data.memory.MemoryTaskState
+import isomeria.aichat.ui.components.ThinkingSelector
+import isomeria.aichat.feature.settings.ChoiceRow
+import isomeria.aichat.feature.settings.ConfigActionRow
 import isomeria.aichat.data.llm.LlmException
 import isomeria.aichat.data.memory.BacklogResult
 import isomeria.aichat.data.repo.ContactRepository
@@ -63,6 +69,9 @@ import isomeria.aichat.ui.components.WeLoading
 import isomeria.aichat.ui.components.WeSmallButton
 import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.theme.WeTheme
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -85,13 +94,20 @@ data class MemoryListState(
     val rows: List<MemoryRow> = emptyList(),
     /** 还没总结的更早消息有多少条 */
     val backlog: Int = 0,
+    val contact: Contact? = null,
+    val provider: ProviderConfig? = null,
+    val models: List<ProviderModel> = emptyList(),
+    val task: MemoryTaskState = MemoryTaskState(),
+
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MemoryViewModel @Inject constructor(
     savedState: SavedStateHandle,
     private val memories: MemoryRepository,
-    contacts: ContactRepository,
+    private val contacts: ContactRepository,
+    private val providers: ProviderRepository,
     private val formatter: ChatTimeFormatter,
 ) : ViewModel() {
     private val contactId = savedState.toRoute<MemoryRoute>().contactId
@@ -103,19 +119,28 @@ class MemoryViewModel @Inject constructor(
     private val _summarizing = MutableStateFlow(false)
     val summarizing: StateFlow<Boolean> = _summarizing.asStateFlow()
 
+    private val selection = contacts.observeContact(contactId).flatMapLatest { contact ->
+        if (contact == null) flowOf(Triple<Contact?, ProviderConfig?, List<ProviderModel>>(null, null, emptyList()))
+        else combine(providers.observeConfig(contact.providerId), providers.observeModels(contact.providerId)) { config, models -> Triple(contact, config, models) }
+    }
     val state: StateFlow<MemoryListState> = combine(
-        memories.observe(contactId),
-        memories.observeBacklog(contactId),
-        contacts.observeContact(contactId),
-    ) { list, backlog, contact ->
+        memories.observe(contactId), memories.observeBacklog(contactId), selection, memories.taskStates,
+    ) { list, backlog, settings, tasks ->
         val now = System.currentTimeMillis()
-        MemoryListState(
-            loaded = true,
-            autoMemory = contact?.autoMemory ?: true,
-            rows = list.asReversed().map { it.toRow(now) },
-            backlog = backlog,
-        )
+        MemoryListState(loaded = true, autoMemory = settings.first?.autoMemory ?: true,
+            rows = list.asReversed().map { it.toRow(now) }, backlog = backlog, contact = settings.first,
+            provider = settings.second, models = settings.third, task = tasks[contactId] ?: MemoryTaskState())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MemoryListState())
+
+    fun setModel(value: String?) { viewModelScope.launch {
+        val contact = contacts.get(contactId) ?: return@launch
+        if (value != null && providers.model(contact.providerId, value)?.let { m -> providers.config(contact.providerId)?.let { ModelRules.usable(it, m) } } != true) return@launch
+        contacts.update(contact.copy(memoryModel = value))
+    } }
+    fun setThinking(value: String) { viewModelScope.launch {
+        val contact = contacts.get(contactId) ?: return@launch
+        contacts.update(contact.copy(memoryThinkingOption = value))
+    } }
 
     private fun Memory.toRow(now: Long): MemoryRow {
         val from = formatter.forDate(fromTime, now)
@@ -148,7 +173,7 @@ class MemoryViewModel @Inject constructor(
 
 /** 联系人详情 → 记忆：查看、编辑、删除；手动总结更早的聊天。 */
 @Composable
-fun MemoryScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, viewModel: MemoryViewModel = hiltViewModel()) {
+fun MemoryScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenProvider: (Long) -> Unit = {}, viewModel: MemoryViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val summarizing by viewModel.summarizing.collectAsStateWithLifecycle()
@@ -165,9 +190,12 @@ fun MemoryScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, viewModel: MemoryVi
         onOpen = onOpen,
         onSummarizeBacklog = { confirmBacklog = true },
         onClearAll = { confirmClear = true },
+        onModel = viewModel::setModel,
+        onThinking = viewModel::setThinking,
+        onOpenProvider = onOpenProvider,
     )
 
-    if (summarizing) WeLoading(stringResource(R.string.memory_summarizing))
+
     if (confirmBacklog) {
         WeDialog(
             title = stringResource(R.string.memory_backlog),
@@ -201,6 +229,9 @@ fun MemoryContent(
     onOpen: (Long) -> Unit,
     onSummarizeBacklog: () -> Unit,
     onClearAll: () -> Unit,
+    onModel: (String?) -> Unit = {},
+    onThinking: (String) -> Unit = {},
+    onOpenProvider: (Long) -> Unit = {},
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -208,6 +239,25 @@ fun MemoryContent(
         WeTopBar(title = stringResource(R.string.memory_title), onBack = onBack)
         if (!state.loaded) return@Column
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
+            state.contact?.let { contact ->
+                val config = state.provider
+                val actual = contact.memoryModel ?: config?.defaultModel?.ifBlank { contact.model } ?: contact.model
+                val model = state.models.firstOrNull { it.modelId == actual }
+                val follow = stringResource(R.string.memory_follow)
+                ChoiceRow(stringResource(R.string.memory_model), if (contact.memoryModel == null) follow else stringResource(R.string.memory_independent),
+                    options = listOf(follow to null) + state.models.filter { config != null && ModelRules.usable(config, it) }.map { it.displayName to it.modelId }, onPick = onModel)
+                FootnoteText(stringResource(R.string.memory_actual, config?.name.orEmpty(), model?.displayName ?: actual))
+                if (contact.memoryModel == null) FootnoteText(stringResource(R.string.memory_follow_fallback))
+                ThinkingSelector(model, contact.memoryThinkingOption, stringResource(R.string.memory_thinking), onThinking)
+                if (config != null && ModelRules.validate(config, model, contact.memoryThinkingOption, 0.3f) != null) {
+                    FootnoteText(stringResource(R.string.memory_model_invalid))
+                    FootnoteText(stringResource(R.string.memory_temperature_conflict))
+                }
+                WeListRow(stringResource(R.string.model_configure), onClick = { onOpenProvider(contact.providerId) })
+                FootnoteText(stringResource(R.string.memory_model_note))
+            }
+            MemoryTaskFeedback(state.task)
+
             if (state.rows.isEmpty()) {
                 Text(
                     stringResource(R.string.memory_empty),
@@ -254,7 +304,7 @@ fun MemoryContent(
 
             if (state.backlog > 0) {
                 GroupSpacer()
-                WeListRow(
+                ConfigActionRow(
                     title = stringResource(R.string.memory_backlog),
                     value = stringResource(R.string.memory_backlog_count, state.backlog),
                     onClick = onSummarizeBacklog,
@@ -276,6 +326,18 @@ fun MemoryContent(
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+@Composable
+internal fun MemoryTaskFeedback(task: MemoryTaskState) {
+    if (!task.generating && task.queued == 0 && task.lastSuccess == null && task.lastFailure == null) FootnoteText(stringResource(R.string.memory_idle))
+    if (task.generating) FootnoteText(stringResource(R.string.memory_generating))
+    if (task.queued > 0) FootnoteText(stringResource(R.string.memory_queue, task.queued))
+    val date = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+    task.lastSuccess?.let { FootnoteText(stringResource(R.string.memory_last_success, date.format(java.util.Date(it)))) }
+    task.failure?.let { reason -> task.lastFailure?.let {
+        FootnoteText(stringResource(R.string.memory_last_failure, date.format(java.util.Date(it)), stringResource(failReasonText(reason))))
+    } }
 }
 
 data class MemoryEditState(val loaded: Boolean = false, val exists: Boolean = false, val content: String = "", val original: String = "") {

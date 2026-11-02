@@ -1,0 +1,666 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "43544ef9c45a91f69928b76ec6d99280",
+    "entities": [
+      {
+        "tableName": "contact",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `avatarPath` TEXT, `avatarColor` INTEGER NOT NULL, `providerId` INTEGER NOT NULL, `model` TEXT NOT NULL, `thinking` TEXT NOT NULL, `temperature` REAL NOT NULL, `systemPrompt` TEXT NOT NULL, `contextTokens` INTEGER NOT NULL DEFAULT 4000, `splitReplies` INTEGER NOT NULL, `autoMemory` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `thinkingOption` TEXT, `memoryModel` TEXT, `memoryThinkingOption` TEXT NOT NULL DEFAULT 'off')",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "avatarPath",
+            "columnName": "avatarPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "avatarColor",
+            "columnName": "avatarColor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "providerId",
+            "columnName": "providerId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "model",
+            "columnName": "model",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thinking",
+            "columnName": "thinking",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "temperature",
+            "columnName": "temperature",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "systemPrompt",
+            "columnName": "systemPrompt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contextTokens",
+            "columnName": "contextTokens",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "4000"
+          },
+          {
+            "fieldPath": "splitReplies",
+            "columnName": "splitReplies",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoMemory",
+            "columnName": "autoMemory",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thinkingOption",
+            "columnName": "thinkingOption",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "memoryModel",
+            "columnName": "memoryModel",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "memoryThinkingOption",
+            "columnName": "memoryThinkingOption",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'off'"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "conversation",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`contactId` INTEGER NOT NULL, `pinned` INTEGER NOT NULL, `unreadCount` INTEGER NOT NULL, `markedUnread` INTEGER NOT NULL, `draft` TEXT NOT NULL, `lastMessageTime` INTEGER NOT NULL, `lastMessagePreview` TEXT NOT NULL, `memoryCursor` INTEGER, `memoryStart` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`contactId`), FOREIGN KEY(`contactId`) REFERENCES `contact`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "contactId",
+            "columnName": "contactId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pinned",
+            "columnName": "pinned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unreadCount",
+            "columnName": "unreadCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "markedUnread",
+            "columnName": "markedUnread",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "draft",
+            "columnName": "draft",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastMessageTime",
+            "columnName": "lastMessageTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastMessagePreview",
+            "columnName": "lastMessagePreview",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoryCursor",
+            "columnName": "memoryCursor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "memoryStart",
+            "columnName": "memoryStart",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "contactId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "contact",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "contactId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "message",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `contactId` INTEGER NOT NULL, `role` TEXT NOT NULL, `type` TEXT NOT NULL, `content` TEXT NOT NULL, `imagePath` TEXT, `imageWidth` INTEGER NOT NULL, `imageHeight` INTEGER NOT NULL, `reasoning` TEXT, `reasoningMillis` INTEGER NOT NULL, `status` TEXT NOT NULL, `errorCode` INTEGER NOT NULL, `model` TEXT, `promptTokens` INTEGER NOT NULL, `completionTokens` INTEGER NOT NULL, `replyGroup` TEXT, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`contactId`) REFERENCES `contact`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contactId",
+            "columnName": "contactId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imagePath",
+            "columnName": "imagePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "imageWidth",
+            "columnName": "imageWidth",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageHeight",
+            "columnName": "imageHeight",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reasoning",
+            "columnName": "reasoning",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "reasoningMillis",
+            "columnName": "reasoningMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errorCode",
+            "columnName": "errorCode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "model",
+            "columnName": "model",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "promptTokens",
+            "columnName": "promptTokens",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completionTokens",
+            "columnName": "completionTokens",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "replyGroup",
+            "columnName": "replyGroup",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_message_contactId_createdAt",
+            "unique": false,
+            "columnNames": [
+              "contactId",
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_message_contactId_createdAt` ON `${TABLE_NAME}` (`contactId`, `createdAt`)"
+          },
+          {
+            "name": "index_message_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_message_status` ON `${TABLE_NAME}` (`status`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "contact",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "contactId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "provider_config",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, `provider` TEXT NOT NULL, `name` TEXT NOT NULL DEFAULT '', `baseUrl` TEXT NOT NULL, `apiKeyEncrypted` TEXT, `defaultModel` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `presetId` TEXT, `compatibility` TEXT NOT NULL DEFAULT 'LEGACY')",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "baseUrl",
+            "columnName": "baseUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "apiKeyEncrypted",
+            "columnName": "apiKeyEncrypted",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "defaultModel",
+            "columnName": "defaultModel",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "presetId",
+            "columnName": "presetId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "compatibility",
+            "columnName": "compatibility",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'LEGACY'"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "provider_model",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`providerId` INTEGER NOT NULL, `modelId` TEXT NOT NULL, `displayName` TEXT NOT NULL, `imageInput` TEXT NOT NULL, `imageInputUserMark` INTEGER, `sortOrder` INTEGER NOT NULL, `thinkingInput` TEXT NOT NULL DEFAULT 'UNKNOWN', `thinkingUserMark` INTEGER, `manual` INTEGER NOT NULL DEFAULT 0, `legacy` INTEGER NOT NULL DEFAULT 1, `reportedConfig` TEXT, `userConfig` TEXT, `compatibilityOverride` TEXT, `missingFromList` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`providerId`, `modelId`), FOREIGN KEY(`providerId`) REFERENCES `provider_config`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "providerId",
+            "columnName": "providerId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelId",
+            "columnName": "modelId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageInput",
+            "columnName": "imageInput",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageInputUserMark",
+            "columnName": "imageInputUserMark",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thinkingInput",
+            "columnName": "thinkingInput",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'UNKNOWN'"
+          },
+          {
+            "fieldPath": "thinkingUserMark",
+            "columnName": "thinkingUserMark",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "manual",
+            "columnName": "manual",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "legacy",
+            "columnName": "legacy",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "reportedConfig",
+            "columnName": "reportedConfig",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "userConfig",
+            "columnName": "userConfig",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "compatibilityOverride",
+            "columnName": "compatibilityOverride",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "missingFromList",
+            "columnName": "missingFromList",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "providerId",
+            "modelId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "provider_config",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "providerId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "memory",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `contactId` INTEGER NOT NULL, `content` TEXT NOT NULL, `fromTime` INTEGER NOT NULL, `toTime` INTEGER NOT NULL, `edited` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, FOREIGN KEY(`contactId`) REFERENCES `contact`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contactId",
+            "columnName": "contactId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fromTime",
+            "columnName": "fromTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toTime",
+            "columnName": "toTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "edited",
+            "columnName": "edited",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_memory_contactId_fromTime",
+            "unique": false,
+            "columnNames": [
+              "contactId",
+              "fromTime"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memory_contactId_fromTime` ON `${TABLE_NAME}` (`contactId`, `fromTime`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "contact",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "contactId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "usage_daily",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`day` INTEGER NOT NULL, `contactId` INTEGER NOT NULL, `purpose` TEXT NOT NULL, `promptTokens` INTEGER NOT NULL, `completionTokens` INTEGER NOT NULL, `requests` INTEGER NOT NULL, PRIMARY KEY(`day`, `contactId`, `purpose`))",
+        "fields": [
+          {
+            "fieldPath": "day",
+            "columnName": "day",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contactId",
+            "columnName": "contactId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purpose",
+            "columnName": "purpose",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "promptTokens",
+            "columnName": "promptTokens",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completionTokens",
+            "columnName": "completionTokens",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requests",
+            "columnName": "requests",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "day",
+            "contactId",
+            "purpose"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '43544ef9c45a91f69928b76ec6d99280')"
+    ]
+  }
+}

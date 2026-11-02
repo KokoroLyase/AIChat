@@ -29,6 +29,7 @@ import isomeria.aichat.feature.me.ProfileScreen
 import isomeria.aichat.feature.memory.MemoryEditScreen
 import isomeria.aichat.feature.memory.MemoryScreen
 import isomeria.aichat.feature.settings.LicensesScreen
+import isomeria.aichat.feature.settings.ModelEditScreen
 import isomeria.aichat.feature.settings.ProviderEditScreen
 import isomeria.aichat.feature.settings.ProviderListScreen
 import isomeria.aichat.feature.settings.SettingsScreen
@@ -50,6 +51,7 @@ import kotlinx.serialization.Serializable
 
 /** providerId 为 -1 时是添加新服务商 */
 @Serializable data class ProviderEditRoute(val providerId: Long = NEW_PROVIDER)
+@Serializable data class ModelEditRoute(val providerId: Long, val modelId: String)
 @Serializable data class MemoryRoute(val contactId: Long)
 @Serializable data class MemoryEditRoute(val memoryId: Long)
 @Serializable data object UsageRoute
@@ -114,6 +116,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenChatInfo = { nav.navigate(ChatInfoRoute(it)) },
                 onOpenImage = { nav.navigate(ImageViewerRoute(it)) },
                 onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
+                onEditContact = { nav.navigate(ContactEditRoute(it)) },
             )
         }
         page<ChatInfoRoute>(nav) {
@@ -148,8 +151,9 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenMemory = { nav.navigate(MemoryRoute(route.contactId)) },
             )
         }
+        page<ModelEditRoute>(nav) { ModelEditScreen(onBack = nav::popBackStackSafely) }
         page<MemoryRoute>(nav) {
-            MemoryScreen(onBack = nav::popBackStackSafely, onOpen = { nav.navigate(MemoryEditRoute(it)) })
+            MemoryScreen(onBack = nav::popBackStackSafely, onOpen = { nav.navigate(MemoryEditRoute(it)) }, onOpenProvider = { nav.navigate(ProviderEditRoute(it)) })
         }
         page<MemoryEditRoute>(nav) { MemoryEditScreen(onBack = nav::popBackStackSafely) }
         page<ContactEditRoute>(nav) {
@@ -180,7 +184,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onAdd = { nav.navigate(ProviderEditRoute()) },
             )
         }
-        page<ProviderEditRoute>(nav) { ProviderEditScreen(onBack = nav::popBackStackSafely) }
+        page<ProviderEditRoute>(nav) { ProviderEditScreen(onBack = nav::popBackStackSafely, onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) }) }
         page<UsageRoute>(nav) {
             UsageScreen(
                 onBack = nav::popBackStackSafely,

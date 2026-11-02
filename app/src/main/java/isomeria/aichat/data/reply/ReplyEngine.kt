@@ -60,15 +60,14 @@ class ReplyEngine @Inject constructor(
         // 只处理此刻在等待回复的消息；之后新发的消息会由替换上来的新任务处理
         val waiting = messageDao.sendingIds(contactId)
         if (waiting.isEmpty()) return
-        val contact = contactDao.get(contactId) ?: return
-        val config = providers.config(contact.providerId) ?: providers.defaultLlm()
-        val endpoint = providers.endpoint(config)
-        if (endpoint == null) {
-            fail(waiting, FailReason.NO_API_KEY)
+        val snapshot = try { providers.snapshot(contactId, memory = false) } catch (e: LlmException) {
+            fail(waiting, if (e.error == isomeria.aichat.data.llm.LlmError.AUTH) FailReason.NO_API_KEY else FailReason.of(e))
             return
         }
-        val supportsImage = providers.supportsImage(config.id, contact.model)
-        val thinking = if (providers.supportsThinking(config, contact.model)) contact.thinking else ThinkingLevel.OFF
+        val contact = snapshot.contact
+        val config = snapshot.config
+        val endpoint = snapshot.endpoint
+        val supportsImage = snapshot.supportsImage
         val startedAt = System.currentTimeMillis()
         val nickname = settings.nickname.value
 
@@ -96,7 +95,7 @@ class ReplyEngine @Inject constructor(
             memories = memories,
             loadImage = files::readAsDataUrl,
         )
-        val request = ChatRequest(contact.model, messages, thinking, contact.temperature)
+        val request = snapshot.request(messages)
 
         val content = StringBuilder()
         val reasoning = StringBuilder()

@@ -15,6 +15,7 @@ import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderModel
 import isomeria.aichat.data.db.ProviderProtocol
 import isomeria.aichat.data.db.ThinkingLevel
+import isomeria.aichat.data.llm.ModelRules
 import isomeria.aichat.data.repo.ContactRepository
 import isomeria.aichat.data.repo.FileStorage
 import isomeria.aichat.data.repo.ProviderRepository
@@ -43,6 +44,7 @@ data class ContactForm(
     val providerId: Long = 0,
     val model: String = "",
     val thinking: ThinkingLevel = ThinkingLevel.OFF,
+    val thinkingOption: String? = null,
     val temperature: Float = Contact.DEFAULT_TEMPERATURE,
     val systemPrompt: String = "",
     val contextTokens: Int = Contact.DEFAULT_CONTEXT_TOKENS,
@@ -114,6 +116,7 @@ class ContactEditViewModel @Inject constructor(
                         providerId = it.providerId,
                         model = it.model,
                         thinking = it.thinking,
+                        thinkingOption = it.thinkingOption,
                         temperature = it.temperature,
                         systemPrompt = it.systemPrompt,
                         contextTokens = it.contextTokens,
@@ -136,17 +139,14 @@ class ContactEditViewModel @Inject constructor(
     fun selectProvider(config: ProviderConfig) {
         if (config.id == _state.value.form.providerId) return
         viewModelScope.launch {
-            val list = providers.models(config.id)
-            val model = config.defaultModel.ifBlank { list.firstOrNull()?.modelId.orEmpty() }
-            val supportsThinking = list.firstOrNull { it.modelId == model }?.supportsThinking
-                ?: (config.provider == ProviderProtocol.DEEPSEEK)
+            val model = config.defaultModel
             _state.update { state ->
                 state.copy(
                     showModelError = false,
                     form = state.form.copy(
                         providerId = config.id,
                         model = model,
-                        thinking = if (supportsThinking) state.form.thinking else ThinkingLevel.OFF,
+
                     ),
                 )
             }
@@ -160,7 +160,7 @@ class ContactEditViewModel @Inject constructor(
                 showModelError = false,
                 form = state.form.copy(
                     model = model.modelId,
-                    thinking = if (model.supportsThinking) state.form.thinking else ThinkingLevel.OFF,
+
                 ),
             )
         }
@@ -193,7 +193,7 @@ class ContactEditViewModel @Inject constructor(
             _state.update { it.copy(showNameError = true) }
             return null
         }
-        if (form.model.isBlank()) {
+        if (form.model.isBlank() || providers.model(form.providerId, form.model)?.let(ModelRules::complete) == false) {
             _state.update { it.copy(showModelError = true) }
             return null
         }
@@ -207,6 +207,7 @@ class ContactEditViewModel @Inject constructor(
                     providerId = form.providerId,
                     model = form.model,
                     thinking = form.thinking,
+                    thinkingOption = form.thinkingOption,
                     temperature = form.temperature,
                     systemPrompt = form.systemPrompt,
                     contextTokens = form.contextTokens,
@@ -223,6 +224,7 @@ class ContactEditViewModel @Inject constructor(
                 providerId = form.providerId,
                 model = form.model,
                 thinking = form.thinking,
+                thinkingOption = form.thinkingOption,
                 temperature = form.temperature,
                 systemPrompt = form.systemPrompt,
                 contextTokens = form.contextTokens,

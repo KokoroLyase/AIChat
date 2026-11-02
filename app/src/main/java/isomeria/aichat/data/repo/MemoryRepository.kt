@@ -23,6 +23,8 @@ class MemoryRepository @Inject constructor(
     private val messageDao: MessageDao,
     private val engine: MemoryEngine,
 ) {
+    val taskStates get() = engine.tasks.states
+
     fun observe(contactId: Long): Flow<List<Memory>> = memoryDao.observeByContact(contactId)
 
     fun observeCount(contactId: Long): Flow<Int> = memoryDao.observeCount(contactId)

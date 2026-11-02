@@ -52,6 +52,9 @@ import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderModel
 import isomeria.aichat.data.db.ProviderProtocol
 import isomeria.aichat.data.db.ThinkingLevel
+import isomeria.aichat.data.llm.ModelRules
+import isomeria.aichat.feature.settings.ConfigActionRow
+import isomeria.aichat.ui.components.ModelParameterControls
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.AvatarCropDialog
 import isomeria.aichat.ui.components.FootnoteText
@@ -156,18 +159,16 @@ fun ContactEditScreen(
 
             GroupSpacer()
             val provider = providerList.firstOrNull { it.id == form.providerId }
-            WeListRow(
+            ConfigActionRow(
                 title = stringResource(R.string.contact_provider),
                 value = provider?.name.orEmpty(),
                 onClick = { showProviderSheet = true },
-                showDivider = true,
             )
             val currentModel = models.firstOrNull { it.modelId == form.model }
-            WeListRow(
+            ConfigActionRow(
                 title = stringResource(R.string.contact_model),
                 value = currentModel?.displayName ?: form.model.ifEmpty { stringResource(R.string.llm_no_model) },
                 onClick = { showModelSheet = true },
-                showDivider = true,
             )
             if (state.showModelError) {
                 Text(
@@ -177,26 +178,9 @@ fun ContactEditScreen(
                     modifier = Modifier.padding(horizontal = dimens.horizontalPadding, vertical = 6.dp),
                 )
             }
-            val supportsThinking = currentModel?.supportsThinking ?: (provider?.provider == ProviderProtocol.DEEPSEEK)
-            val thinking = if (supportsThinking) form.thinking else ThinkingLevel.OFF
-            FormRow(stringResource(R.string.contact_thinking), showDivider = true) {
-                WeSegmented(
-                    options = listOf(
-                        ThinkingLevel.OFF to stringResource(R.string.thinking_off),
-                        ThinkingLevel.HIGH to stringResource(R.string.thinking_high),
-                        ThinkingLevel.MAX to stringResource(R.string.thinking_max),
-                    ),
-                    selected = thinking,
-                    onSelect = { level -> viewModel.update { it.copy(thinking = level) } },
-                    enabled = supportsThinking,
-                )
-            }
-            if (!supportsThinking) FootnoteText(stringResource(R.string.contact_thinking_unsupported))
-            TemperatureRow(
-                value = form.temperature,
-                enabled = thinking == ThinkingLevel.OFF,
-                onChange = { t -> viewModel.update { it.copy(temperature = t) } },
-            )
+            ModelParameterControls(provider, currentModel, form.thinkingOption ?: ModelRules.legacyOption(form.thinking), form.temperature,
+                onOption = { value -> viewModel.update { it.copy(thinkingOption = value) } },
+                onTemperature = { value -> viewModel.update { it.copy(temperature = value) } })
 
             GroupSpacer()
             Column(Modifier.fillMaxWidth().background(colors.listBackground).padding(dimens.horizontalPadding)) {
@@ -275,7 +259,7 @@ fun ContactEditScreen(
         }
     }
     if (showModelSheet) {
-        ModelSheet(models, form.model, onPick = viewModel::selectModel) {
+        ModelSheet(models.filter { m -> providerList.firstOrNull { it.id == form.providerId }?.let { ModelRules.usable(it, m) } == true }, form.model, onPick = viewModel::selectModel) {
             showModelSheet = false
         }
     }
@@ -335,7 +319,7 @@ private fun ModelSheet(models: List<ProviderModel>, current: String, onPick: (Pr
     val thinkingLabel = stringResource(R.string.contact_model_thinking)
     WeActionSheet(
         title = stringResource(R.string.contact_model_pick),
-        options = models.map { model ->
+        options = models.filter(ModelRules::complete).map { model ->
             SheetOption(
                 label = model.displayName,
                 subtitle = buildList {

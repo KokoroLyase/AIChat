@@ -47,6 +47,11 @@ data class Contact(
     @ColumnInfo(defaultValue = "1") val autoMemory: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
+    /** 新配置使用原生选项值；null 保留 0.3.0 枚举的请求语义。 */
+    val thinkingOption: String? = null,
+    /** null 跟随服务商默认，默认为空时回退聊天模型。 */
+    val memoryModel: String? = null,
+    @ColumnInfo(defaultValue = "'off'") val memoryThinkingOption: String = "off",
 ) {
     companion object {
         /** DeepSeek 官方对「通用对话」建议的温度 */
@@ -140,6 +145,9 @@ data class ProviderConfig(
     val apiKeyEncrypted: String? = null,
     val defaultModel: String,
     val enabled: Boolean = true,
+    val presetId: String? = null,
+    /** 协议与品牌分开；legacy 保留旧 provider 的编码语义。 */
+    @ColumnInfo(defaultValue = "'LEGACY'") val compatibility: String = "LEGACY",
 )
 
 /** 服务商的模型列表与能力（是否支持图片、是否支持思考）。 */
@@ -170,10 +178,18 @@ data class ProviderModel(
     val thinkingUserMark: Boolean? = null,
     /** 手动添加的模型：接口没有模型列表时用，刷新列表时保留 */
     @ColumnInfo(defaultValue = "0") val manual: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val legacy: Boolean = true,
+    val reportedConfig: String? = null,
+    val userConfig: String? = null,
+    val compatibilityOverride: String? = null,
+    @ColumnInfo(defaultValue = "0") val missingFromList: Boolean = false,
 ) {
     val supportsImage: Boolean get() = imageInputUserMark ?: (imageInput == Capability.YES)
 
-    val supportsThinking: Boolean get() = thinkingUserMark ?: (thinkingInput == Capability.YES)
+    val supportsThinking: Boolean get() = if (legacy) thinkingUserMark ?: (thinkingInput == Capability.YES) else
+        isomeria.aichat.data.llm.ModelRules.effective(this).thinking?.mode?.let {
+            it == isomeria.aichat.data.llm.ThinkingMode.SWITCH || it == isomeria.aichat.data.llm.ThinkingMode.ALWAYS
+        } ?: (thinkingUserMark ?: (thinkingInput == Capability.YES))
 }
 
 /**

@@ -10,6 +10,7 @@ import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Conversation
 import isomeria.aichat.data.db.DeepSeekDefaults
 import isomeria.aichat.data.db.MIGRATION_1_2
+import isomeria.aichat.data.db.MIGRATION_2_3
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -50,7 +51,7 @@ class DatabaseTest {
             )
         }
         // 真机的系统 SQLite 上执行迁移，并按导出的 v2 schema 校验
-        helper.runMigrationsAndValidate(TEST_DB, 2, true, MIGRATION_1_2).use { db ->
+        helper.runMigrationsAndValidate(TEST_DB, 3, true, MIGRATION_1_2, MIGRATION_2_3).use { db ->
             db.query("SELECT name, contextTokens, autoMemory FROM contact WHERE id = 7").use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("小雨", cursor.getString(0))
@@ -66,14 +67,39 @@ class DatabaseTest {
     }
 
     @Test
+    fun migrate2To3_keepsLegacyAndIndependentMemoryDefaults() {
+        helper.createDatabase("migration-v2-test", 2).use { db ->
+            db.execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled) VALUES(5,'LLM','openai','原连接','https://example.com/A/v1','encrypted','m',1)")
+            db.execSQL("INSERT INTO provider_model(providerId,modelId,displayName,imageInput,imageInputUserMark,sortOrder,thinkingInput,thinkingUserMark,manual) VALUES(5,'m','模型','UNKNOWN',1,0,'UNKNOWN',1,1)")
+            db.execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt) VALUES(7,'旧联系人',0,5,'m','MAX',0.7,'',4000,1,1,1,1)")
+        }
+        helper.runMigrationsAndValidate("migration-v2-test", 3, true, MIGRATION_2_3).use { db ->
+            db.query("SELECT compatibility, presetId, baseUrl, apiKeyEncrypted FROM provider_config WHERE id=5").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("LEGACY", c.getString(0))
+                assertTrue(c.isNull(1))
+                assertEquals("https://example.com/A/v1", c.getString(2))
+                assertEquals("encrypted", c.getString(3))
+            }
+            db.query("SELECT thinking, temperature, memoryModel, memoryThinkingOption FROM contact WHERE id=7").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("MAX", c.getString(0))
+                assertEquals(0.7, c.getDouble(1), 0.001)
+                assertTrue(c.isNull(2))
+                assertEquals("off", c.getString(3))
+            }
+        }
+    }
+
+    @Test
     fun seedAndCascadeDelete() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .addCallback(AppDatabase.seedCallback)
             .build()
         try {
             val provider = db.providerDao().llmList().first()
-            assertEquals(DeepSeekDefaults.DEFAULT_MODEL, provider.defaultModel)
-            assertEquals(DeepSeekDefaults.knownModels.size, db.providerDao().models(provider.id).size)
+            assertEquals("", provider.defaultModel)
+            assertTrue(db.providerDao().models(provider.id).isEmpty())
 
             val id = db.contactDao().insert(
                 Contact(name = "小雨", avatarColor = 0, providerId = provider.id, model = "deepseek-flash", createdAt = 1, updatedAt = 1),

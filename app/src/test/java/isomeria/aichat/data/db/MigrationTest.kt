@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -50,8 +51,8 @@ class MigrationTest {
     }
 
     /** 按导出的 v1 schema 建库：和 0.2.0 手机上的库结构完全一样 */
-    private fun createV1(fill: SQLiteDatabase.() -> Unit) {
-        val schema = Json.parseToJsonElement(File("schemas/isomeria.aichat.data.db.AppDatabase/1.json").readText())
+    private fun createV1(version: Int = 1, fill: SQLiteDatabase.() -> Unit) {
+        val schema = Json.parseToJsonElement(File("schemas/isomeria.aichat.data.db.AppDatabase/$version.json").readText())
             .jsonObject["database"]!!.jsonObject
         val db = SQLiteDatabase.openOrCreateDatabase(file, null)
         for (entity in schema["entities"]!!.jsonArray) {
@@ -63,7 +64,7 @@ class MigrationTest {
             }
         }
         for (statement in schema["setupQueries"]!!.jsonArray) db.execSQL(statement.jsonPrimitive.content)
-        db.version = 1
+        db.version = version
         db.fill()
         db.close()
     }
@@ -71,7 +72,7 @@ class MigrationTest {
     private fun JsonObject.sql(key: String) = this[key]!!.jsonPrimitive.content
 
     private fun open(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-        .addMigrations(MIGRATION_1_2)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
         .allowMainThreadQueries()
         .build()
         .also { room = it }
@@ -212,6 +213,32 @@ class MigrationTest {
         val db = open()
         assertNull(db.providerDao().llmList().single().apiKeyEncrypted)
         assertTrue(db.usageDao().listAll().isEmpty())
+    }
+
+    @Test
+    fun v2ToV3_keepsLegacyIdentityKeysAndAllParameters() = runBlocking {
+        createV1(version = 2) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled) VALUES(9,'LLM','openai','旧通用','https://example.com/A/v1','encrypted','m',1)")
+            execSQL("INSERT INTO provider_model(providerId,modelId,displayName,imageInput,imageInputUserMark,sortOrder,thinkingInput,thinkingUserMark,manual) VALUES(9,'m','旧模型','UNKNOWN',1,0,'UNKNOWN',1,1)")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt) VALUES(8,'旧联系人',1,9,'m','MAX',0.7,'人设',8000,0,0,10,20)")
+        }
+        val db = open()
+        val p = db.providerDao().get(9)!!
+        assertEquals("LEGACY", p.compatibility)
+        assertNull(p.presetId)
+        assertEquals("encrypted", p.apiKeyEncrypted)
+        assertEquals("https://example.com/A/v1", p.baseUrl)
+        assertEquals("m", p.defaultModel)
+        val model = db.providerDao().model(9, "m")!!
+        assertTrue(model.legacy && model.manual && model.supportsImage && model.supportsThinking)
+        val contact = db.contactDao().get(8)!!
+        assertEquals(ThinkingLevel.MAX, contact.thinking)
+        assertEquals(0.7f, contact.temperature)
+        assertNull(contact.thinkingOption)
+        assertNull(contact.memoryModel)
+        assertEquals("off", contact.memoryThinkingOption)
+        assertEquals(8000, contact.contextTokens)
+        assertFalse(contact.autoMemory)
     }
 
     private companion object {

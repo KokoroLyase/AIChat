@@ -102,6 +102,7 @@ fun ChatScreen(
     onOpenImage: (String) -> Unit,
     /** 打开服务商设置；参数是服务商 id */
     onOpenProvider: (Long) -> Unit,
+    onEditContact: (Long) -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -425,15 +426,16 @@ fun ChatScreen(
 
     failedDialog?.let { message ->
         val reason = FailReason.of(message.errorCode)
-        val needsSettings = reason == FailReason.AUTH || reason == FailReason.NO_API_KEY
+        val needsSettings = reason == FailReason.AUTH || reason == FailReason.NO_API_KEY || reason == FailReason.CONFIGURATION
         WeDialog(
             title = stringResource(R.string.chat_resend_title),
             message = stringResource(failReasonText(reason)),
-            confirmText = stringResource(if (needsSettings) R.string.action_go_settings else R.string.action_resend),
+            confirmText = stringResource(if (reason == FailReason.CONFIGURATION) R.string.action_fix_contact else if (needsSettings) R.string.action_go_settings else R.string.action_resend),
             onDismiss = { failedDialog = null },
             onConfirm = {
                 failedDialog = null
-                if (needsSettings) state.contact?.let { onOpenProvider(it.providerId) } else viewModel.retry()
+                if (reason == FailReason.CONFIGURATION) state.contact?.let { onEditContact(it.id) }
+                else if (needsSettings) state.contact?.let { onOpenProvider(it.providerId) } else viewModel.retry()
             },
         )
     }
@@ -540,6 +542,7 @@ private fun ChatBottomArea(reserve: Dp?, content: @Composable () -> Unit) {
 }
 
 fun failReasonText(reason: FailReason): Int = when (reason) {
+    FailReason.CONFIGURATION -> R.string.error_configuration
     FailReason.AUTH -> R.string.error_auth
     FailReason.BALANCE -> R.string.error_balance
     FailReason.RATE_LIMIT -> R.string.error_rate_limit

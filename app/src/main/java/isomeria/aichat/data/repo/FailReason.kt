@@ -17,6 +17,7 @@ enum class FailReason(val code: Int) {
     INTERRUPTED(3),
     NO_API_KEY(4),
     EMPTY_REPLY(5),
+    CONFIGURATION(6),
     UNKNOWN(9),
     ;
 
@@ -24,6 +25,7 @@ enum class FailReason(val code: Int) {
         fun of(code: Int): FailReason = entries.firstOrNull { it.code == code } ?: UNKNOWN
 
         fun of(e: LlmException): FailReason = when (e.error) {
+            LlmError.CONFIGURATION -> CONFIGURATION
             LlmError.AUTH -> AUTH
             LlmError.BALANCE -> BALANCE
             LlmError.RATE_LIMIT -> RATE_LIMIT

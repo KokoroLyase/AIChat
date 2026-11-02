@@ -65,6 +65,7 @@ data class ContactDetailState(
     val modelName: String = "",
     val providerName: String = "",
     val memoryCount: Int = 0,
+    val thinkingName: String? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -92,6 +93,9 @@ class ContactDetailViewModel @Inject constructor(
                     modelName = models.firstOrNull { it.modelId == contact.model }?.displayName ?: contact.model,
                     providerName = config?.name.orEmpty(),
                     memoryCount = memoryCount,
+                    thinkingName = contact.thinkingOption?.let { value ->
+                        isomeria.aichat.data.llm.ModelRules.options(models.firstOrNull { it.modelId == contact.model }).firstOrNull { it.value == value }?.label ?: value
+                    },
                 )
             }
         }
@@ -169,11 +173,13 @@ fun ContactDetailContent(
                 Text(
                     stringResource(
                         R.string.contact_thinking_line,
-                        stringResource(
-                            when (contact.thinking) {
-                                ThinkingLevel.OFF -> R.string.thinking_off
-                                ThinkingLevel.HIGH -> R.string.thinking_high
-                                ThinkingLevel.MAX -> R.string.thinking_max
+                        state.thinkingName?.takeIf { it.isNotBlank() } ?: stringResource(
+                            when (contact.thinkingOption ?: contact.thinking.name.lowercase()) {
+                                "off" -> R.string.thinking_off
+                                "on" -> R.string.thinking_on
+                                "high" -> R.string.thinking_high
+                                "max" -> R.string.thinking_max
+                                else -> R.string.rule_unknown
                             },
                         ),
                     ),

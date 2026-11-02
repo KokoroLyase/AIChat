@@ -30,7 +30,13 @@ import isomeria.aichat.feature.contacts.previewSections
 import isomeria.aichat.feature.me.MeContent
 import isomeria.aichat.feature.memory.MemoryContent
 import isomeria.aichat.feature.memory.previewMemoryState
-import isomeria.aichat.feature.settings.ProviderEditSample
+import isomeria.aichat.feature.settings.*
+import isomeria.aichat.data.llm.*
+import isomeria.aichat.data.db.*
+import isomeria.aichat.data.memory.MemoryTaskState
+import isomeria.aichat.data.repo.*
+import isomeria.aichat.ui.components.ModelParameterControls
+import isomeria.aichat.ui.components.ThinkingSelector
 import isomeria.aichat.feature.settings.ProviderListContent
 import isomeria.aichat.feature.usage.UsageContent
 import isomeria.aichat.feature.usage.previewUsageState
@@ -214,6 +220,51 @@ class ScreenshotTest {
     @Test fun updateFailedLight() = updateShot("15-update-failed", false) { UpdateFailedDialog(UpdateFailure.CHECKSUM, {}, {}) }
 
     @Test fun updateFailedDark() = updateShot("15-update-failed", true) { UpdateFailedDialog(UpdateFailure.CHECKSUM, {}, {}) }
+
+    private val configuredModel = ProviderModel(1, "example-chat", "示例模型", imageInputUserMark = false, legacy = false,
+        userConfig = ModelRules.encode(ModelConfig(true, ThinkingRule(ThinkingMode.SWITCH, listOf(NativeEffort("low", "低"), NativeEffort("medium", "中"), NativeEffort("high", "高"), NativeEffort("max", "最高"))),
+            TemperatureRule(TemperatureSpec(TemperatureMode.ADJUSTABLE, 0.2f, 1.5f), TemperatureSpec(TemperatureMode.FIXED, fixed = 1f)))))
+    private val modelProvider = providers.first().copy(compatibility = "DEEPSEEK", presetId = "deepseek")
+    @Test fun modelConfigureLight() = shot("16-model-configure", false) { ModelEditContent(ModelEditState(configuredModel, modelProvider), {}, {}, {}) }
+    @Test fun modelConfigureDark() = shot("16-model-configure", true) { ModelEditContent(ModelEditState(configuredModel, modelProvider), {}, {}, {}) }
+    @Test fun modelPendingLight() = shot("17-model-pending", false) { ModelEditContent(ModelEditState(configuredModel.copy(userConfig = null, imageInputUserMark = null), modelProvider), {}, {}, {}) }
+    @Test fun modelPendingDark() = shot("17-model-pending", true) { ModelEditContent(ModelEditState(configuredModel.copy(userConfig = null, imageInputUserMark = null), modelProvider), {}, {}, {}) }
+    @Composable private fun ParameterSample() {
+        Column {
+            ModelParameterControls(modelProvider, configuredModel, "low", 1.3f, {}, {})
+            ModelParameterControls(modelProvider, configuredModel, "off", 1.8f, {}, {})
+            ModelParameterControls(modelProvider, configuredModel.copy(userConfig = ModelRules.encode(ModelRules.effective(configuredModel).copy(temperature = TemperatureRule(TemperatureSpec(TemperatureMode.UNSUPPORTED))))), "off", 1.3f, {}, {})
+        }
+    }
+    @Test fun parametersLight() = shot("18-model-parameters", false) { ParameterSample() }
+    @Test fun parametersDark() = shot("18-model-parameters", true) { ParameterSample() }
+    private val memorySettings = previewMemoryState.copy(contact = Contact(id = 1, name = "小雨", avatarColor = 0, providerId = 1, model = "example-chat", memoryModel = "example-chat", memoryThinkingOption = "low", createdAt = 1, updatedAt = 1),
+        provider = modelProvider, models = listOf(configuredModel), task = MemoryTaskState(queued = 1, generating = true, lastSuccess = 1793592000000))
+    @Test fun memorySettingsLight() = shot("19-memory-settings", false) { MemoryContent(memorySettings, {}, {}, {}, {}) }
+    @Test fun memorySettingsDark() = shot("19-memory-settings", true) { MemoryContent(memorySettings, {}, {}, {}, {}) }
+    @Test fun memoryConflictLight() = shot("20-memory-conflict", false) { MemoryContent(memorySettings.copy(contact = memorySettings.contact!!.copy(memoryThinkingOption = "retired"), task = MemoryTaskState(lastFailure = 1793592000000, failure = FailReason.CONFIGURATION)), {}, {}, {}, {}) }
+    @Test fun memoryConflictDark() = shot("20-memory-conflict", true) { MemoryContent(memorySettings.copy(contact = memorySettings.contact!!.copy(memoryThinkingOption = "retired"), task = MemoryTaskState(lastFailure = 1793592000000, failure = FailReason.CONFIGURATION)), {}, {}, {}, {}) }
+    @Test fun conflictDialogLight() = updateShot("21-config-conflict", false) { ConflictDialog(listOf(ModelReference("小雨", ReferencePurpose.CHAT), ModelReference("小雨", ReferencePurpose.MEMORY)), {}) {} }
+    @Test fun conflictDialogDark() = updateShot("21-config-conflict", true) { ConflictDialog(listOf(ModelReference("小雨", ReferencePurpose.CHAT), ModelReference("小雨", ReferencePurpose.MEMORY)), {}) {} }
+
+    @Test fun longConfigurationLargeFontLight() = shot("22-large-config", false) {
+        AIChatTheme(darkTheme = false, fontScale = 2.5f) {
+            Column {
+                ConfigActionRow("思考时使用不同规则", "单独设置思考温度规则") {}
+                ConfigActionRow("模拟联系人使用的长名称模型与完整配置状态", "待配置：用途、思考与温度待确认") {}
+                ThinkingSelector(configuredModel, "retired", "记忆思考强度") {}
+            }
+        }
+    }
+    @Test fun longConfigurationLargeFontDark() = shot("22-large-config", true) {
+        AIChatTheme(darkTheme = true, fontScale = 2.5f) {
+            Column {
+                ConfigActionRow("思考时使用不同规则", "单独设置思考温度规则") {}
+                ConfigActionRow("模拟联系人使用的长名称模型与完整配置状态", "待配置：用途、思考与温度待确认") {}
+                ThinkingSelector(configuredModel, "retired", "记忆思考强度") {}
+            }
+        }
+    }
 
     private fun dialogShot(name: String, dark: Boolean) {
         compose.setContent {

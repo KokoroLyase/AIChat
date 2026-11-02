@@ -17,10 +17,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Memory::class,
         UsageDaily::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
+    /** 恢复数据使正在等待网络的旧记忆任务失效；瞬时保护，不参与备份。 */
+    val restoreGeneration = java.util.concurrent.atomic.AtomicLong(0)
+    val restoreInProgress = java.util.concurrent.atomic.AtomicInteger(0)
     abstract fun contactDao(): ContactDao
     abstract fun conversationDao(): ConversationDao
     abstract fun messageDao(): MessageDao
@@ -31,25 +34,17 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         const val NAME = "aichat.db"
 
-        /** 首次建库时写入 DeepSeek 服务商和已知模型；模型列表之后以接口拉取的为准。 */
+        /** 首次建库只写入连接预置，不写入任何具体模型。 */
         val seedCallback = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
-                    INSERT INTO provider_config (id, kind, provider, name, baseUrl, apiKeyEncrypted, defaultModel, enabled)
-                    VALUES (1, 'LLM', '${DeepSeekDefaults.PROVIDER}', '${DeepSeekDefaults.NAME}', '${DeepSeekDefaults.BASE_URL}', NULL,
-                            '${DeepSeekDefaults.DEFAULT_MODEL}', 1)
+                    INSERT INTO provider_config (id, kind, provider, name, baseUrl, apiKeyEncrypted, defaultModel, enabled, presetId, compatibility)
+                    VALUES (1, 'LLM', '${ProviderProtocol.OPENAI}', '${DeepSeekDefaults.NAME}', '${DeepSeekDefaults.BASE_URL}', NULL,
+                            '', 1, 'deepseek', 'DEEPSEEK')
                     """.trimIndent(),
                 )
-                DeepSeekDefaults.knownModels.forEachIndexed { index, model ->
-                    db.execSQL(
-                        """
-                        INSERT INTO provider_model (providerId, modelId, displayName, imageInput, imageInputUserMark, sortOrder, thinkingInput, thinkingUserMark, manual)
-                        VALUES (1, ?, ?, ?, NULL, ?, ?, NULL, 0)
-                        """.trimIndent(),
-                        arrayOf<Any>(model.modelId, model.displayName, model.imageInput.name, index, model.thinkingInput.name),
-                    )
-                }
+
             }
         }
     }
@@ -69,12 +64,5 @@ object DeepSeekDefaults {
     const val PROVIDER = ProviderProtocol.DEEPSEEK
     const val NAME = "DeepSeek"
     const val BASE_URL = "https://api.deepseek.com"
-    /** DeepSeek V4.1 Flash：支持思考和图片输入 */
-    const val DEFAULT_MODEL = "deepseek-flash"
     const val PROVIDER_ID = 1L
-
-    val knownModels = listOf(
-        ProviderModel(PROVIDER_ID, "deepseek-flash", "DeepSeek V4.1 Flash", Capability.YES, thinkingInput = Capability.YES),
-        ProviderModel(PROVIDER_ID, "deepseek-v4-pro", "DeepSeek V4 Pro", Capability.NO, thinkingInput = Capability.YES),
-    )
 }

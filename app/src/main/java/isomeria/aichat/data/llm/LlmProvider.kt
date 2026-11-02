@@ -10,7 +10,7 @@ interface LlmProvider {
     /** 与 provider_config.provider 对应，见 [isomeria.aichat.data.db.ProviderProtocol] */
     val id: String
 
-    /** 拉取模型列表；「测试连接」也用它 */
+    /** 主动拉取模型候选；不代表聊天能力已经实测 */
     suspend fun listModels(endpoint: LlmEndpoint): List<RemoteModel>
 
     /**
@@ -31,6 +31,7 @@ data class RemoteModel(
     val supportsImage: Boolean?,
     /** 接口报告的思考能力；接口没给时为 null */
     val supportsThinking: Boolean? = null,
+    val config: ModelConfig = ModelConfig(),
 )
 
 data class ChatRequest(
@@ -38,6 +39,7 @@ data class ChatRequest(
     val messages: List<ChatMessage>,
     val thinking: ThinkingLevel,
     val temperature: Float,
+    val parameters: RequestParameters? = null,
 )
 
 enum class ChatRole { SYSTEM, USER, ASSISTANT }
@@ -68,6 +70,7 @@ sealed interface ChatEvent {
 }
 
 enum class LlmError {
+    CONFIGURATION,
     /** 401 / 403 认证失败 */
     AUTH,
     /** 402 余额不足 */

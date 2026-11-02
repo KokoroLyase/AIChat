@@ -24,6 +24,7 @@ import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.ContactDao
 import isomeria.aichat.data.db.ConversationDao
 import isomeria.aichat.data.db.MIGRATION_1_2
+import isomeria.aichat.data.db.MIGRATION_2_3
 import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.MessageDao
 import isomeria.aichat.data.db.ProviderDao
@@ -54,7 +55,7 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .addCallback(AppDatabase.seedCallback)
             .build()
 

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import isomeria.aichat.data.crypto.SecretCipher
 import isomeria.aichat.data.db.AppDatabase
+import isomeria.aichat.data.llm.*
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Capability
 import isomeria.aichat.data.db.Conversation
@@ -167,6 +168,43 @@ class BackupManagerTest {
         val restored = db.messageDao().get(id)!!
         assertEquals(MessageStatus.FAILED, restored.status)
         assertEquals(FailReason.INTERRUPTED.code, restored.errorCode)
+    }
+
+    @Test fun v3RoundTripKeepsMemorySelectionOverridesAndManualIdentityAfterIdMerge() = runBlocking {
+        seed()
+        val config = db.providerDao().get(secondProviderId)!!
+        db.providerDao().update(config.copy(presetId = "mimo", compatibility = "MIMO"))
+        val model = db.providerDao().model(secondProviderId, "local")!!.copy(legacy = false, missingFromList = true,
+            reportedConfig = ModelRules.encode(ModelConfig(chat = true)),
+            userConfig = ModelRules.encode(ModelConfig(thinking = ThinkingRule(ThinkingMode.ALWAYS, listOf(NativeEffort("native", "原生档位"))), temperature = TemperatureRule(TemperatureSpec(TemperatureMode.FIXED, fixed = 1f)))),
+            compatibilityOverride = ModelRules.encode(CompatibilityOverride(ThinkingField.THINKING_TYPE, EffortField.REASONING_EFFORT, false)))
+        db.providerDao().upsertModels(listOf(model))
+        db.contactDao().update(db.contactDao().get(2)!!.copy(memoryModel = "local", memoryThinkingOption = "native", thinkingOption = "on"))
+        val before = dump()
+        val zip = export(password = "pw123456")
+        assertEquals(3, backup.inspect(zip).manifest.formatVersion)
+        scramble()
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, "pw123456".toCharArray())
+        assertEquals(before, dump())
+        // 相同 id、不同创建时间：导入联系人换 id，记忆模型依然跟随映射后的服务商。
+        db.contactDao().update(db.contactDao().get(2)!!.copy(createdAt = 123456, memoryModel = null, memoryThinkingOption = "off"))
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+        val added = db.contactDao().listAll().single { it.name == "阿哲" && it.id != 2L }
+        assertEquals("local", added.memoryModel)
+        assertEquals("native", added.memoryThinkingOption)
+        assertEquals(model, db.providerDao().model(added.providerId, "local"))
+    }
+
+    @Test fun pathCaseAndProtocolDifferencesNeverReuseLocalKeys() = runBlocking {
+        seed()
+        db.providerDao().update(deepSeek().copy(baseUrl = "https://example.com/A/v1"))
+        val zip = export(password = null)
+        db.providerDao().update(deepSeek().copy(baseUrl = "https://example.com/a/v1", apiKeyEncrypted = cipher.encrypt("local-secret")))
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(null, deepSeek().apiKeyEncrypted)
+        db.providerDao().update(deepSeek().copy(provider = "different-protocol", apiKeyEncrypted = cipher.encrypt("local-secret")))
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(null, deepSeek().apiKeyEncrypted)
     }
 
     // ---------- 合并 ----------

@@ -172,6 +172,22 @@ class BackupFormatTest {
         }
     }
 
+    @Test fun v2ToV3KeepsLegacyDefaultsAndV1Chains() {
+        val raw = kotlinx.serialization.json.Json.parseToJsonElement("""{"contacts":[{"id":9,"name":"旧联系人","avatarColor":0,"providerId":8,"model":"m","thinking":"MAX","temperature":0.7,"createdAt":1,"updatedAt":2}],"providers":[{"id":8,"kind":"LLM","provider":"openai","baseUrl":"https://example.com/A/v1","defaultModel":"m","models":[{"modelId":"m","displayName":"m","manual":true}]}]}""") as JsonObject
+        val data = BackupFormat.json.decodeFromJsonElement(BackupData.serializer(), BackupMigrations().migrate(raw, 2))
+        assertEquals("LEGACY", data.providers.single().compatibility)
+        assertEquals(null, data.providers.single().presetId)
+        assertTrue(data.providers.single().models.single().legacy)
+        assertTrue(data.providers.single().models.single().manual)
+        val contact = data.contacts.single()
+        assertEquals(isomeria.aichat.data.db.ThinkingLevel.MAX, contact.thinking)
+        assertEquals(0.7f, contact.temperature)
+        assertEquals(null, contact.memoryModel)
+        assertEquals("off", contact.memoryThinkingOption)
+        val chained = BackupMigrations().migrate(raw, 1)
+        assertEquals("LEGACY", BackupFormat.json.decodeFromJsonElement(BackupData.serializer(), chained).providers.single().compatibility)
+    }
+
     @Test
     fun mediaNames_onlySafeNamesAllowed() {
         val pattern = BackupFormat.mediaNamePattern

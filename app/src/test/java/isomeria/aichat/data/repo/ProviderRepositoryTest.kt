@@ -15,7 +15,10 @@ import isomeria.aichat.data.llm.LlmEndpoint
 import isomeria.aichat.data.llm.LlmError
 import isomeria.aichat.data.llm.LlmException
 import isomeria.aichat.data.llm.LlmProvider
-import isomeria.aichat.data.llm.RemoteModel
+import isomeria.aichat.data.llm.*
+import isomeria.aichat.data.db.ProviderConfig
+import isomeria.aichat.data.db.ProviderKind
+import isomeria.aichat.data.db.ThinkingLevel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
@@ -82,10 +85,10 @@ class ProviderRepositoryTest {
     fun seed_deepSeekWithThinkingModels() = runBlocking {
         val config = repo.list().single()
         assertEquals("DeepSeek", config.name)
-        assertEquals(ProviderProtocol.DEEPSEEK, config.provider)
-        assertTrue(repo.models(config.id).all { it.supportsThinking })
-        assertTrue(repo.model(config.id, "deepseek-flash")!!.supportsImage)
-        assertFalse(repo.model(config.id, "deepseek-v4-pro")!!.supportsImage)
+        assertEquals(ProviderProtocol.OPENAI, config.provider)
+        assertTrue(repo.models(config.id).isEmpty())
+        assertEquals("", config.defaultModel)
+        assertEquals("DEEPSEEK", config.compatibility)
     }
 
     @Test
@@ -99,7 +102,7 @@ class ProviderRepositoryTest {
         assertEquals(LlmEndpoint("https://openrouter.ai/api/v1", "sk-abc"), repo.endpoint(config))
 
         val second = repo.create("我的 DeepSeek", "https://api.deepseek.com/v1", null)
-        assertEquals(ProviderProtocol.DEEPSEEK, repo.config(second)!!.provider)
+        assertEquals(ProviderProtocol.OPENAI, repo.config(second)!!.provider)
         assertNull(repo.config(second)!!.apiKeyEncrypted)
         assertNull(repo.endpoint(repo.config(second)!!))
     }
@@ -123,8 +126,8 @@ class ProviderRepositoryTest {
     @Test
     fun save_deepSeekOnProxyKeepsProtocol() = runBlocking {
         val id = repo.list().single().id
-        repo.save(id, "DeepSeek", "https://proxy.example.com", null, DeepSeekDefaults.DEFAULT_MODEL)
-        assertEquals(ProviderProtocol.DEEPSEEK, repo.config(id)!!.provider)
+        repo.save(id, "DeepSeek", "https://proxy.example.com", null, "saved-model")
+        assertEquals(ProviderProtocol.OPENAI, repo.config(id)!!.provider)
     }
 
     @Test
@@ -174,7 +177,8 @@ class ProviderRepositoryTest {
         assertEquals("https://new.example.com/v1", generic.endpoints.first().baseUrl)
 
         repo.fetchModels(null, "https://api.deepseek.com", "sk-new")
-        assertEquals("sk-new", deepSeek.endpoints.single().apiKey)
+        assertEquals("sk-new", generic.endpoints.last().apiKey)
+        assertTrue(deepSeek.endpoints.isEmpty())
     }
 
     @Test
@@ -200,7 +204,7 @@ class ProviderRepositoryTest {
                 RemoteModel("gone", null, supportsImage = null),
             ),
         )
-        assertEquals("vision", repo.config(id)!!.defaultModel)
+        assertEquals("", repo.config(id)!!.defaultModel)
         val vision = repo.model(id, "vision")!!
         assertEquals("Vision", vision.displayName)
         assertEquals(Capability.YES, vision.imageInput)
@@ -223,7 +227,7 @@ class ProviderRepositoryTest {
                 RemoteModel("vision", "Vision", supportsImage = true, supportsThinking = true),
             ),
         )
-        assertEquals("vision", repo.config(id)!!.defaultModel)
+        assertEquals("", repo.config(id)!!.defaultModel)
         assertNull(repo.model(id, "gone"))
         assertTrue(repo.model(id, "plain")!!.supportsImage)
         assertTrue(repo.model(id, "plain")!!.supportsThinking)
@@ -245,8 +249,9 @@ class ProviderRepositoryTest {
             listOf(RemoteModel("deepseek-flash", null, supportsImage = null), RemoteModel("deepseek-new", null, supportsImage = null)),
         )
         val known = repo.model(DeepSeekDefaults.PROVIDER_ID, "deepseek-flash")!!
-        assertEquals("DeepSeek V4.1 Flash", known.displayName)
-        assertTrue(known.supportsImage && known.supportsThinking)
+        assertEquals("deepseek-flash", known.displayName)
+        assertEquals(Capability.UNKNOWN, known.imageInput)
+        assertFalse(known.supportsImage || known.supportsThinking)
         assertFalse(repo.model(DeepSeekDefaults.PROVIDER_ID, "deepseek-new")!!.supportsThinking)
     }
 
@@ -258,10 +263,10 @@ class ProviderRepositoryTest {
         repo.addManualModel(id, "m1") // 重复不加
         repo.addManualModel(id, "   ") // 空的不加
         assertEquals(listOf("m1", "m2"), repo.models(id).map(ProviderModel::modelId))
-        assertEquals("m1", repo.config(id)!!.defaultModel)
+        assertEquals("", repo.config(id)!!.defaultModel)
 
         repo.removeModel(id, "m1")
-        assertEquals("m2", repo.config(id)!!.defaultModel)
+        assertEquals("", repo.config(id)!!.defaultModel)
         repo.removeModel(id, "m2")
         assertEquals("", repo.config(id)!!.defaultModel)
     }
@@ -269,7 +274,7 @@ class ProviderRepositoryTest {
     @Test
     fun supportsThinking_unknownModel_dependsOnProtocol() = runBlocking {
         val deepSeekConfig = repo.config(DeepSeekDefaults.PROVIDER_ID)!!
-        assertTrue(repo.supportsThinking(deepSeekConfig, "not-in-list"))
+        assertFalse(repo.supportsThinking(deepSeekConfig, "not-in-list"))
         val other = repo.config(repo.create("甲", "https://a.example.com/v1", "k"))!!
         assertFalse(repo.supportsThinking(other, "not-in-list"))
     }
@@ -306,4 +311,95 @@ class ProviderRepositoryTest {
         assertTrue(BaseUrlRules.isSameUrl("https://A.example.com/v1/", "https://a.example.com/v1"))
         assertFalse(BaseUrlRules.isSameUrl("https://a.example.com/v1", "https://a.example.com/v2"))
     }
+    private fun ready(id: Long, model: String = "m", min: Float = 0f) = ProviderModel(id, model, model, imageInputUserMark = false, legacy = false,
+        userConfig = ModelRules.encode(ModelConfig(true, ThinkingRule(ThinkingMode.SWITCH, listOf(NativeEffort("low", "低"), NativeEffort("high", "高"))),
+            TemperatureRule(TemperatureSpec(TemperatureMode.ADJUSTABLE, min, 2f)))))
+
+    @Test fun manualIdentitySurvivesAppearingThenDisappearing() = runBlocking {
+        val id = repo.create("测试", "https://example.com/v1", null)
+        repo.addManualModel(id, "manual")
+        repo.applyRemoteModels(id, listOf(RemoteModel("manual", null, null)))
+        repo.applyRemoteModels(id, listOf(RemoteModel("other", null, null)))
+        assertTrue(repo.model(id, "manual")!!.manual)
+        assertTrue(repo.model(id, "manual")!!.missingFromList)
+        assertEquals("", repo.config(id)!!.defaultModel)
+    }
+    @Test fun configuredAndReferencedModelsAreRetainedAndDeletionNeverSwitchesReferences() = runBlocking {
+        val id = repo.create("测试", "https://example.com/v1", null, compatibility = "DEEPSEEK")
+        repo.saveModel(ready(id))
+        repo.addManualModel(id, "memory")
+        val c = contact(id)
+        db.contactDao().update(db.contactDao().get(c)!!.copy(memoryModel = "memory"))
+        repo.setDefaultModel(id, "m")
+        repo.applyRemoteModels(id, listOf(RemoteModel("other", null, null)))
+        assertTrue(repo.model(id, "m")!!.missingFromList)
+        assertFalse(repo.removeModel(id, "m"))
+        assertFalse(repo.removeModel(id, "memory"))
+        assertEquals("m", repo.config(id)!!.defaultModel)
+        assertEquals("memory", db.contactDao().get(c)!!.memoryModel)
+        repo.setDefaultModel(id, "")
+        db.contactDao().delete(c)
+        assertTrue(repo.removeModel(id, "m"))
+    }
+    @Test fun conflictsPreserveContactTemperatureAndStrengthAndBlockSnapshot() = runBlocking {
+        val id = repo.create("测试", "https://example.com/v1", "fake", compatibility = "DEEPSEEK")
+        repo.saveModel(ready(id))
+        val c = contact(id)
+        val original = db.contactDao().get(c)!!.copy(thinkingOption = "high", temperature = 0.7f, memoryModel = "m", memoryThinkingOption = "low")
+        db.contactDao().update(original)
+        val tightened = ready(id, min = 1f)
+        assertEquals(setOf(ReferencePurpose.CHAT, ReferencePurpose.MEMORY), repo.conflicts(repo.config(id)!!, tightened).map { it.purpose }.toSet())
+        repo.saveModel(tightened)
+        assertEquals(original, db.contactDao().get(c))
+        try { repo.snapshot(c, false); fail("无效参数不能发请求") } catch (e: LlmException) { assertEquals(LlmError.CONFIGURATION, e.error) }
+        assertTrue(generic.endpoints.isEmpty())
+    }
+    @Test fun eachContactMemorySelectionIsIndependentAndSnapshotKeepsItsCompleteConnection() = runBlocking {
+        val id = repo.create("测试", "https://example.com/A/v1", "fake-old", compatibility = "DEEPSEEK")
+        repo.saveModel(ready(id))
+        repo.saveModel(ready(id, "alternate"))
+        val first = contact(id)
+        val second = contact(id)
+        db.contactDao().update(db.contactDao().get(first)!!.copy(memoryModel = "alternate", memoryThinkingOption = "low"))
+        repo.setDefaultModel(id, "m")
+        val snapshot = repo.snapshot(first, true)
+        assertEquals("alternate", snapshot.model)
+        assertEquals("low", snapshot.parameters!!.option)
+        assertEquals("m", repo.snapshot(second, true).model)
+        assertEquals("off", repo.snapshot(second, true).parameters!!.option)
+        repo.save(id, "变更", "https://example.com/B/v1", "fake-new", "alternate", "OPENROUTER")
+        assertEquals("https://example.com/A/v1", snapshot.endpoint.baseUrl)
+        assertEquals("fake-old", snapshot.endpoint.apiKey)
+        assertEquals("DEEPSEEK", snapshot.config.compatibility)
+        assertEquals("OPENROUTER", repo.snapshot(first, true).config.compatibility)
+        repo.setDefaultModel(id, "")
+        assertEquals("m", repo.snapshot(second, true).model)
+    }
+    @Test fun legacyDeepSeekAndGenericKeepActualHighMaxAndOffRequests() = runBlocking {
+        for (protocol in listOf("deepseek", "openai")) {
+            val id = db.providerDao().insert(ProviderConfig(kind = ProviderKind.LLM, provider = protocol, baseUrl = "https://example.com/v1", apiKeyEncrypted = "enc:fake", defaultModel = "legacy"))
+            db.providerDao().upsertModels(listOf(ProviderModel(id, "m", "m", thinkingInput = Capability.YES)))
+            val c = contact(id)
+            for (level in ThinkingLevel.entries) {
+                db.contactDao().update(db.contactDao().get(c)!!.copy(thinking = level))
+                val request = repo.snapshot(c, false).request(emptyList())
+                assertEquals(level, request.thinking)
+                assertNull(request.parameters)
+                val b = if (protocol == "deepseek") DeepSeekRequestBuilder.build(request) else OpenAiRequestBuilder.build(request)
+                if (level == ThinkingLevel.OFF) assertTrue(b.containsKey("temperature"))
+                else assertEquals(if (protocol == "deepseek") level.name.lowercase() else "high", b["reasoning_effort"]!!.toString().trim('"'))
+            }
+            val memory = repo.snapshot(c, true).request(emptyList())
+            assertEquals("legacy", memory.model)
+            assertEquals(ThinkingLevel.OFF, memory.thinking)
+        }
+    }
+    @Test fun urlPathCasePortsAndFormatRemainStrict() {
+        assertTrue(BaseUrlRules.isSameUrl("https://HOST.example/A/v1/", "https://host.example/A/v1"))
+        assertFalse(BaseUrlRules.isSameUrl("https://host.example/A/v1", "https://host.example/a/v1"))
+        assertFalse(BaseUrlRules.isSameUrl("https://host.example:444/v1", "https://host.example/v1"))
+        assertNull(BaseUrlRules.normalize("https://user:secret@host.example/v1"))
+        assertNull(BaseUrlRules.normalize("https://host.example/v1?query=1"))
+    }
+
 }

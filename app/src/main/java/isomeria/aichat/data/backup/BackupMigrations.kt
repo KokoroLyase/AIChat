@@ -46,7 +46,7 @@ class BackupMigrations(
 
     companion object {
         /** 键是旧版本号，值把这个版本的 data.json 转成下一个版本 */
-        val STEPS: Map<Int, (JsonObject) -> JsonObject> = mapOf(1 to { data -> v1ToV2(data) })
+        val STEPS: Map<Int, (JsonObject) -> JsonObject> = mapOf(1 to { data -> v1ToV2(data) }, 2 to { data -> v2ToV3(data) })
 
         /**
          * v1 → v2（0.3.0）：
@@ -72,6 +72,20 @@ class BackupMigrations(
             }
             result["usage"] = JsonArray(usageFromMessages(data.arrayOf("messages").orEmpty(), zone))
             return JsonObject(result)
+        }
+
+        /** 与 Room v2→v3 的默认值一致，不推断品牌，不复制记忆默认型号。 */
+        fun v2ToV3(data: JsonObject): JsonObject {
+            val providers = data.arrayOf("providers").orEmpty().map { item ->
+                val p = item.jsonObject
+                JsonObject(p + ("compatibility" to JsonPrimitive("LEGACY")) + ("models" to JsonArray(p.arrayOf("models").orEmpty().map {
+                    JsonObject(it.jsonObject + ("legacy" to JsonPrimitive(true)))
+                })))
+            }
+            val contacts = data.arrayOf("contacts").orEmpty().map { item ->
+                JsonObject(item.jsonObject + ("memoryThinkingOption" to JsonPrimitive("off")))
+            }
+            return JsonObject(data + ("providers" to JsonArray(providers)) + ("contacts" to JsonArray(contacts)))
         }
 
         private fun migrateProvider(provider: JsonObject): JsonObject {

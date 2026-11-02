@@ -4,7 +4,8 @@
 
 - 包名 `isomeria.aichat`，需要 Android 14（API 34）及以上
 - 原生 Kotlin + Jetpack Compose，单 Activity，MVVM + StateFlow，Hilt 依赖注入
-- 大语言模型：DeepSeek 和任意兼容 OpenAI Chat Completions 格式的服务商
+- 大语言模型：7 家连接预置和自定义 OpenAI Chat Completions 兼容 API；只接入用户自己的 API Key
+- 本地开发版本 **0.3.1**（versionCode 301），尚未发布；GitHub 正式版仍为 0.3.0
 - 设计方案见 [智信 AIChat 设计方案.md](智信%20AIChat%20设计方案.md)
 
 > 本项目与腾讯、微信没有任何关系。界面只参考布局与配色，不使用微信的图标、素材和名称。
@@ -45,9 +46,25 @@
 | 应用内更新 | 下载 APK，用 `.sha256` 校验，核对包名、版本和签名后拉起系统安装；失败时可在浏览器中打开发布页 |
 | 备份格式 v2 | 服务商、记忆和用量也会导出和恢复；各服务商的 Key 默认不导出，勾选后用密码加密；v1 备份自动迁移 |
 
+## 0.3.1 功能
+
+| 功能 | 说明 |
+| --- | --- |
+| 服务商预置 | 固定顺序：DeepSeek、阿里云百炼（千问）、智谱、Kimi、Xiaomi MiMo、硅基流动、OpenRouter；另有自定义入口。品牌、协议和兼容方案独立，预置只填写新连接，不覆盖已保存地址 |
+| 按需配置模型 | 不内置型号目录、不拉取第三方目录。主动获取列表或手动添加 ID；缺失的用途、图片、思考、温度信息保持待确认，准备使用的模型才需补齐。列表可访问不代表聊天已验证 |
+| 完整参数规则 | 按模型配置实际原生思考档位，区分不支持、开关、始终开启；温度可调、固定或省略，允许思考状态下单独设置规则；模型可覆盖字段和流式用量参数，并恢复继承 |
+| 刷新与冲突 | 保留手动、已配置、已引用和默认模型；未返回只标记。刷新不自动选默认，被引用模型须先解除引用才能删除。规则变更提示受影响联系人并保留原值，请求前阻止无效参数 |
+| 独立记忆设置 | 联系人 → 记忆：独立选择同服务商的记忆模型及思考档位；未指定时跟随服务商默认，默认空时回退聊天模型。只保存总结正文 |
+| 记忆任务反馈 | 同联系人串行，不同联系人最多并行 2 个；显示排队、生成和最近成功/失败。实际请求使用完整配置快照，编辑设置不会混用正在发送的参数 |
+| 升级与安全 | Room v3、备份 v3，逐版迁移旧配置、Key 密文、模型身份和联系人设置；保留 legacy DeepSeek OFF/HIGH/MAX 及通用请求体。URL 路径区分大小写，Key 仅按请求格式与完整地址匹配复用；不跟随重定向 |
+
+上下文预算、估算与裁剪、记忆的 80% 阈值/最早一半/6000 token 批次/1/4 预算、合并规则、时间进度及用量归类沿用 0.3.0。语音、订阅、OAuth、其他原生协议和费用估算不在本版范围。
+
+验证结果和未测边界见 [v0.3.1 本地验证记录](docs/validation/v0.3.1.md)，更新说明见 [v0.3.1](docs/release-notes/v0.3.1.md)。模拟测试通过不能表示真实服务商全部兼容。
+
 ## 构建
 
-需要 JDK 17 或更高版本（Android Studio 自带的即可）和 Android SDK（平台 37、构建工具 37）。
+本机使用 JDK 25（不修改系统 JAVA_HOME）和 Android SDK（平台 37、构建工具 37）。
 
 ```bash
 ./gradlew testDebugUnitTest   # 单元测试
@@ -56,7 +73,9 @@
 ./gradlew assembleRelease     # release 包：需要正式签名（见下）
 ```
 
-命令行构建时，`local.properties` 里写 `sdk.dir=Android SDK 路径`，`JAVA_HOME` 指向 JDK 17+。
+命令行构建时，`local.properties` 里写 `sdk.dir=Android SDK 路径`，`JAVA_HOME` 临时指向 JDK 25。本机下载依赖需要代理 127.0.0.1:10808，GRADLE_OPTS 和 Gradle 命令均设置 http/https proxyHost、proxyPort。
+
+新页面的浅色/深色截图：`./gradlew recordRoborazziDebug`。本机若 Hilt 生成文件与 lint 并发分析冲突，先 `./gradlew --stop`，再为同一套验收加 `--no-parallel --max-workers=1`；不能把分析器崩溃当作 lint 通过。
 
 ## 正式签名
 
@@ -109,7 +128,7 @@ isomeria.aichat
 ├─ core            纯逻辑：时间显示、链接识别、分条拆分、上下文拼装与预算、记忆策略、用量汇总、拼音分组
 ├─ data/db         Room 表与 DAO
 ├─ data/repo       仓库层（页面只依赖这里）
-├─ data/llm        模型服务接口：OpenAI 兼容格式，DeepSeek 和通用两种请求体
+├─ data/llm        模型服务接口：OpenAI Chat Completions、连接预置、能力/参数规则、兼容编码及 legacy 请求体
 ├─ data/memory     长期记忆：自动总结、合并，后台任务
 ├─ data/reply      后台等待回复（WorkManager）与通知
 ├─ data/settings   MMKV 设置

@@ -51,9 +51,10 @@ import androidx.navigation.toRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import isomeria.aichat.BuildConfig
 import isomeria.aichat.R
-import isomeria.aichat.data.db.ProviderModel
+import isomeria.aichat.data.db.*
 import isomeria.aichat.data.db.ProviderProtocol
-import isomeria.aichat.data.llm.LlmException
+import isomeria.aichat.data.llm.*
+import isomeria.aichat.data.repo.ModelReference
 import isomeria.aichat.data.repo.BaseUrlRules
 import isomeria.aichat.data.repo.DeleteProviderResult
 import isomeria.aichat.data.repo.FailReason
@@ -93,6 +94,9 @@ data class ProviderEditState(
     /** null 表示还没保存的新服务商 */
     val providerId: Long? = null,
     val protocol: String = ProviderProtocol.OPENAI,
+    val presetId: String? = null,
+    val compatibility: String = "GENERIC",
+    val conflicts: List<ModelReference> = emptyList(),
     val name: String = "",
     val baseUrl: String = "",
     val keyInput: String = "",
@@ -136,6 +140,8 @@ class ProviderEditViewModel @Inject constructor(
                 loaded = true,
                 providerId = config.id,
                 protocol = config.provider,
+                presetId = config.presetId,
+                compatibility = config.compatibility,
                 name = config.name,
                 baseUrl = config.baseUrl,
                 keyInput = "",
@@ -169,20 +175,37 @@ class ProviderEditViewModel @Inject constructor(
     }
 
     /** 写入数据库，新服务商这时才真正创建；返回 id */
-    private suspend fun persist(url: String): Long {
-        val s = _state.value
+    private suspend fun persist(url: String, s: ProviderEditState = _state.value): Long {
         val id = s.providerId
-        if (id == null) return providers.create(s.name, url, s.keyInput.ifEmpty { null })
-        providers.save(id, s.name, url, s.keyInput.ifEmpty { null }, s.defaultModel)
+        if (id == null) return providers.create(s.name, url, s.keyInput.ifEmpty { null }, s.presetId, s.compatibility)
+        providers.save(id, s.name, url, s.keyInput.ifEmpty { null }, s.defaultModel, s.compatibility)
         return id
     }
 
+    private var pending: (suspend () -> Unit)? = null
+    private suspend fun review(config: isomeria.aichat.data.db.ProviderConfig?, action: suspend () -> Unit) {
+        val conflicts = config?.let { providers.conflicts(it) }.orEmpty()
+        if (conflicts.isEmpty()) action() else {
+            pending = action
+            _state.update { it.copy(conflicts = conflicts, testing = false) }
+        }
+    }
+    fun confirm() { val action = pending ?: return; pending = null; _state.update { it.copy(conflicts = emptyList()) }; viewModelScope.launch { action() } }
+    fun dismiss() { pending = null; _state.update { it.copy(conflicts = emptyList()) } }
+    fun selectPreset(preset: ProviderPreset?, name: String) = _state.update {
+        if (it.providerId != null) it else it.copy(presetId = preset?.id, name = name, baseUrl = preset?.baseUrl.orEmpty(), compatibility = (preset?.compatibility ?: Compatibility.GENERIC).name)
+    }
+    fun setCompatibility(value: Compatibility) = _state.update { it.copy(compatibility = value.name) }
     fun save() {
         val url = validated() ?: return
+        val s = _state.value
         viewModelScope.launch {
-            val id = persist(url)
-            reload(id)
-            _state.update { it.copy(messageRes = R.string.llm_saved, messageArgs = emptyList(), messageIsError = false) }
+            val config = s.providerId?.let { providers.config(it)?.copy(defaultModel = s.defaultModel, compatibility = s.compatibility) }
+            review(config) {
+                val id = persist(url, s)
+                reload(id)
+                _state.update { it.copy(messageRes = R.string.llm_saved, messageArgs = emptyList(), messageIsError = false) }
+            }
         }
     }
 
@@ -195,43 +218,44 @@ class ProviderEditViewModel @Inject constructor(
             try {
                 val config = s.providerId?.let { providers.config(it) }
                 val remote = providers.fetchModels(config, url, s.keyInput.ifEmpty { null })
-                val id = persist(url)
-                providers.applyRemoteModels(id, remote)
-                reload(id)
-                _state.update {
-                    it.copy(
-                        testing = false,
-                        messageRes = R.string.llm_test_ok,
-                        messageArgs = listOf(remote.size),
-                        messageIsError = false,
-                    )
+                val action: suspend () -> Unit = {
+                    val id = persist(url, s)
+                    providers.applyRemoteModels(id, remote)
+                    reload(id)
+                    _state.update { it.copy(testing = false,
+                        messageRes = if (remote.isEmpty()) R.string.connection_fetch_empty else R.string.connection_fetch_ok,
+                        messageArgs = listOf(remote.size), messageIsError = false) }
+                }
+                val future = config?.copy(defaultModel = s.defaultModel, compatibility = s.compatibility)
+                val refs = future?.let { providers.remoteConflicts(it, remote) + providers.conflicts(it) }.orEmpty().distinct()
+                if (refs.isEmpty()) action() else {
+                    pending = action
+                    _state.update { it.copy(conflicts = refs, testing = false) }
                 }
             } catch (e: LlmException) {
-                error(failReasonText(FailReason.of(e)))
+                error(R.string.connection_fetch_failed)
             }
         }
     }
 
     fun setDefaultModel(modelId: String) {
-        _state.update { it.copy(defaultModel = modelId) }
-        _state.value.providerId?.let { id -> viewModelScope.launch { providers.setDefaultModel(id, modelId) } }
+        val id = _state.value.providerId ?: return
+        viewModelScope.launch {
+            val config = providers.config(id) ?: return@launch
+            review(config.copy(defaultModel = modelId)) {
+                providers.setDefaultModel(id, modelId)
+                reload(id)
+            }
+        }
     }
 
     fun clearKey() {
         val id = _state.value.providerId ?: return
         viewModelScope.launch {
-            val s = _state.value
-            providers.save(id, s.name, s.baseUrl, "", s.defaultModel)
+            val saved = providers.config(id) ?: return@launch
+            providers.save(id, saved.name, saved.baseUrl, "", saved.defaultModel)
             reload(id)
         }
-    }
-
-    fun setImageMark(model: ProviderModel, supports: Boolean) {
-        viewModelScope.launch { providers.setImageMark(model.providerId, model.modelId, supports) }
-    }
-
-    fun setThinkingMark(model: ProviderModel, supports: Boolean) {
-        viewModelScope.launch { providers.setThinkingMark(model.providerId, model.modelId, supports) }
     }
 
     /** 手动添加模型：接口没有模型列表时用。新服务商先保存 */
@@ -249,7 +273,7 @@ class ProviderEditViewModel @Inject constructor(
 
     fun removeModel(model: ProviderModel) {
         viewModelScope.launch {
-            providers.removeModel(model.providerId, model.modelId)
+            if (!providers.removeModel(model.providerId, model.modelId)) error(R.string.model_remove_in_use)
             reload(model.providerId)
         }
     }
@@ -272,7 +296,7 @@ class ProviderEditViewModel @Inject constructor(
 
 /** 一个服务商：名称、API Key、Base URL、默认模型、模型列表（可标记是否支持图片和思考）、测试连接。 */
 @Composable
-fun ProviderEditScreen(onBack: () -> Unit, viewModel: ProviderEditViewModel = hiltViewModel()) {
+fun ProviderEditScreen(onBack: () -> Unit, onOpenModel: (Long, String) -> Unit = { _, _ -> }, viewModel: ProviderEditViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
@@ -287,14 +311,16 @@ fun ProviderEditScreen(onBack: () -> Unit, viewModel: ProviderEditViewModel = hi
         onClearKey = viewModel::clearKey,
         onBaseUrlChange = viewModel::setBaseUrl,
         onDefaultModel = viewModel::setDefaultModel,
-        onImageMark = viewModel::setImageMark,
-        onThinkingMark = viewModel::setThinkingMark,
         onRemoveModel = viewModel::removeModel,
         onModelInput = viewModel::setModelInput,
         onAddModel = viewModel::addModel,
         onTest = viewModel::test,
         onDelete = viewModel::delete,
+        onPreset = viewModel::selectPreset,
+        onCompatibility = viewModel::setCompatibility,
+        onConfigureModel = { onOpenModel(it.providerId, it.modelId) },
     )
+    if (state.conflicts.isNotEmpty()) ConflictDialog(state.conflicts, viewModel::dismiss, viewModel::confirm)
 }
 
 @Composable
@@ -308,14 +334,17 @@ fun ProviderEditContent(
     onClearKey: () -> Unit,
     onBaseUrlChange: (String) -> Unit,
     onDefaultModel: (String) -> Unit,
-    onImageMark: (ProviderModel, Boolean) -> Unit,
-    onThinkingMark: (ProviderModel, Boolean) -> Unit,
     onRemoveModel: (ProviderModel) -> Unit,
     onModelInput: (String) -> Unit,
     onAddModel: () -> Unit,
     onTest: () -> Unit,
     onDelete: () -> Unit,
+    onPreset: (ProviderPreset?, String) -> Unit = { _, _ -> },
+    onCompatibility: (Compatibility) -> Unit = {},
+    onConfigureModel: (ProviderModel) -> Unit = {},
 ) {
+    val editorConfig = ProviderConfig(id = state.providerId ?: 0, kind = ProviderKind.LLM, provider = state.protocol,
+        name = state.name, baseUrl = state.baseUrl, defaultModel = state.defaultModel, compatibility = state.compatibility)
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     var showKey by remember { mutableStateOf(false) }
@@ -331,11 +360,22 @@ fun ProviderEditContent(
         }
         if (!state.loaded) return@Column
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
+            if (state.providerId == null) {
+                val choices = ProviderPresets.all.map { stringResource(it.nameRes) to it } + listOf(stringResource(R.string.preset_custom) to null)
+                ChoiceRow(stringResource(R.string.provider_preset), stringResource(ProviderPresets.all.firstOrNull { it.id == state.presetId }?.nameRes ?: R.string.preset_custom), options = choices) {
+                    onPreset(it, choices.first { pair -> pair.second == it }.first)
+                }
+            }
+            FootnoteText(stringResource(R.string.provider_protocol))
             SectionHeader(stringResource(R.string.llm_provider))
             FormRow(stringResource(R.string.llm_name)) {
                 TextInput(state.name, onNameChange, stringResource(R.string.llm_name_hint))
             }
 
+            var advanced by remember { mutableStateOf(false) }
+            WeListRow(stringResource(R.string.provider_advanced), onClick = { advanced = !advanced })
+            if (advanced) {
+            ChoiceRow(stringResource(R.string.provider_compatibility), state.compatibility, options = Compatibility.entries.map { it.name to it }, onPick = onCompatibility)
             SectionHeader(stringResource(R.string.llm_base_url))
             FormRow(stringResource(R.string.llm_base_url)) {
                 TextInput(
@@ -346,6 +386,7 @@ fun ProviderEditContent(
                 )
             }
             FootnoteText(stringResource(R.string.llm_base_url_note))
+            }
 
             SectionHeader(stringResource(R.string.llm_api_key))
             FormRow(stringResource(R.string.llm_api_key), showDivider = state.savedKeyMasked != null) {
@@ -394,7 +435,7 @@ fun ProviderEditContent(
 
             Spacer(Modifier.height(16.dp))
             WeButton(
-                text = stringResource(if (state.testing) R.string.llm_testing else R.string.llm_test),
+                text = stringResource(if (state.testing) R.string.connection_fetching else R.string.connection_fetch),
                 onClick = onTest,
                 enabled = !state.testing,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp),
@@ -410,12 +451,11 @@ fun ProviderEditContent(
             }
 
             SectionHeader(stringResource(R.string.llm_default_model))
-            WeListRow(
+            ConfigActionRow(
                 title = stringResource(R.string.llm_default_model),
                 value = models.firstOrNull { it.modelId == state.defaultModel }?.displayName
                     ?: state.defaultModel.ifEmpty { stringResource(R.string.llm_no_model) },
                 onClick = { showModelSheet = true },
-                enabled = models.isNotEmpty(),
             )
             FootnoteText(stringResource(R.string.llm_default_model_hint))
 
@@ -423,10 +463,10 @@ fun ProviderEditContent(
             models.forEachIndexed { index, model ->
                 ModelRow(
                     model = model,
+                    ready = ModelRules.usable(editorConfig, model),
                     showDivider = index != models.lastIndex,
-                    onImageMark = { onImageMark(model, it) },
-                    onThinkingMark = { onThinkingMark(model, it) },
                     onRemove = { onRemoveModel(model) },
+                    onConfigure = { onConfigureModel(model) },
                 )
             }
             if (models.isNotEmpty()) WeDivider(startIndent = dimens.horizontalPadding)
@@ -443,7 +483,7 @@ fun ProviderEditContent(
                     WeSmallButton(stringResource(R.string.action_add), onAddModel, enabled = state.modelInput.isNotEmpty())
                 }
             }
-            FootnoteText(stringResource(R.string.llm_models_hint))
+            FootnoteText(stringResource(R.string.model_list_note))
 
             if (state.providerId != null) {
                 Spacer(Modifier.height(8.dp))
@@ -466,7 +506,7 @@ fun ProviderEditContent(
     if (showModelSheet) {
         WeActionSheet(
             title = stringResource(R.string.llm_default_model),
-            options = models.map { model ->
+            options = listOf(SheetOption(stringResource(R.string.model_unset), selected = state.defaultModel.isBlank()) { onDefaultModel("") }) + models.filter { m -> ModelRules.usable(editorConfig, m) }.map { model ->
                 SheetOption(model.displayName, selected = model.modelId == state.defaultModel, subtitle = model.modelId) {
                     onDefaultModel(model.modelId)
                 }
@@ -521,59 +561,13 @@ private fun TextInput(
 
 /** 一个模型：名称、模型 ID，下面两个可点的标记「图片」「思考」，手动添加的可以移除。 */
 @Composable
-private fun ModelRow(
-    model: ProviderModel,
-    showDivider: Boolean,
-    onImageMark: (Boolean) -> Unit,
-    onThinkingMark: (Boolean) -> Unit,
-    onRemove: () -> Unit,
-) {
-    val colors = WeTheme.colors
-    val dimens = WeTheme.dimens
-    Column(Modifier.fillMaxWidth().background(colors.listBackground)) {
-        Column(
-            Modifier.padding(horizontal = dimens.horizontalPadding, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(model.displayName, style = WeTheme.typography.listTitle, color = colors.textPrimary)
-            if (model.displayName != model.modelId) {
-                Text(model.modelId, style = WeTheme.typography.listTime, color = colors.textTertiary)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                MarkChip(stringResource(R.string.llm_mark_image), model.supportsImage) { onImageMark(!model.supportsImage) }
-                MarkChip(stringResource(R.string.llm_mark_thinking), model.supportsThinking) { onThinkingMark(!model.supportsThinking) }
-                if (model.manual) {
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        stringResource(R.string.llm_remove_model),
-                        style = WeTheme.typography.small,
-                        color = colors.danger,
-                        modifier = Modifier.clickable(onClick = onRemove).padding(4.dp),
-                    )
-                }
-            }
-        }
-        if (showDivider) WeDivider(startIndent = dimens.horizontalPadding)
-    }
-}
-
-/** 可点的标记：支持时绿字，不支持时灰字 */
-@Composable
-private fun MarkChip(label: String, on: Boolean, onClick: () -> Unit) {
-    val colors = WeTheme.colors
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (on) colors.brand.copy(alpha = 0.14f) else colors.pageBackground)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            stringResource(if (on) R.string.llm_mark_on else R.string.llm_mark_off, label),
-            style = WeTheme.typography.listTime,
-            color = if (on) colors.brand else colors.textTertiary,
-        )
+private fun ModelRow(model: ProviderModel, ready: Boolean, showDivider: Boolean, onRemove: () -> Unit, onConfigure: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(WeTheme.colors.listBackground)) {
+        ConfigActionRow(model.displayName, stringResource(if (ready) R.string.model_ready else R.string.model_pending), onClick = onConfigure)
+        FootnoteText(model.modelId)
+        if (model.missingFromList) FootnoteText(stringResource(R.string.model_missing))
+        WeListRow(stringResource(R.string.llm_remove_model), titleColor = WeTheme.colors.danger, onClick = onRemove, showArrow = false)
+        if (showDivider) WeDivider(startIndent = WeTheme.dimens.horizontalPadding)
     }
 }
 
@@ -594,5 +588,6 @@ internal val previewProviderModels = listOf(
 
 @Composable
 internal fun ProviderEditSample() = ProviderEditContent(
-    previewProviderState, previewProviderModels, {}, {}, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, {}, {}, {}, {}, {},
+    state = previewProviderState, models = previewProviderModels, onBack = {}, onSave = {}, onNameChange = {}, onKeyChange = {},
+    onClearKey = {}, onBaseUrlChange = {}, onDefaultModel = {}, onRemoveModel = {}, onModelInput = {}, onAddModel = {}, onTest = {}, onDelete = {},
 )

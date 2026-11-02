@@ -8,6 +8,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -46,13 +47,14 @@ import kotlin.math.roundToInt
  *   有 effort（DeepSeek），或 supported_parameters 含 reasoning（OpenRouter）表示支持思考；没有这些字段时是未知，由用户标记
  */
 open class OpenAiCompatibleProvider(
-    private val client: OkHttpClient,
+    client: OkHttpClient,
     private val json: Json,
     override val id: String,
     private val buildBody: (ChatRequest) -> JsonObject,
 ) : LlmProvider {
+    private val client = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
 
-    override suspend fun listModels(endpoint: LlmEndpoint): List<RemoteModel> {
+    override suspend fun listModels(endpoint: LlmEndpoint): List<RemoteModel> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(endpoint.url("models"))
             .header("Authorization", "Bearer ${endpoint.apiKey}")
@@ -72,7 +74,8 @@ open class OpenAiCompatibleProvider(
         } catch (e: Exception) {
             throw LlmException(LlmError.UNKNOWN, message = "无法解析模型列表", cause = e)
         }
-        return list.data.map { dto ->
+        if (list.data.any { it.id.isBlank() } || list.data.map { it.id }.distinct().size != list.data.size) throw LlmException(LlmError.UNKNOWN)
+        list.data.map { dto ->
             RemoteModel(
                 id = dto.id,
                 name = dto.name,
@@ -80,8 +83,9 @@ open class OpenAiCompatibleProvider(
                 supportsThinking = when {
                     dto.effort != null -> true
                     dto.supportedParameters?.any { it == "reasoning" || it == "reasoning_effort" } == true -> true
-                    else -> null
+                    else -> dto.supportsThinking
                 },
+                config = dto.rules(),
             )
         }
     }
@@ -163,7 +167,7 @@ class GenericOpenAiProvider @Inject constructor(client: OkHttpClient, json: Json
  * - 思考高 / 最高：都发 reasoning_effort = high（max 不是通用取值），不发温度
  */
 object OpenAiRequestBuilder {
-    fun build(request: ChatRequest): JsonObject = buildJsonObject {
+    fun build(request: ChatRequest): JsonObject = request.parameters?.let { ConfiguredRequestBuilder.build(request) } ?: buildJsonObject {
         putCommonFields(request)
         if (request.thinking == ThinkingLevel.OFF) {
             putTemperature(request)
@@ -173,13 +177,13 @@ object OpenAiRequestBuilder {
     }
 }
 
-internal fun JsonObjectBuilder.putCommonFields(request: ChatRequest) {
+internal fun JsonObjectBuilder.putCommonFields(request: ChatRequest, streamOptions: Boolean = true) {
     put("model", request.model)
     putJsonArray("messages") {
         request.messages.forEach { add(messageJson(it)) }
     }
     put("stream", true)
-    putJsonObject("stream_options") { put("include_usage", true) }
+    if (streamOptions) putJsonObject("stream_options") { put("include_usage", true) }
 }
 
 internal fun JsonObjectBuilder.putTemperature(request: ChatRequest) {
@@ -238,7 +242,7 @@ internal suspend fun Call.await(): Response = suspendCancellableCoroutine { cont
 }
 
 @Serializable
-private data class ModelListDto(val data: List<ModelDto> = emptyList())
+private data class ModelListDto(val data: List<ModelDto>)
 
 @Serializable
 private data class ModelDto(
@@ -246,7 +250,12 @@ private data class ModelDto(
     val name: String? = null,
     @SerialName("input_modalities") val inputModalities: List<String>? = null,
     val architecture: ArchitectureDto? = null,
-    val effort: JsonElement? = null,
+    val effort: EffortDto? = null,
+    val type: String? = null,
+    val task: String? = null,
+    @SerialName("supports_thinking") val supportsThinking: Boolean? = null,
+    @SerialName("thinking_mode") val thinkingMode: ThinkingMode? = null,
+    val temperature: ReportedTemperatureDto? = null,
     @SerialName("supported_parameters") val supportedParameters: List<String>? = null,
 )
 
@@ -280,3 +289,29 @@ private data class UsageDto(
     @SerialName("prompt_tokens") val promptTokens: Int = 0,
     @SerialName("completion_tokens") val completionTokens: Int = 0,
 )
+
+@Serializable
+private data class EffortDto(@SerialName("supported_levels") val supportedLevels: List<String>)
+@Serializable
+private data class ReportedTemperatureDto(val supported: Boolean? = null, val min: Float? = null, val max: Float? = null, val fixed: Float? = null)
+private fun ModelDto.rules(): ModelConfig {
+    val purpose = task ?: type
+    val chat = when (purpose) {
+        "chat", "chat.completions", "text-generation", "text_generation" -> true
+        "embedding", "embeddings", "rerank", "reranking", "tts", "asr", "speech", "image-generation", "audio" -> false
+        else -> null
+    }
+    val thinking = if (supportsThinking == false) ThinkingRule(ThinkingMode.NONE) else {
+        val efforts = effort?.supportedLevels?.map { NativeEffort(it, it) }.orEmpty()
+        if (effort != null || supportsThinking == true || thinkingMode != null) ThinkingRule(thinkingMode ?: ThinkingMode.UNKNOWN, efforts) else null
+    }
+    val temp = temperature?.let {
+        when {
+            it.supported == false -> TemperatureSpec(TemperatureMode.UNSUPPORTED)
+            it.fixed != null -> TemperatureSpec(TemperatureMode.FIXED, fixed = it.fixed)
+            it.min != null && it.max != null -> TemperatureSpec(TemperatureMode.ADJUSTABLE, min = it.min, max = it.max)
+            else -> null
+        }
+    }?.takeIf { it.valid() }?.let { TemperatureRule(it) }
+    return ModelConfig(chat, thinking, temp)
+}

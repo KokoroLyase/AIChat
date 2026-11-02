@@ -25,7 +25,7 @@ class DeepSeekProvider @Inject constructor(client: OkHttpClient, json: Json) :
 
 /** 拼请求体。单独拿出来，方便单元测试核对字段。 */
 object DeepSeekRequestBuilder {
-    fun build(request: ChatRequest): JsonObject = buildJsonObject {
+    fun build(request: ChatRequest): JsonObject = request.parameters?.let { ConfiguredRequestBuilder.build(request) } ?: buildJsonObject {
         putCommonFields(request)
         when (request.thinking) {
             ThinkingLevel.OFF -> {

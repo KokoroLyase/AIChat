@@ -25,7 +25,8 @@ import isomeria.aichat.data.llm.LlmEndpoint
 import isomeria.aichat.data.llm.LlmError
 import isomeria.aichat.data.llm.LlmException
 import isomeria.aichat.data.llm.LlmProvider
-import isomeria.aichat.data.llm.RemoteModel
+import isomeria.aichat.data.llm.*
+import isomeria.aichat.data.db.ProviderModel
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.repo.UsageRepository
 import kotlinx.coroutines.flow.Flow
@@ -75,6 +76,7 @@ class MemoryEngineTest {
             requests += request
             whileWaiting?.invoke()
             failure?.let { throw it }
+            emit(ChatEvent.Reasoning("思考文本不能写入记忆"))
             emit(ChatEvent.Content(reply))
             usage?.let { emit(ChatEvent.Usage(it.first, it.second)) }
         }
@@ -409,6 +411,53 @@ class MemoryEngineTest {
         val rows = db.memoryDao().listByContact(1)
         assertEquals(2, rows.size)
         assertEquals("用户刚改的", rows[0].content)
+    }
+
+    @Test fun memoryUsesIndependentNativeEffortAndOnlySavesBody() = runBlocking {
+        contact()
+        messages(70)
+        val old = db.providerDao().get(providerId)!!
+        db.providerDao().update(old.copy(compatibility = "DEEPSEEK"))
+        db.providerDao().upsertModels(listOf(ProviderModel(providerId, "memory-model", "记忆", imageInputUserMark = false, legacy = false,
+            userConfig = ModelRules.encode(ModelConfig(true, ThinkingRule(ThinkingMode.SWITCH, listOf(NativeEffort("low", "低"))), TemperatureRule(TemperatureSpec(TemperatureMode.FIXED, fixed = 1f)))))))
+        db.contactDao().update(db.contactDao().get(1)!!.copy(memoryModel = "memory-model", memoryThinkingOption = "low"))
+        engine.autoRun(1)
+        assertEquals("memory-model", fake.requests.single().model)
+        assertEquals("low", fake.requests.single().parameters!!.option)
+        assertEquals(1f, fake.requests.single().parameters!!.temperature)
+        assertEquals(fake.reply, db.memoryDao().listAll().single().content)
+        assertFalse(db.memoryDao().listAll().single().content.contains("思考文本"))
+    }
+
+    @Test fun invalidMemoryConfigDoesNotRequestOrAdvanceAndReportsSafeFailure() = runBlocking {
+        contact(); messages(70)
+        db.providerDao().update(db.providerDao().get(providerId)!!.copy(compatibility = "DEEPSEEK"))
+        engine.autoRun(1)
+        assertTrue(fake.requests.isEmpty())
+        assertEquals(0L, db.conversationDao().get(1)!!.memoryCursor)
+        assertEquals(isomeria.aichat.data.repo.FailReason.CONFIGURATION, engine.tasks.states.value[1]!!.failure)
+    }
+
+    @Test fun restoreDuringNetworkInvalidatesResultEvenWhenCursorLooksIdentical() = runBlocking {
+        contact(); messages(70)
+        fake.whileWaiting = { db.restoreGeneration.incrementAndGet() }
+        engine.autoRun(1)
+        assertTrue(db.memoryDao().listAll().isEmpty())
+        assertEquals(0L, db.conversationDao().get(1)!!.memoryCursor)
+    }
+
+    @Test fun activeRestoreRejectsLateResultsAndDoesNotInitializeOldProgress() = runBlocking {
+        contact(); messages(70)
+        fake.whileWaiting = { db.restoreInProgress.incrementAndGet() }
+        engine.autoRun(1)
+        assertTrue(db.memoryDao().listAll().isEmpty())
+        assertEquals(0L, db.conversationDao().get(1)!!.memoryCursor)
+        assertNull(engine.tasks.states.value[1]!!.lastSuccess)
+        db.conversationDao().setMemoryRange(1, null, 0)
+        val before = fake.requests.size
+        engine.autoRun(1)
+        assertEquals(before, fake.requests.size)
+        assertNull(db.conversationDao().get(1)!!.memoryCursor)
     }
 
     @Test

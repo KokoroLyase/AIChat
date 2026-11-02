@@ -3,6 +3,22 @@ package isomeria.aichat.data.db
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+/** v2 → v3：只加列，不按地址推断品牌或变更历史请求。 */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE provider_config ADD COLUMN presetId TEXT")
+        db.execSQL("ALTER TABLE provider_config ADD COLUMN compatibility TEXT NOT NULL DEFAULT 'LEGACY'")
+        db.execSQL("ALTER TABLE provider_model ADD COLUMN legacy INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE provider_model ADD COLUMN reportedConfig TEXT")
+        db.execSQL("ALTER TABLE provider_model ADD COLUMN userConfig TEXT")
+        db.execSQL("ALTER TABLE provider_model ADD COLUMN compatibilityOverride TEXT")
+        db.execSQL("ALTER TABLE provider_model ADD COLUMN missingFromList INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE contact ADD COLUMN thinkingOption TEXT")
+        db.execSQL("ALTER TABLE contact ADD COLUMN memoryModel TEXT")
+        db.execSQL("ALTER TABLE contact ADD COLUMN memoryThinkingOption TEXT NOT NULL DEFAULT 'off'")
+    }
+}
+
 /**
  * v1 → v2（0.3.0）：多服务商、上下文预算、长期记忆、用量统计。
  *

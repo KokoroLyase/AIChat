@@ -26,7 +26,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 2
+    const val VERSION = 3
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -87,6 +87,9 @@ data class ContactDto(
     val autoMemory: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
+    val thinkingOption: String? = null,
+    val memoryModel: String? = null,
+    val memoryThinkingOption: String = "off",
 )
 
 @Serializable
@@ -137,6 +140,8 @@ data class ProviderDto(
     val models: List<ProviderModelDto> = emptyList(),
     /** 只有勾选「包含 API Key」时才有 */
     val apiKey: SecretDto? = null,
+    val presetId: String? = null,
+    val compatibility: String = "LEGACY",
 )
 
 @Serializable
@@ -149,6 +154,11 @@ data class ProviderModelDto(
     val thinkingInput: Capability = Capability.UNKNOWN,
     val thinkingUserMark: Boolean? = null,
     val manual: Boolean = false,
+    val legacy: Boolean = true,
+    val reportedConfig: String? = null,
+    val userConfig: String? = null,
+    val compatibilityOverride: String? = null,
+    val missingFromList: Boolean = false,
 )
 
 @Serializable

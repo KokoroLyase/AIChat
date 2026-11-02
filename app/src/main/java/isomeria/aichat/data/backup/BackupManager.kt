@@ -322,6 +322,14 @@ class BackupManager @Inject constructor(
 
     /** 去掉重复 id、找不到联系人的会话和消息、不合规的文件名 */
     private fun sanitize(data: BackupData): BackupData {
+        data.providers.forEach { p ->
+            isomeria.aichat.data.llm.Compatibility.valueOf(p.compatibility)
+            p.models.forEach { m ->
+                isomeria.aichat.data.llm.ModelRules.decode(m.reportedConfig)
+                isomeria.aichat.data.llm.ModelRules.decode(m.userConfig)
+                isomeria.aichat.data.llm.ModelRules.override(m.compatibilityOverride)
+            }
+        }
         val contacts = data.contacts.distinctBy { it.id }
             .map { it.copy(avatar = it.avatar?.takeIf(BackupFormat.mediaNamePattern::matches)) }
         val ids = contacts.mapTo(HashSet()) { it.id }
@@ -385,6 +393,8 @@ class BackupManager @Inject constructor(
         exactKey: Boolean,
         rollback: File?,
     ): RestoreSummary {
+        db.restoreInProgress.incrementAndGet()
+        db.restoreGeneration.incrementAndGet()
         val created = ArrayList<File>()
         try {
             val paths = ZipFile(preview.file).use { zip -> extractMedia(zip, preview.data, created) }
@@ -400,6 +410,9 @@ class BackupManager @Inject constructor(
         } catch (e: Throwable) {
             created.forEach { it.delete() }
             throw e
+        } finally {
+            db.restoreGeneration.incrementAndGet()
+            db.restoreInProgress.decrementAndGet()
         }
     }
 
@@ -654,6 +667,7 @@ class BackupManager @Inject constructor(
         id = id, name = name, avatar = avatar, avatarColor = avatarColor, providerId = providerId, model = model,
         thinking = thinking, temperature = temperature, systemPrompt = systemPrompt, contextTokens = contextTokens,
         splitReplies = splitReplies, autoMemory = autoMemory, createdAt = createdAt, updatedAt = updatedAt,
+        thinkingOption = thinkingOption, memoryModel = memoryModel, memoryThinkingOption = memoryThinkingOption,
     )
 
     private fun ContactDto.toEntity(providerId: Long, avatarPath: String?) = Contact(
@@ -661,6 +675,7 @@ class BackupManager @Inject constructor(
         thinking = thinking, temperature = temperature, systemPrompt = systemPrompt,
         contextTokens = contextTokens.coerceIn(Contact.MIN_CONTEXT_TOKENS, Contact.MAX_CONTEXT_TOKENS),
         splitReplies = splitReplies, autoMemory = autoMemory, createdAt = createdAt, updatedAt = updatedAt,
+        thinkingOption = thinkingOption, memoryModel = memoryModel, memoryThinkingOption = memoryThinkingOption,
     )
 
     private fun Conversation.toDto() = ConversationDto(
@@ -717,11 +732,11 @@ class BackupManager @Inject constructor(
 
     private fun ProviderConfig.toDto(models: List<ProviderModel>, apiKey: SecretDto?) = ProviderDto(
         id = id, kind = kind, provider = provider, name = name, baseUrl = baseUrl, defaultModel = defaultModel,
-        enabled = enabled,
+        enabled = enabled, presetId = presetId, compatibility = compatibility,
         models = models.map {
             ProviderModelDto(
                 it.modelId, it.displayName, it.imageInput, it.imageInputUserMark, it.sortOrder,
-                it.thinkingInput, it.thinkingUserMark, it.manual,
+                it.thinkingInput, it.thinkingUserMark, it.manual, it.legacy, it.reportedConfig, it.userConfig, it.compatibilityOverride, it.missingFromList,
             )
         },
         apiKey = apiKey,
@@ -729,13 +744,14 @@ class BackupManager @Inject constructor(
 
     private fun ProviderDto.toEntity(id: Long, apiKey: String?) = ProviderConfig(
         id = id, kind = kind, provider = provider, name = name, baseUrl = baseUrl, apiKeyEncrypted = apiKey,
-        defaultModel = defaultModel, enabled = enabled,
+        defaultModel = defaultModel, enabled = enabled, presetId = presetId, compatibility = compatibility,
     )
 
     private fun ProviderModelDto.toEntity(providerId: Long) = ProviderModel(
         providerId = providerId, modelId = modelId, displayName = displayName, imageInput = imageInput,
         imageInputUserMark = imageInputUserMark, sortOrder = sortOrder, thinkingInput = thinkingInput,
-        thinkingUserMark = thinkingUserMark, manual = manual,
+        thinkingUserMark = thinkingUserMark, manual = manual, legacy = legacy, reportedConfig = reportedConfig,
+        userConfig = userConfig, compatibilityOverride = compatibilityOverride, missingFromList = missingFromList,
     )
 
     private fun AppSettingsSnapshot.toDto(avatar: String?) = SettingsDto(
