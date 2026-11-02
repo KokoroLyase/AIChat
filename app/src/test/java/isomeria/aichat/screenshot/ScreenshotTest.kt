@@ -134,6 +134,8 @@ class ScreenshotTest {
     @Test fun chatLight() = shot("2-chat", false) { ChatPageSample() }
 
     @Test fun chatDark() = shot("2-chat", true) { ChatPageSample(input = "好的") }
+    @Test fun newMessagesLight() = shot("41-new-messages", false) { isomeria.aichat.feature.chat.NewMessagesButton(12, {}) }
+    @Test fun newMessagesDark() = shot("41-new-messages", true) { isomeria.aichat.feature.chat.NewMessagesButton(125, {}) }
 
     @Test fun chatTypingLight() = shot("2-chat-typing", false) { ChatPageSample(typing = true) }
 

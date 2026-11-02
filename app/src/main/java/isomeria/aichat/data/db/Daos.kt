@@ -140,6 +140,42 @@ interface ConversationDao {
 
 @Dao
 interface MessageDao {
+    @Query("SELECT * FROM message WHERE contactId = :contactId ORDER BY createdAt DESC, id DESC")
+    fun pagingByContact(contactId: Long): androidx.paging.PagingSource<Int, Message>
+
+    @Query("SELECT * FROM message WHERE contactId = :contactId ORDER BY createdAt DESC, id DESC LIMIT 1")
+    fun observeLatest(contactId: Long): Flow<Message?>
+
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND createdAt <= :now ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun latestVisible(contactId: Long, now: Long): Message?
+
+    @Query("SELECT MIN(createdAt) FROM message WHERE contactId = :contactId AND createdAt > :now")
+    suspend fun nextRevealTime(contactId: Long, now: Long): Long?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM message WHERE contactId = :contactId AND role = 'USER' AND status = 'SENDING')")
+    suspend fun hasSending(contactId: Long): Boolean
+
+    @Query("SELECT EXISTS(SELECT 1 FROM message WHERE status = 'SENDING')")
+    suspend fun hasAnySending(): Boolean
+
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun latestAssistant(contactId: Long): Message?
+
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' ORDER BY createdAt DESC, id DESC LIMIT 1 OFFSET :offset")
+    suspend fun unreadAnchor(contactId: Long, offset: Int): Message?
+
+    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND (createdAt > :time OR (createdAt = :time AND id > :id))")
+    suspend fun countNewer(contactId: Long, time: Long, id: Long): Int
+
+    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND createdAt <= :now AND (createdAt > :time OR (createdAt = :time AND id > :id))")
+    suspend fun countNewerVisible(contactId: Long, time: Long, id: Long, now: Long): Int
+
+    @Query("SELECT id FROM message WHERE contactId = :contactId AND role = 'USER' AND (createdAt > :time OR (createdAt = :time AND id > :id)) AND (:status IS NULL OR status = :status) ORDER BY createdAt, id")
+    suspend fun trailingUserIds(contactId: Long, time: Long, id: Long, status: MessageStatus?): List<Long>
+
+    @Query("DELETE FROM message WHERE contactId = :contactId AND replyGroup = :group")
+    suspend fun deleteReplyGroup(contactId: Long, group: String)
+
     @Query("SELECT * FROM message WHERE contactId = :contactId ORDER BY createdAt, id")
     fun observeByContact(contactId: Long): Flow<List<Message>>
 

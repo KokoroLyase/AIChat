@@ -580,4 +580,7 @@
     <string name="local_completed">操作完成</string>
     <string name="local_refresh">刷新 / 重试</string>
     <string name="local_working">正在处理…</string>
+    <string name="chat_new_messages">↓ %1$d 条新消息</string>
+    <string name="chat_target_missing">目标消息已不存在，或暂时无法定位。</string>
+    <string name="chat_page_retry">聊天记录加载失败，点此重试</string>
 </resources>

@@ -36,6 +36,15 @@ class ChatRepository @Inject constructor(
     private val replyScheduler: ReplyScheduler,
     private val notifier: ReplyNotifier,
 ) {
+    private val paging = ChatPaging(db)
+    private val messageActions = ChatMessageActions(db)
+    suspend fun chatEntry(contactId: Long, focusId: Long): ChatEntry = paging.entry(contactId, focusId)
+    fun pagedMessages(contactId: Long) = messageDao.pagingByContact(contactId)
+    fun timeline(contactId: Long): Flow<ChatTimeline> = paging.timeline(contactId)
+    suspend fun latestVisible(contactId: Long): Message? = messageDao.latestVisible(contactId, System.currentTimeMillis())
+    suspend fun newerVisibleCount(contactId: Long, anchor: Message, now: Long): Int =
+        messageDao.countNewerVisible(contactId, anchor.createdAt, anchor.id, now)
+
     fun observeConversations(): Flow<List<ConversationItem>> = conversationDao.observeList()
 
     fun observeTotalUnread(): Flow<Int> = conversationDao.observeTotalUnread()
@@ -98,32 +107,12 @@ class ChatRepository @Inject constructor(
 
     /** 重试：把最后一条回复之后失败的消息重新发出 */
     suspend fun retry(contactId: Long) {
-        val messages = messageDao.listByContact(contactId)
-        val lastReply = messages.indexOfLast { it.role == Role.ASSISTANT }
-        val failed = messages.drop(lastReply + 1)
-            .filter { it.role == Role.USER && it.status == MessageStatus.FAILED }
-            .map { it.id }
-        if (failed.isEmpty()) return
-        messageDao.setStatus(failed, MessageStatus.SENDING, 0)
-        replyScheduler.enqueue(contactId)
+        if (messageActions.retry(contactId)) replyScheduler.enqueue(contactId)
     }
 
     /** 重新生成：删除最后一次回复（分条的几条一起删），重新请求 */
     suspend fun regenerate(contactId: Long) {
-        val messages = messageDao.listByContact(contactId)
-        val last = messages.lastOrNull { it.role == Role.ASSISTANT } ?: return
-        val lastIndex = messages.indexOf(last)
-        // 只对最后一条回复：回复之后不能再有自己的消息
-        if (messages.drop(lastIndex + 1).any { it.role == Role.USER }) return
-        db.withTransaction {
-            if (last.replyGroup != null) messageDao.deleteGroup(last.replyGroup) else messageDao.delete(last.id)
-            val remaining = messageDao.listByContact(contactId)
-            val previousReply = remaining.indexOfLast { it.role == Role.ASSISTANT }
-            val toResend = remaining.drop(previousReply + 1).filter { it.role == Role.USER }.map { it.id }
-            messageDao.setStatus(toResend, MessageStatus.SENDING, 0)
-            refreshLastMessage(contactId)
-        }
-        replyScheduler.enqueue(contactId)
+        if (messageActions.regenerate(contactId) { refreshLastMessage(contactId) }) replyScheduler.enqueue(contactId)
     }
 
     /** 取消回复：丢弃未完成的内容，等待中的消息标记失败 */

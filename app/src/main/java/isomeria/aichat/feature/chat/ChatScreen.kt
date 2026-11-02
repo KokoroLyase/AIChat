@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
@@ -38,6 +40,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -57,6 +60,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.paging.LoadState
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
@@ -84,6 +92,8 @@ import isomeria.aichat.ui.components.TopBarIcon
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeTopBar
+import isomeria.aichat.ui.components.FootnoteText
+import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.theme.SelfAvatarColor
 import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.delay
@@ -110,6 +120,9 @@ fun ChatScreen(
     val colors = WeTheme.colors
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val pageEntry by viewModel.entry.collectAsStateWithLifecycle()
+    val pagedRows = viewModel.rows.collectAsLazyPagingItems()
+    val newMessageCount by viewModel.newMessageCount.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -156,36 +169,69 @@ fun ChatScreen(
         }
     }
 
-    // 新消息到达时滚到底部（刚打开时列表本来就在底部，不用滚）
-    val lastKey = state.rows.lastOrNull()?.key
-    var previousLastKey by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(lastKey) {
-        if (lastKey == null) return@LaunchedEffect
-        val firstLoad = previousLastKey == null
-        previousLastKey = lastKey
-        if (!firstLoad && (state.lastMessageMine || listState.firstVisibleItemIndex <= 2)) listState.animateScrollToItem(0)
-        // 只有真正在看（页面处于前台）时才清未读；下拉通知栏、分屏时不清，免得刚发出的通知被取消
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.markRead()
-    }
-
-    // 从搜索结果进来：定位到那条消息，放在屏幕中间，整行高亮一下再淡出
-    var focusDone by rememberSaveable { mutableStateOf(viewModel.focusMessageId == 0L) }
+    var focusDone by rememberSaveable { mutableStateOf(false) }
+    var atBottom by remember { mutableStateOf(false) }
+    var pendingLatest by remember { mutableStateOf<Long?>(null) }
+    var targetMissing by remember { mutableStateOf(false) }
     var highlightId by remember { mutableStateOf<Long?>(null) }
     val highlight = remember { Animatable(0f) }
-    LaunchedEffect(state.rows.isNotEmpty()) {
-        if (focusDone || state.rows.isEmpty()) return@LaunchedEffect
-        focusDone = true
-        val index = state.rows.indexOfFirst { it is ChatRow.Item && it.message.id == viewModel.focusMessageId }
-        if (index < 0) return@LaunchedEffect
-        val position = state.rows.lastIndex - index
-        listState.scrollToItem(position)
-        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == position }
+
+    LaunchedEffect(pageEntry, pagedRows.itemSnapshotList, pagedRows.loadState.refresh) {
+        val start = pageEntry ?: return@LaunchedEffect
+        if (focusDone || pagedRows.loadState.refresh !is LoadState.NotLoading) return@LaunchedEffect
+        if (start.targetId == 0L) {
+            if (pagedRows.itemCount > 0) listState.scrollToItem(0)
+            targetMissing = viewModel.focusMessageId != 0L
+            focusDone = true
+            atBottom = true
+            viewModel.markLatestSeen()
+            return@LaunchedEffect
+        }
+        val index = pagedRows.itemSnapshotList.items.indexOfFirst { it is ChatRow.Item && it.message.id == start.targetId }
+        if (index < 0) {
+            if (!state.typing && pagedRows.itemCount > 0) { targetMissing = true; focusDone = true }
+            return@LaunchedEffect
+        }
+        listState.scrollToItem(index)
+        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
         if (item != null) {
             val viewport = listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset
-            val centered = (viewport - item.size) / 2
-            listState.scrollBy((item.offset - centered).toFloat())
+            listState.scrollBy((item.offset - (viewport - item.size) / 2).toFloat())
         }
-        highlightId = viewModel.focusMessageId
+        focusDone = true
+        atBottom = pagedRows.loadState.prepend.endOfPaginationReached && listState.firstVisibleItemIndex <= 2
+        if (atBottom) viewModel.markLatestSeen()
+        if (viewModel.focusMessageId != 0L) highlightId = start.targetId
+    }
+    // Keep the user's intent when a refresh inserts rows before the retained visible key.
+    LaunchedEffect(listState, pagedRows) {
+        snapshotFlow { Triple(listState.isScrollInProgress, listState.firstVisibleItemIndex, pagedRows.loadState.prepend.endOfPaginationReached) }
+            .collect { (scrolling, index, newestLoaded) ->
+                if (scrolling) {
+                    atBottom = newestLoaded && index <= 2
+                    if (atBottom) viewModel.markLatestSeen()
+                }
+            }
+    }
+    var previousLatest by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(state.latestVisibleId, pagedRows.itemSnapshotList) {
+        val latest = state.latestVisibleId
+        if (latest == 0L) return@LaunchedEffect
+        if (focusDone && atBottom && pagedRows.itemSnapshotList.items.firstOrNull().let { it is ChatRow.Item && it.message.id == latest }) {
+            if (previousLatest != 0L) listState.animateScrollToItem(0)
+            viewModel.markLatestSeen()
+        }
+        previousLatest = latest
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.markRead()
+    }
+    LaunchedEffect(pendingLatest, pagedRows.itemSnapshotList) {
+        val target = pendingLatest ?: return@LaunchedEffect
+        if (target != 0L && pagedRows.itemSnapshotList.items.none { it is ChatRow.Item && it.message.id == target }) return@LaunchedEffect
+        if (pagedRows.itemCount > 0) listState.scrollToItem(0)
+        atBottom = true
+        focusDone = true
+        pendingLatest = null
+        viewModel.markLatestSeen()
     }
     LaunchedEffect(highlightId) {
         if (highlightId == null) return@LaunchedEffect
@@ -200,6 +246,7 @@ fun ChatScreen(
             when (event) {
                 ChatEvent.ImageImportFailed ->
                     Toast.makeText(context, R.string.chat_image_import_failed, Toast.LENGTH_SHORT).show()
+                is ChatEvent.ScrollToLatest -> pendingLatest = event.messageId
             }
         }
     }
@@ -297,9 +344,7 @@ fun ChatScreen(
             }
         }
 
-        val waiting = state.rows.any {
-            it is ChatRow.Item && it.message.status == MessageStatus.SENDING
-        }
+        val waiting = state.waitingReply
         val actions = MessageActions(
             onCopy = { text ->
                 scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("message", text))) }
@@ -313,8 +358,11 @@ fun ChatScreen(
             onImageClick = onOpenImage,
             onAvatarClick = { contact?.let { onOpenContact(it.id) } },
         )
+        if (targetMissing) FootnoteText(stringResource(R.string.chat_target_missing))
+        Box(Modifier.weight(1f)) {
         ChatMessageList(
-            rows = state.rows,
+            rows = emptyList(),
+            pagingRows = pagedRows,
             contact = contact,
             myName = state.myName,
             myAvatarPath = state.myAvatarPath,
@@ -324,8 +372,18 @@ fun ChatScreen(
             onBackgroundClick = ::closePanels,
             highlightId = highlightId,
             highlightAlpha = { highlight.value },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxSize(),
         )
+        if (pagedRows.loadState.refresh is LoadState.Loading) {
+            Box(Modifier.align(Alignment.TopCenter)) { FootnoteText(stringResource(R.string.local_loading)) }
+        }
+        if (pagedRows.loadState.refresh is LoadState.Error || pagedRows.loadState.append is LoadState.Error || pagedRows.loadState.prepend is LoadState.Error) {
+            WeListRow(stringResource(R.string.chat_page_retry), Modifier.align(Alignment.TopCenter), onClick = pagedRows::retry)
+        }
+        if (newMessageCount > 0 && !atBottom && focusDone) {
+            NewMessagesButton(newMessageCount, viewModel::goToLatest, Modifier.align(Alignment.BottomEnd))
+        }
+        }
 
         if (contact != null) {
             ChatInputBar(
@@ -486,6 +544,7 @@ fun ChatMessageList(
     onBackgroundClick: () -> Unit = {},
     highlightId: Long? = null,
     highlightAlpha: () -> Float = { 0f },
+    pagingRows: LazyPagingItems<ChatRow>? = null,
 ) {
     val defaultName = stringResource(R.string.default_nickname)
     val highlightColor = WeTheme.colors.messageHighlight
@@ -501,7 +560,9 @@ fun ChatMessageList(
             ),
         contentPadding = PaddingValues(vertical = 8.dp),
     ) {
-        items(rows.asReversed(), key = { it.key }) { row ->
+        items(count = pagingRows?.itemCount ?: rows.size, key = pagingRows?.itemKey { it.key } ?: { index -> rows[rows.lastIndex - index].key }) { index ->
+            val row = if (pagingRows != null) pagingRows[index] else rows[rows.lastIndex - index]
+            if (row == null) return@items
             val highlighted = row is ChatRow.Item && row.message.id == highlightId
             Box(
                 Modifier
@@ -532,6 +593,17 @@ fun ChatMessageList(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun NewMessagesButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier.padding(WeTheme.dimens.horizontalPadding)
+        .background(WeTheme.colors.listBackground)
+        .heightIn(min = WeTheme.dimens.buttonHeight)
+        .clickable(role = Role.Button, onClick = onClick)
+        .padding(WeTheme.dimens.horizontalPadding), contentAlignment = Alignment.Center) {
+        Text(stringResource(R.string.chat_new_messages, count), color = WeTheme.colors.brandText, style = WeTheme.typography.small)
     }
 }
 
