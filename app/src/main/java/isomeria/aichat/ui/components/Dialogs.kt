@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -44,6 +45,7 @@ import isomeria.aichat.ui.theme.WeTheme
 
 /**
  * 微信式对话框：上面是标题和说明，下面是左右两个按钮，确认按钮为绿色（危险操作为红色）。
+ * 内容放不下时只有上半部分滚动，按钮始终留在屏幕内。[content] 接在说明后面，用于名单这类不适合居中的内容。
  */
 @Composable
 fun WeDialog(
@@ -54,13 +56,14 @@ fun WeDialog(
     confirmText: String = stringResource(R.string.action_ok),
     dismissText: String? = stringResource(R.string.action_cancel),
     destructive: Boolean = false,
+    content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier
-                .padding(horizontal = 40.dp)
+                .padding(horizontal = 40.dp, vertical = 24.dp)
                 .widthIn(max = dimens.dialogMaxWidth)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(dimens.dialogCorner))
@@ -68,7 +71,9 @@ fun WeDialog(
         ) {
             Column(
                 Modifier
+                    .weight(1f, fill = false)
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -89,6 +94,7 @@ fun WeDialog(
                         textAlign = TextAlign.Center,
                     )
                 }
+                content?.invoke(this)
             }
             WeDivider(Modifier.background(colors.dialogBackground))
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
@@ -117,14 +123,17 @@ fun WeDialog(
 private fun DialogButton(text: String, color: Color, onClick: () -> Unit, modifier: Modifier, bold: Boolean = false) {
     Box(
         modifier
-            .height(56.dp)
-            .clickable(onClick = onClick),
+            .fillMaxHeight()
+            .heightIn(min = 56.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text,
             style = WeTheme.typography.listTitle.copy(fontWeight = if (bold) FontWeight.Medium else FontWeight.Normal),
             color = color,
+            textAlign = TextAlign.Center,
         )
     }
 }

@@ -117,6 +117,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenImage = { nav.navigate(ImageViewerRoute(it)) },
                 onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
                 onEditContact = { nav.navigate(ContactEditRoute(it)) },
+                onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
             )
         }
         page<ChatInfoRoute>(nav) {
@@ -163,6 +164,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                     nav.navigate(ContactDetailRoute(id)) { popUpTo(MainRoute) }
                 },
                 onDeleted = { nav.popBackStack(MainRoute, inclusive = false) },
+                onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
             )
         }
         page<SettingsRoute>(nav) {

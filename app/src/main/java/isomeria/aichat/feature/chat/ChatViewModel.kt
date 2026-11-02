@@ -11,6 +11,8 @@ import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.Role
+import isomeria.aichat.data.llm.ConfigurationIssue
+import isomeria.aichat.data.llm.ModelRules
 import isomeria.aichat.data.reply.ActiveChatTracker
 import isomeria.aichat.data.repo.ChatRepository
 import isomeria.aichat.data.repo.ContactRepository
@@ -202,6 +204,18 @@ class ChatViewModel @Inject constructor(
     }
 
     fun newCameraUri(): Uri = files.newCameraUri()
+
+    /** 配置错误的原因在模型规则（没配完或字段不兼容）时返回该模型 id；其余情况在联系人页修正，返回 null。 */
+    suspend fun modelToConfigure(): String? {
+        val contact = state.value.contact ?: return null
+        val config = providers.config(contact.providerId) ?: return null
+        val model = providers.model(contact.providerId, contact.model) ?: return null
+        val option = contact.thinkingOption ?: ModelRules.legacyOption(contact.thinking)
+        return when (ModelRules.validate(config, model, option, contact.temperature)) {
+            ConfigurationIssue.INCOMPLETE, ConfigurationIssue.ENCODING -> contact.model
+            else -> null
+        }
+    }
 
     fun retry() {
         appScope.launch { chats.retry(contactId) }

@@ -80,6 +80,7 @@ fun ContactEditScreen(
     onBack: () -> Unit,
     onCreated: (Long) -> Unit,
     onDeleted: () -> Unit,
+    onOpenProvider: (Long) -> Unit = {},
     viewModel: ContactEditViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -178,9 +179,14 @@ fun ContactEditScreen(
                     modifier = Modifier.padding(horizontal = dimens.horizontalPadding, vertical = 6.dp),
                 )
             }
-            ModelParameterControls(provider, currentModel, form.thinkingOption ?: ModelRules.legacyOption(form.thinking), form.temperature,
-                onOption = { value -> viewModel.update { it.copy(thinkingOption = value) } },
-                onTemperature = { value -> viewModel.update { it.copy(temperature = value) } })
+            // 确实没有模型时不展示虚构的强度和温度；旧服务商（LEGACY）没有模型也沿用原有选项
+            if (currentModel == null && provider?.compatibility != "LEGACY") {
+                FootnoteText(stringResource(if (form.model.isBlank()) R.string.contact_model_pick_first else R.string.contact_model_unavailable))
+            } else {
+                ModelParameterControls(provider, currentModel, form.thinkingOption ?: ModelRules.legacyOption(form.thinking), form.temperature,
+                    onOption = { value -> viewModel.update { it.copy(thinkingOption = value) } },
+                    onTemperature = { value -> viewModel.update { it.copy(temperature = value) } })
+            }
 
             GroupSpacer()
             Column(Modifier.fillMaxWidth().background(colors.listBackground).padding(dimens.horizontalPadding)) {
@@ -259,7 +265,7 @@ fun ContactEditScreen(
         }
     }
     if (showModelSheet) {
-        ModelSheet(models.filter { m -> providerList.firstOrNull { it.id == form.providerId }?.let { ModelRules.usable(it, m) } == true }, form.model, onPick = viewModel::selectModel) {
+        ModelSheet(models.filter { m -> providerList.firstOrNull { it.id == form.providerId }?.let { ModelRules.usable(it, m) } == true }, form.model, onPick = viewModel::selectModel, onConfigure = { onOpenProvider(form.providerId) }) {
             showModelSheet = false
         }
     }
@@ -314,12 +320,21 @@ private fun ProviderSheet(
 }
 
 @Composable
-private fun ModelSheet(models: List<ProviderModel>, current: String, onPick: (ProviderModel) -> Unit, onDismiss: () -> Unit) {
+private fun ModelSheet(models: List<ProviderModel>, current: String, onPick: (ProviderModel) -> Unit, onConfigure: () -> Unit, onDismiss: () -> Unit) {
+    val choices = models.filter(ModelRules::complete)
+    if (choices.isEmpty()) {
+        WeActionSheet(
+            title = stringResource(R.string.contact_model_empty),
+            options = listOf(SheetOption(stringResource(R.string.action_configure_model), onClick = onConfigure)),
+            onDismiss = onDismiss,
+        )
+        return
+    }
     val imageLabel = stringResource(R.string.contact_model_image)
     val thinkingLabel = stringResource(R.string.contact_model_thinking)
     WeActionSheet(
         title = stringResource(R.string.contact_model_pick),
-        options = models.filter(ModelRules::complete).map { model ->
+        options = choices.map { model ->
             SheetOption(
                 label = model.displayName,
                 subtitle = buildList {

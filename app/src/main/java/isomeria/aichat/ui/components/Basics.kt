@@ -413,7 +413,8 @@ fun FormRow(
             label,
             style = WeTheme.typography.listTitle,
             color = colors.textPrimary,
-            modifier = Modifier.width(96.dp),
+            // 右侧留空：大字体下标签换行，不和右边的内容贴在一起
+            modifier = Modifier.width(96.dp).padding(end = 8.dp),
         )
         Box(Modifier.weight(1f)) { content() }
     }

@@ -247,6 +247,16 @@ class ScreenshotTest {
     @Test fun conflictDialogLight() = updateShot("21-config-conflict", false) { ConflictDialog(listOf(ModelReference("小雨", ReferencePurpose.CHAT), ModelReference("小雨", ReferencePurpose.MEMORY)), {}) {} }
     @Test fun conflictDialogDark() = updateShot("21-config-conflict", true) { ConflictDialog(listOf(ModelReference("小雨", ReferencePurpose.CHAT), ModelReference("小雨", ReferencePurpose.MEMORY)), {}) {} }
 
+    private val manyConflicts = (1..30).flatMap { listOf(ModelReference("联系人$it", ReferencePurpose.CHAT), ModelReference("联系人$it", ReferencePurpose.MEMORY)) }
+    @Test fun conflictLongLight() = updateShot("23-config-conflict-long", false) { ConflictDialog(manyConflicts, {}) {} }
+    @Test fun conflictLongDark() = updateShot("23-config-conflict-long", true) { ConflictDialog(manyConflicts, {}) {} }
+    private val customUrlError = ProviderEditState(loaded = true, name = "我的接口", messageRes = isomeria.aichat.R.string.llm_base_url_invalid, messageIsError = true)
+    private val presetProvider = previewProviderState.copy(presetId = "deepseek", name = "DeepSeek", baseUrl = "https://api.deepseek.com/v1")
+    @Test fun providerUrlErrorLight() = shot("24-provider-url-error", false) { ProviderEditSample(customUrlError) }
+    @Test fun providerUrlErrorDark() = shot("24-provider-url-error", true) { ProviderEditSample(customUrlError) }
+    @Test fun providerPresetLight() = shot("25-provider-preset", false) { ProviderEditSample(presetProvider) }
+    @Test fun providerPresetDark() = shot("25-provider-preset", true) { ProviderEditSample(presetProvider) }
+
     @Test fun longConfigurationLargeFontLight() = shot("22-large-config", false) {
         AIChatTheme(darkTheme = false, fontScale = 2.5f) {
             Column {

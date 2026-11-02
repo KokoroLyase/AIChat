@@ -103,6 +103,8 @@ fun ChatScreen(
     /** 打开服务商设置；参数是服务商 id */
     onOpenProvider: (Long) -> Unit,
     onEditContact: (Long) -> Unit = {},
+    /** 打开模型配置；参数是服务商 id 和模型 id */
+    onOpenModel: (Long, String) -> Unit = { _, _ -> },
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -427,14 +429,30 @@ fun ChatScreen(
     failedDialog?.let { message ->
         val reason = FailReason.of(message.errorCode)
         val needsSettings = reason == FailReason.AUTH || reason == FailReason.NO_API_KEY || reason == FailReason.CONFIGURATION
+        // 问题在模型规则时，修正入口是模型配置页，联系人页改不了
+        val modelToConfigure by produceState<String?>(null, message.id) {
+            value = if (reason == FailReason.CONFIGURATION) viewModel.modelToConfigure() else null
+        }
         WeDialog(
-            title = stringResource(R.string.chat_resend_title),
+            title = stringResource(when (reason) {
+                FailReason.CONFIGURATION -> R.string.chat_config_title
+                FailReason.NO_API_KEY -> R.string.chat_no_key_title
+                FailReason.AUTH -> R.string.chat_send_failed_title
+                else -> R.string.chat_resend_title
+            }),
             message = stringResource(failReasonText(reason)),
-            confirmText = stringResource(if (reason == FailReason.CONFIGURATION) R.string.action_fix_contact else if (needsSettings) R.string.action_go_settings else R.string.action_resend),
+            confirmText = stringResource(when {
+                modelToConfigure != null -> R.string.action_configure_model
+                reason == FailReason.CONFIGURATION -> R.string.action_fix_contact
+                needsSettings -> R.string.action_go_settings
+                else -> R.string.action_resend
+            }),
             onDismiss = { failedDialog = null },
             onConfirm = {
                 failedDialog = null
-                if (reason == FailReason.CONFIGURATION) state.contact?.let { onEditContact(it.id) }
+                val model = modelToConfigure
+                if (model != null) state.contact?.let { onOpenModel(it.providerId, model) }
+                else if (reason == FailReason.CONFIGURATION) state.contact?.let { onEditContact(it.id) }
                 else if (needsSettings) state.contact?.let { onOpenProvider(it.providerId) } else viewModel.retry()
             },
         )

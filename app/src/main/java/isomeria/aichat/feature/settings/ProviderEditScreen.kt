@@ -1,5 +1,6 @@
 package isomeria.aichat.feature.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -89,6 +92,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** 已保存的连接信息，用来判断有没有未保存的修改 */
+data class ProviderSavedForm(val name: String = "", val baseUrl: String = "", val compatibility: String = "GENERIC", val presetId: String? = null)
+
 data class ProviderEditState(
     val loaded: Boolean = false,
     /** null 表示还没保存的新服务商 */
@@ -109,7 +115,12 @@ data class ProviderEditState(
     val messageArgs: List<Any> = emptyList(),
     val messageIsError: Boolean = false,
     val deleted: Boolean = false,
-)
+    val savedForm: ProviderSavedForm = ProviderSavedForm(),
+    /** 名称或地址校验失败的次数；每次失败都把页面带回出错的字段 */
+    val validationAttempt: Int = 0,
+) {
+    val dirty: Boolean get() = loaded && (ProviderSavedForm(name, baseUrl, compatibility, presetId) != savedForm || keyInput.isNotEmpty() || modelInput.isNotEmpty())
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -147,6 +158,7 @@ class ProviderEditViewModel @Inject constructor(
                 keyInput = "",
                 savedKeyMasked = providers.maskedKey(config),
                 defaultModel = config.defaultModel,
+                savedForm = ProviderSavedForm(config.name, config.baseUrl, config.compatibility, config.presetId),
             )
         }
     }
@@ -167,10 +179,14 @@ class ProviderEditViewModel @Inject constructor(
         val s = _state.value
         if (s.name.isBlank()) {
             error(R.string.llm_name_required)
+            _state.update { it.copy(validationAttempt = it.validationAttempt + 1) }
             return null
         }
         val url = BaseUrlRules.normalize(s.baseUrl, allowLocalHttp = BuildConfig.DEBUG)
-        if (url == null) error(R.string.llm_base_url_invalid)
+        if (url == null) {
+            error(R.string.llm_base_url_invalid)
+            _state.update { it.copy(validationAttempt = it.validationAttempt + 1) }
+        }
         return url
     }
 
@@ -193,7 +209,7 @@ class ProviderEditViewModel @Inject constructor(
     fun confirm() { val action = pending ?: return; pending = null; _state.update { it.copy(conflicts = emptyList()) }; viewModelScope.launch { action() } }
     fun dismiss() { pending = null; _state.update { it.copy(conflicts = emptyList()) } }
     fun selectPreset(preset: ProviderPreset?, name: String) = _state.update {
-        if (it.providerId != null) it else it.copy(presetId = preset?.id, name = name, baseUrl = preset?.baseUrl.orEmpty(), compatibility = (preset?.compatibility ?: Compatibility.GENERIC).name)
+        if (it.providerId != null) it else it.copy(presetId = preset?.id, name = name, baseUrl = preset?.baseUrl.orEmpty(), compatibility = (preset?.compatibility ?: Compatibility.GENERIC).name, messageRes = null)
     }
     fun setCompatibility(value: Compatibility) = _state.update { it.copy(compatibility = value.name) }
     fun save() {
@@ -209,7 +225,7 @@ class ProviderEditViewModel @Inject constructor(
         }
     }
 
-    /** 测试连接：成功时保存配置并更新模型列表 */
+    /** 获取模型列表：成功时保存配置并更新模型列表 */
     fun test() {
         val url = validated() ?: return
         val s = _state.value
@@ -244,7 +260,8 @@ class ProviderEditViewModel @Inject constructor(
             val config = providers.config(id) ?: return@launch
             review(config.copy(defaultModel = modelId)) {
                 providers.setDefaultModel(id, modelId)
-                reload(id)
+                // 只更新这一项：页面上可能还有没保存的名称、地址或 Key
+                _state.update { it.copy(defaultModel = modelId) }
             }
         }
     }
@@ -254,7 +271,8 @@ class ProviderEditViewModel @Inject constructor(
         viewModelScope.launch {
             val saved = providers.config(id) ?: return@launch
             providers.save(id, saved.name, saved.baseUrl, "", saved.defaultModel)
-            reload(id)
+            // 只更新这一项：页面上可能还有没保存的名称、地址或新 Key
+            _state.update { it.copy(savedKeyMasked = null) }
         }
     }
 
@@ -268,13 +286,6 @@ class ProviderEditViewModel @Inject constructor(
             providers.addManualModel(id, modelId)
             reload(id)
             _state.update { it.copy(modelInput = "") }
-        }
-    }
-
-    fun removeModel(model: ProviderModel) {
-        viewModelScope.launch {
-            if (!providers.removeModel(model.providerId, model.modelId)) error(R.string.model_remove_in_use)
-            reload(model.providerId)
         }
     }
 
@@ -294,24 +305,25 @@ class ProviderEditViewModel @Inject constructor(
     }
 }
 
-/** 一个服务商：名称、API Key、Base URL、默认模型、模型列表（可标记是否支持图片和思考）、测试连接。 */
+/** 一个服务商：名称、Base URL、API Key、获取模型列表、默认模型、模型列表（点开逐个配置）。 */
 @Composable
 fun ProviderEditScreen(onBack: () -> Unit, onOpenModel: (Long, String) -> Unit = { _, _ -> }, viewModel: ProviderEditViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
+    var confirmDiscard by remember { mutableStateOf(false) }
     LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
+    BackHandler(enabled = state.dirty) { confirmDiscard = true }
     ImeBackHandler()
     ProviderEditContent(
         state = state,
         models = models,
-        onBack = onBack,
+        onBack = { if (state.dirty) confirmDiscard = true else onBack() },
         onSave = viewModel::save,
         onNameChange = viewModel::setName,
         onKeyChange = viewModel::setKey,
         onClearKey = viewModel::clearKey,
         onBaseUrlChange = viewModel::setBaseUrl,
         onDefaultModel = viewModel::setDefaultModel,
-        onRemoveModel = viewModel::removeModel,
         onModelInput = viewModel::setModelInput,
         onAddModel = viewModel::addModel,
         onTest = viewModel::test,
@@ -321,6 +333,18 @@ fun ProviderEditScreen(onBack: () -> Unit, onOpenModel: (Long, String) -> Unit =
         onConfigureModel = { onOpenModel(it.providerId, it.modelId) },
     )
     if (state.conflicts.isNotEmpty()) ConflictDialog(state.conflicts, viewModel::dismiss, viewModel::confirm)
+    if (confirmDiscard) {
+        WeDialog(
+            message = stringResource(R.string.contact_discard_title),
+            confirmText = stringResource(R.string.contact_discard),
+            destructive = true,
+            onDismiss = { confirmDiscard = false },
+            onConfirm = {
+                confirmDiscard = false
+                onBack()
+            },
+        )
+    }
 }
 
 @Composable
@@ -334,7 +358,6 @@ fun ProviderEditContent(
     onClearKey: () -> Unit,
     onBaseUrlChange: (String) -> Unit,
     onDefaultModel: (String) -> Unit,
-    onRemoveModel: (ProviderModel) -> Unit,
     onModelInput: (String) -> Unit,
     onAddModel: () -> Unit,
     onTest: () -> Unit,
@@ -350,6 +373,14 @@ fun ProviderEditContent(
     var showKey by remember { mutableStateOf(false) }
     var showModelSheet by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    val nameError = state.messageIsError && state.messageRes == R.string.llm_name_required
+    val urlError = state.messageIsError && state.messageRes == R.string.llm_base_url_invalid
+    // 预置地址平时只读展示，点“修改”或校验失败后才能编辑；切换预置时恢复只读
+    var editUrl by remember(state.presetId) { mutableStateOf(false) }
+    LaunchedEffect(urlError) { if (urlError) editUrl = true }
+    val urlEditable = editUrl || urlError || state.presetId == null || state.baseUrl.isBlank()
+    val formLocation = remember { BringIntoViewRequester() }
+    LaunchedEffect(state.validationAttempt) { if (state.validationAttempt > 0) formLocation.bringIntoView() }
 
     Column(Modifier.fillMaxSize().background(colors.pageBackground).imePadding()) {
         WeTopBar(
@@ -368,24 +399,34 @@ fun ProviderEditContent(
             }
             FootnoteText(stringResource(R.string.provider_protocol))
             SectionHeader(stringResource(R.string.llm_provider))
-            FormRow(stringResource(R.string.llm_name)) {
-                TextInput(state.name, onNameChange, stringResource(R.string.llm_name_hint))
+            Column(Modifier.bringIntoViewRequester(formLocation)) {
+                FormRow(stringResource(R.string.llm_name), showDivider = true) {
+                    TextInput(state.name, onNameChange, stringResource(R.string.llm_name_hint))
+                }
+                if (nameError) FieldError(stringResource(R.string.llm_name_required))
+                FormRow(stringResource(R.string.llm_base_url)) {
+                    if (urlEditable) {
+                        TextInput(
+                            state.baseUrl,
+                            onBaseUrlChange,
+                            stringResource(R.string.llm_base_url_hint),
+                            KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
+                        )
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(state.baseUrl, style = WeTheme.typography.listTitle, color = colors.textTertiary, modifier = Modifier.weight(1f).padding(vertical = 12.dp))
+                            WeSmallButton(stringResource(R.string.action_modify), { editUrl = true })
+                        }
+                    }
+                }
+                if (urlError) FieldError(stringResource(R.string.llm_base_url_invalid))
+                if (urlEditable) FootnoteText(stringResource(R.string.llm_base_url_note))
             }
 
             var advanced by remember { mutableStateOf(false) }
             WeListRow(stringResource(R.string.provider_advanced), onClick = { advanced = !advanced })
             if (advanced) {
-            ChoiceRow(stringResource(R.string.provider_compatibility), state.compatibility, options = Compatibility.entries.map { it.name to it }, onPick = onCompatibility)
-            SectionHeader(stringResource(R.string.llm_base_url))
-            FormRow(stringResource(R.string.llm_base_url)) {
-                TextInput(
-                    state.baseUrl,
-                    onBaseUrlChange,
-                    stringResource(R.string.llm_base_url_hint),
-                    KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-                )
-            }
-            FootnoteText(stringResource(R.string.llm_base_url_note))
+                ChoiceRow(stringResource(R.string.provider_compatibility), state.compatibility, options = Compatibility.entries.map { it.name to it }, onPick = onCompatibility)
             }
 
             SectionHeader(stringResource(R.string.llm_api_key))
@@ -440,7 +481,7 @@ fun ProviderEditContent(
                 enabled = !state.testing,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp),
             )
-            state.messageRes?.let { res ->
+            state.messageRes?.takeUnless { nameError || urlError }?.let { res ->
                 Text(
                     stringResource(res, *state.messageArgs.toTypedArray()),
                     style = WeTheme.typography.small,
@@ -465,7 +506,6 @@ fun ProviderEditContent(
                     model = model,
                     ready = ModelRules.usable(editorConfig, model),
                     showDivider = index != models.lastIndex,
-                    onRemove = { onRemoveModel(model) },
                     onConfigure = { onConfigureModel(model) },
                 )
             }
@@ -504,9 +544,10 @@ fun ProviderEditContent(
     }
 
     if (showModelSheet) {
+        val choices = models.filter { m -> ModelRules.usable(editorConfig, m) }
         WeActionSheet(
-            title = stringResource(R.string.llm_default_model),
-            options = listOf(SheetOption(stringResource(R.string.model_unset), selected = state.defaultModel.isBlank()) { onDefaultModel("") }) + models.filter { m -> ModelRules.usable(editorConfig, m) }.map { model ->
+            title = stringResource(if (choices.isEmpty()) R.string.llm_default_model_empty else R.string.llm_default_model),
+            options = listOf(SheetOption(stringResource(R.string.model_unset), selected = state.defaultModel.isBlank()) { onDefaultModel("") }) + choices.map { model ->
                 SheetOption(model.displayName, selected = model.modelId == state.defaultModel, subtitle = model.modelId) {
                     onDefaultModel(model.modelId)
                 }
@@ -559,14 +600,13 @@ private fun TextInput(
     }
 }
 
-/** 一个模型：名称、模型 ID，下面两个可点的标记「图片」「思考」，手动添加的可以移除。 */
+/** 一个模型：名称和配置状态、模型 ID。点开进入配置，移除也在配置页里。 */
 @Composable
-private fun ModelRow(model: ProviderModel, ready: Boolean, showDivider: Boolean, onRemove: () -> Unit, onConfigure: () -> Unit) {
+private fun ModelRow(model: ProviderModel, ready: Boolean, showDivider: Boolean, onConfigure: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(WeTheme.colors.listBackground)) {
         ConfigActionRow(model.displayName, stringResource(if (ready) R.string.model_ready else R.string.model_pending), onClick = onConfigure)
         FootnoteText(model.modelId)
         if (model.missingFromList) FootnoteText(stringResource(R.string.model_missing))
-        WeListRow(stringResource(R.string.llm_remove_model), titleColor = WeTheme.colors.danger, onClick = onRemove, showArrow = false)
         if (showDivider) WeDivider(startIndent = WeTheme.dimens.horizontalPadding)
     }
 }
@@ -587,7 +627,7 @@ internal val previewProviderModels = listOf(
 )
 
 @Composable
-internal fun ProviderEditSample() = ProviderEditContent(
-    state = previewProviderState, models = previewProviderModels, onBack = {}, onSave = {}, onNameChange = {}, onKeyChange = {},
-    onClearKey = {}, onBaseUrlChange = {}, onDefaultModel = {}, onRemoveModel = {}, onModelInput = {}, onAddModel = {}, onTest = {}, onDelete = {},
+internal fun ProviderEditSample(state: ProviderEditState = previewProviderState) = ProviderEditContent(
+    state = state, models = previewProviderModels, onBack = {}, onSave = {}, onNameChange = {}, onKeyChange = {},
+    onClearKey = {}, onBaseUrlChange = {}, onDefaultModel = {}, onModelInput = {}, onAddModel = {}, onTest = {}, onDelete = {},
 )
