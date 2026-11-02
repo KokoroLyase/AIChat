@@ -163,10 +163,15 @@ data class ConversationItem(
     @ColumnInfo(name = "avatarColor") val avatarColor: Int,
 )
 
-/** 搜索结果里的一条聊天记录。 */
-data class MessageSearchHit(
-    @Embedded val message: Message,
-    @ColumnInfo(name = "contactName") val contactName: String,
-    @ColumnInfo(name = "contactAvatarPath") val contactAvatarPath: String?,
-    @ColumnInfo(name = "contactAvatarColor") val contactAvatarColor: Int,
+/** 全局搜索结果里的一个聊天：命中条数和最近一次命中的时间。 */
+data class MessageSearchGroup(
+    val contactId: Long,
+    val hitCount: Int,
+    val lastTime: Long,
+    val contactName: String,
+    val contactAvatarPath: String?,
+    val contactAvatarColor: Int,
 )
+
+/** 合并恢复时判断「是不是同一条消息」用的键。 */
+data class MessageKey(val id: Long, val contactId: Long, val createdAt: Long)

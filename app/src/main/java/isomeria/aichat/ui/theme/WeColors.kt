@@ -78,6 +78,12 @@ data class WeColors(
     val switchTrackOff: Color,
     /** 按钮置灰（估） */
     val disabled: Color,
+    /** 从搜索跳到某条消息时，这条消息整行的高亮底色（估） */
+    val messageHighlight: Color,
+    /** 表情面板里「删除」键和选中分类的底色（估） */
+    val emojiKey: Color,
+    /** 加载提示框的底色（估） */
+    val loadingBackground: Color,
 )
 
 val LightWeColors = WeColors(
@@ -115,6 +121,9 @@ val LightWeColors = WeColors(
     thinkingText = Color(0xFF808080),
     switchTrackOff = Color(0xFFE5E5E5),
     disabled = Color(0xFFC6C6C6),
+    messageHighlight = Color(0x1F000000),
+    emojiKey = Color(0xFFFFFFFF),
+    loadingBackground = Color(0xE64C4C4C),
 )
 
 val DarkWeColors = WeColors(
@@ -152,4 +161,7 @@ val DarkWeColors = WeColors(
     thinkingText = Color(0xFF7A7A7A),
     switchTrackOff = Color(0xFF3A3A3A),
     disabled = Color(0xFF3A3A3A),
+    messageHighlight = Color(0x24FFFFFF),
+    emojiKey = Color(0xFF2C2C2C),
+    loadingBackground = Color(0xE62C2C2C),
 )

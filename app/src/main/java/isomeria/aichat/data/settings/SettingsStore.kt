@@ -6,6 +6,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import isomeria.aichat.update.UpdatePrefs
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,7 +24,7 @@ enum class FontSize(val scale: Float) {
  * 设置项，存在 MMKV（腾讯开源的键值存储）。每项都以 StateFlow 暴露，界面直接订阅。
  */
 @Singleton
-class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
+class SettingsStore @Inject constructor(@ApplicationContext context: Context) : UpdatePrefs {
     private val mmkv: MMKV
 
     init {
@@ -61,23 +62,42 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
             mmkv.encode(KEY_NOTIFY_ASKED, value)
         }
 
-    // 检查更新（0.2.0 使用，先把存储位置定下来）
-    var autoCheckUpdate: Boolean
-        get() = mmkv.decodeBool(KEY_AUTO_UPDATE, true)
-        set(value) {
-            mmkv.encode(KEY_AUTO_UPDATE, value)
-        }
+    // 检查更新
+    private val _autoCheckUpdate = MutableStateFlow(mmkv.decodeBool(KEY_AUTO_UPDATE, true))
+    /** 「自动检查更新」开关，默认开 */
+    val autoCheckUpdateFlow: StateFlow<Boolean> = _autoCheckUpdate.asStateFlow()
 
-    var lastUpdateCheck: Long
+    override val autoCheckUpdate: Boolean get() = _autoCheckUpdate.value
+
+    fun setAutoCheckUpdate(enabled: Boolean) {
+        mmkv.encode(KEY_AUTO_UPDATE, enabled)
+        _autoCheckUpdate.value = enabled
+    }
+
+    override var lastUpdateCheck: Long
         get() = mmkv.decodeLong(KEY_LAST_UPDATE_CHECK, 0L)
         set(value) {
             mmkv.encode(KEY_LAST_UPDATE_CHECK, value)
         }
 
-    var ignoredVersion: String?
+    override var ignoredVersion: String?
         get() = mmkv.decodeString(KEY_IGNORED_VERSION, null)
         set(value) {
             if (value == null) mmkv.removeValueForKey(KEY_IGNORED_VERSION) else mmkv.encode(KEY_IGNORED_VERSION, value)
+        }
+
+    /** 表情面板「最近使用」，最近的在前 */
+    var recentEmoji: List<String>
+        get() = mmkv.decodeString(KEY_RECENT_EMOJI, null)?.split(EMOJI_SEPARATOR)?.filter { it.isNotEmpty() }.orEmpty()
+        set(value) {
+            mmkv.encode(KEY_RECENT_EMOJI, value.joinToString(EMOJI_SEPARATOR))
+        }
+
+    /** 上次键盘弹出时的高度（px），表情和「+」面板用同样的高度，切换时输入栏不跳动；0 表示还不知道 */
+    var keyboardHeightPx: Int
+        get() = mmkv.decodeInt(KEY_KEYBOARD_HEIGHT, 0)
+        set(value) {
+            mmkv.encode(KEY_KEYBOARD_HEIGHT, value)
         }
 
     fun setThemeMode(mode: ThemeMode) {
@@ -121,5 +141,8 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_AUTO_UPDATE = "auto_check_update"
         const val KEY_LAST_UPDATE_CHECK = "last_update_check"
         const val KEY_IGNORED_VERSION = "ignored_version"
+        const val KEY_RECENT_EMOJI = "recent_emoji"
+        const val KEY_KEYBOARD_HEIGHT = "keyboard_height_px"
+        const val EMOJI_SEPARATOR = " "
     }
 }

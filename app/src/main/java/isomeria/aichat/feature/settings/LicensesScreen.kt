@@ -30,6 +30,7 @@ private val libraries = listOf(
     Library("OkHttp / Okio", "Square", "Apache License 2.0"),
     Library("Coil", "Coil Contributors", "Apache License 2.0"),
     Library("MMKV", "Tencent", "BSD 3-Clause License"),
+    Library("Unicode Emoji (emoji-test.txt)", "Unicode, Inc.", "Unicode License v3"),
 )
 
 @Composable

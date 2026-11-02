@@ -16,6 +16,8 @@ import isomeria.aichat.core.ContextLabels
 import isomeria.aichat.core.IcuPinyinConverter
 import isomeria.aichat.core.PinyinConverter
 import isomeria.aichat.core.TimeLabels
+import isomeria.aichat.data.backup.BackupSettingsAccess
+import isomeria.aichat.data.backup.SettingsStoreBackupAccess
 import isomeria.aichat.data.crypto.KeystoreSecretCipher
 import isomeria.aichat.data.crypto.SecretCipher
 import isomeria.aichat.data.db.AppDatabase
@@ -25,6 +27,12 @@ import isomeria.aichat.data.db.MessageDao
 import isomeria.aichat.data.db.ProviderDao
 import isomeria.aichat.data.llm.DeepSeekProvider
 import isomeria.aichat.data.llm.LlmProvider
+import isomeria.aichat.data.reply.ReplyControl
+import isomeria.aichat.data.reply.ReplyScheduler
+import isomeria.aichat.data.settings.SettingsStore
+import isomeria.aichat.update.GitHubUpdateSource
+import isomeria.aichat.update.UpdatePrefs
+import isomeria.aichat.update.UpdateSource
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -110,4 +118,12 @@ abstract class BindingsModule {
     @Binds abstract fun pinyin(impl: IcuPinyinConverter): PinyinConverter
 
     @Binds @IntoSet abstract fun deepSeek(impl: DeepSeekProvider): LlmProvider
+
+    @Binds abstract fun replyControl(impl: ReplyScheduler): ReplyControl
+
+    @Binds abstract fun backupSettings(impl: SettingsStoreBackupAccess): BackupSettingsAccess
+
+    @Binds abstract fun updatePrefs(impl: SettingsStore): UpdatePrefs
+
+    @Binds abstract fun updateSource(impl: GitHubUpdateSource): UpdateSource
 }

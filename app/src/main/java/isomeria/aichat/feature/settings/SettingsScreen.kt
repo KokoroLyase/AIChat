@@ -3,6 +3,7 @@ package isomeria.aichat.feature.settings
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -33,31 +35,48 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import isomeria.aichat.BuildConfig
 import isomeria.aichat.R
 import isomeria.aichat.data.reply.ReplyNotifier
+import isomeria.aichat.data.repo.ChatRepository
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.settings.FontSize
 import isomeria.aichat.data.settings.SettingsStore
 import isomeria.aichat.data.settings.ThemeMode
+import isomeria.aichat.di.ApplicationScope
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.SheetOption
+import isomeria.aichat.ui.components.UnreadBadge
 import isomeria.aichat.ui.components.WeActionSheet
+import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeListRow
+import isomeria.aichat.ui.components.WeLoading
 import isomeria.aichat.ui.components.WeSwitch
 import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.theme.WeTheme
+import isomeria.aichat.update.ReleaseInfo
+import isomeria.aichat.update.UpdateCheckResult
+import isomeria.aichat.update.UpdateChecker
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settings: SettingsStore,
     private val notifier: ReplyNotifier,
+    private val chats: ChatRepository,
+    private val updates: UpdateChecker,
+    @ApplicationScope private val appScope: CoroutineScope,
     providers: ProviderRepository,
 ) : ViewModel() {
     val themeMode = settings.themeMode
+    val autoCheckUpdate = settings.autoCheckUpdateFlow
+
+    /** 已知有新版本时，「检查更新」旁显示红点 */
+    val newerRelease: StateFlow<ReleaseInfo?> = updates.newer
     val fontSize = settings.fontSize
     val notifyEnabled = settings.notifyEnabled
     val notifyPreview = settings.notifyPreview
@@ -75,6 +94,14 @@ class SettingsViewModel @Inject constructor(
     fun setFontSize(size: FontSize) = settings.setFontSize(size)
     fun setNotifyEnabled(enabled: Boolean) = settings.setNotifyEnabled(enabled)
     fun setNotifyPreview(enabled: Boolean) = settings.setNotifyPreview(enabled)
+    fun setAutoCheckUpdate(enabled: Boolean) = settings.setAutoCheckUpdate(enabled)
+
+    /** 手动检查更新；有新版本时由全局的更新弹窗提示 */
+    suspend fun checkUpdate(): UpdateCheckResult = updates.manualCheck()
+
+    fun clearAllHistory() {
+        appScope.launch { chats.clearAllHistory() }
+    }
 }
 
 @Composable
@@ -82,6 +109,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenLlm: () -> Unit,
     onOpenLicenses: () -> Unit,
+    onOpenExport: () -> Unit,
+    onOpenRestore: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -92,8 +121,14 @@ fun SettingsScreen(
     val notifyPreview by viewModel.notifyPreview.collectAsStateWithLifecycle()
     val canNotify by viewModel.canNotify.collectAsStateWithLifecycle()
     val hasKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
+    val autoCheckUpdate by viewModel.autoCheckUpdate.collectAsStateWithLifecycle()
+    val newerRelease by viewModel.newerRelease.collectAsStateWithLifecycle()
     var showTheme by remember { mutableStateOf(false) }
     var showFont by remember { mutableStateOf(false) }
+    var confirmClearAll by remember { mutableStateOf(false) }
+    var checkingUpdate by remember { mutableStateOf(false) }
+    var updateFailed by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // 从系统设置回来时刷新通知权限状态
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -183,12 +218,49 @@ fun SettingsScreen(
             )
             FootnoteText(stringResource(R.string.settings_battery_hint))
 
+            SectionHeader(stringResource(R.string.settings_group_data))
+            WeListRow(title = stringResource(R.string.settings_export), onClick = onOpenExport, showDivider = true)
+            WeListRow(title = stringResource(R.string.settings_restore), onClick = onOpenRestore, showDivider = true)
+            WeListRow(title = stringResource(R.string.settings_clear_all), onClick = { confirmClearAll = true })
+            FootnoteText(stringResource(R.string.settings_data_notice))
+
             SectionHeader(stringResource(R.string.settings_group_about))
             WeListRow(
                 title = stringResource(R.string.settings_version),
                 value = BuildConfig.VERSION_NAME,
                 showArrow = false,
                 showDivider = true,
+            )
+            WeListRow(
+                title = stringResource(R.string.settings_check_update),
+                value = newerRelease?.let { stringResource(R.string.settings_new_version, it.version) },
+                trailing = if (newerRelease != null) {
+                    { UnreadBadge(0, dotOnly = true) }
+                } else {
+                    null
+                },
+                onClick = {
+                    if (!checkingUpdate) {
+                        scope.launch {
+                            checkingUpdate = true
+                            val result = viewModel.checkUpdate()
+                            checkingUpdate = false
+                            when (result) {
+                                is UpdateCheckResult.Available -> Unit // 全局弹窗提示
+                                UpdateCheckResult.UpToDate ->
+                                    Toast.makeText(context, R.string.update_latest, Toast.LENGTH_SHORT).show()
+                                is UpdateCheckResult.Failed -> updateFailed = true
+                            }
+                        }
+                    }
+                },
+                showDivider = true,
+            )
+            WeListRow(
+                title = stringResource(R.string.settings_auto_update),
+                showArrow = false,
+                showDivider = true,
+                trailing = { WeSwitch(autoCheckUpdate, viewModel::setAutoCheckUpdate) },
             )
             WeListRow(
                 title = stringResource(R.string.settings_licenses),
@@ -202,7 +274,6 @@ fun SettingsScreen(
                     open(Intent(Intent.ACTION_VIEW, "https://github.com/${BuildConfig.GITHUB_REPO}".toUri()))
                 },
             )
-            FootnoteText(stringResource(R.string.settings_data_notice))
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -213,6 +284,32 @@ fun SettingsScreen(
                 SheetOption(stringResource(themeLabel(mode)), selected = mode == themeMode) { viewModel.setThemeMode(mode) }
             },
             onDismiss = { showTheme = false },
+        )
+    }
+    if (confirmClearAll) {
+        WeDialog(
+            message = stringResource(R.string.settings_clear_all_confirm),
+            confirmText = stringResource(R.string.action_clear),
+            destructive = true,
+            onDismiss = { confirmClearAll = false },
+            onConfirm = {
+                confirmClearAll = false
+                viewModel.clearAllHistory()
+                Toast.makeText(context, R.string.settings_cleared, Toast.LENGTH_SHORT).show()
+            },
+        )
+    }
+    if (checkingUpdate) WeLoading(stringResource(R.string.update_checking))
+    if (updateFailed) {
+        WeDialog(
+            title = stringResource(R.string.update_failed_title),
+            message = stringResource(R.string.update_failed_message),
+            confirmText = stringResource(R.string.update_open_browser),
+            onDismiss = { updateFailed = false },
+            onConfirm = {
+                updateFailed = false
+                open(Intent(Intent.ACTION_VIEW, "https://github.com/${BuildConfig.GITHUB_REPO}/releases/latest".toUri()))
+            },
         )
     }
     if (showFont) {

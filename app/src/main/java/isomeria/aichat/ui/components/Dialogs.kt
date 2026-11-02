@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -246,6 +247,31 @@ fun WeActionSheet(
                     Text(stringResource(R.string.action_cancel), style = WeTheme.typography.listTitle, color = colors.textPrimary)
                 }
             }
+        }
+    }
+}
+
+/** 加载提示：屏幕中间一块深色圆角方块，转圈加一行字；不能点掉。 */
+@Composable
+fun WeLoading(text: String) {
+    val colors = WeTheme.colors
+    Dialog(
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+    ) {
+        Column(
+            Modifier
+                .widthIn(min = 136.dp, max = 240.dp)
+                .heightIn(min = 136.dp)
+                .clip(RoundedCornerShape(WeTheme.dimens.dialogCorner))
+                .background(colors.loadingBackground)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
+            Spacer(Modifier.height(16.dp))
+            Text(text, style = WeTheme.typography.small, color = Color.White, textAlign = TextAlign.Center, maxLines = 2)
         }
     }
 }

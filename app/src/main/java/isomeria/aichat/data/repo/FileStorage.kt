@@ -21,6 +21,8 @@ import kotlin.math.roundToInt
 
 data class StoredImage(val path: String, val width: Int, val height: Int)
 
+enum class MediaKind { AVATAR, IMAGE }
+
 /**
  * 应用私有目录里的头像和聊天图片。卸载即清除。
  *
@@ -32,6 +34,12 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
     private val imagesDir get() = File(context.filesDir, "images").apply { mkdirs() }
     private val avatarsDir get() = File(context.filesDir, "avatars").apply { mkdirs() }
     private val cameraDir get() = File(context.cacheDir, "camera").apply { mkdirs() }
+
+    /** 恢复数据前自动备份当前数据的位置（应用私有目录） */
+    val backupsDir: File get() = File(context.filesDir, "backups").apply { mkdirs() }
+
+    /** 恢复时选中的备份文件先复制到这里再读取 */
+    val restoreCacheDir: File get() = File(context.cacheDir, "restore").apply { mkdirs() }
 
     suspend fun importChatImage(uri: Uri): StoredImage = withContext(Dispatchers.IO) {
         val bitmap = decode(uri, MAX_IMAGE_SIDE)
@@ -55,7 +63,28 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         if (path.isNullOrEmpty()) return
         val file = File(path)
         // 只删应用私有目录里的文件
-        if (file.canonicalPath.startsWith(context.filesDir.canonicalPath)) file.delete()
+        if (isPrivate(file)) file.delete()
+    }
+
+    /** 是否在应用私有目录里（导出时只打包这里的文件） */
+    fun isPrivate(file: File): Boolean =
+        runCatching { file.canonicalPath.startsWith(context.filesDir.canonicalPath + File.separator) }.getOrDefault(false)
+
+    /** 恢复时放导入的头像或图片的新文件，文件名随机，不会和已有文件冲突 */
+    fun newMediaFile(kind: MediaKind): File {
+        val dir = when (kind) {
+            MediaKind.AVATAR -> avatarsDir
+            MediaKind.IMAGE -> imagesDir
+        }
+        return File(dir, "${UUID.randomUUID()}.jpg")
+    }
+
+    /** 删除头像和图片目录里已经没有任何记录引用的文件（恢复数据后清理） */
+    fun deleteUnreferenced(referenced: Set<String>) {
+        val keep = referenced.mapNotNull { runCatching { File(it).canonicalPath }.getOrNull() }.toSet()
+        for (dir in listOf(avatarsDir, imagesDir)) {
+            dir.listFiles()?.forEach { file -> if (file.isFile && file.canonicalPath !in keep) file.delete() }
+        }
     }
 
     /** 读成 data URL，放进请求 */

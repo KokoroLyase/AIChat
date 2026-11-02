@@ -29,6 +29,8 @@ data class WeDimens(
     val avatarCorner: Dp = 4.dp,
     val profileAvatar: Dp = 64.dp,
     val profileAvatarCorner: Dp = 6.dp,
+    /** 聊天信息页顶部的联系人头像（估） */
+    val chatInfoAvatar: Dp = 52.dp,
     val dividerThickness: Dp = 0.5.dp,
 
     // 聊天页
@@ -54,7 +56,17 @@ data class WeDimens(
     val inputMaxLines: Int = 5,
     val inputBarIcon: Dp = 30.dp,
     val inputBarVerticalPadding: Dp = 8.dp,
+    /** 表情和「+」面板的默认高度；键盘弹出过一次后改用键盘高度，切换时输入栏不跳 */
     val panelHeight: Dp = 260.dp,
+    val panelMinHeight: Dp = 220.dp,
+    val panelMaxHeight: Dp = 420.dp,
+
+    // 表情面板
+    val emojiColumns: Int = 8,
+    val emojiCellHeight: Dp = 48.dp,
+    val emojiTabHeight: Dp = 44.dp,
+    val emojiKeyWidth: Dp = 56.dp,
+    val emojiKeyHeight: Dp = 40.dp,
 
     // 未读
     val badgeSize: Dp = 18.dp,

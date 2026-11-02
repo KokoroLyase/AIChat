@@ -11,6 +11,14 @@ import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** 取消回复任务。恢复数据时用：覆盖前先停掉所有等待中的回复。 */
+interface ReplyControl {
+    fun cancel(contactId: Long)
+
+    /** 这个联系人是否还有排队或进行中的回复任务 */
+    suspend fun isActive(contactId: Long): Boolean
+}
+
 /**
  * 把「等待回复」交给 WorkManager：离开聊天页或切到后台时请求继续进行。
  *
@@ -18,7 +26,7 @@ import javax.inject.Singleton
  * 新请求会带上所有还在等待回复的消息，联系人像真人一样看完再一起回。
  */
 @Singleton
-class ReplyScheduler @Inject constructor(@ApplicationContext private val context: Context) {
+class ReplyScheduler @Inject constructor(@ApplicationContext private val context: Context) : ReplyControl {
     private val workManager get() = WorkManager.getInstance(context)
 
     fun enqueue(contactId: Long) {
@@ -30,12 +38,11 @@ class ReplyScheduler @Inject constructor(@ApplicationContext private val context
         workManager.enqueueUniqueWork(uniqueName(contactId), ExistingWorkPolicy.REPLACE, request)
     }
 
-    fun cancel(contactId: Long) {
+    override fun cancel(contactId: Long) {
         workManager.cancelUniqueWork(uniqueName(contactId))
     }
 
-    /** 这个联系人是否还有排队或进行中的回复任务 */
-    suspend fun isActive(contactId: Long): Boolean =
+    override suspend fun isActive(contactId: Long): Boolean =
         workManager.getWorkInfosForUniqueWorkFlow(uniqueName(contactId)).first().any { !it.state.isFinished }
 
     private fun uniqueName(contactId: Long) = "reply-$contactId"

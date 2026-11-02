@@ -13,7 +13,8 @@ import isomeria.aichat.data.db.ConversationDao
 import isomeria.aichat.data.db.ConversationItem
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageDao
-import isomeria.aichat.data.db.MessageSearchHit
+import isomeria.aichat.data.db.MessageSearchGroup
+import isomeria.aichat.data.db.escapeLike
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.Role
@@ -156,7 +157,36 @@ class ChatRepository @Inject constructor(
         notifier.cancelReply(contactId)
     }
 
-    suspend fun setPinned(contactId: Long, pinned: Boolean) = conversationDao.setPinned(contactId, pinned)
+    /** 聊天信息页「清空聊天记录」：删掉消息和图片，聊天仍留在列表里（置顶和草稿保留） */
+    suspend fun clearHistory(contactId: Long) {
+        replyScheduler.cancel(contactId)
+        val images = messageDao.imagePaths(contactId)
+        db.withTransaction {
+            ensureConversation(contactId)
+            messageDao.deleteByContact(contactId)
+            conversationDao.clearHistory(contactId)
+        }
+        images.forEach(files::delete)
+        notifier.cancelReply(contactId)
+    }
+
+    /** 设置里「清空所有聊天记录」：所有聊天都像「删除该聊天」一样清掉，联系人保留 */
+    suspend fun clearAllHistory() {
+        val contacts = contactDao.listAll().map { it.id }
+        contacts.forEach(replyScheduler::cancel)
+        val images = messageDao.allImagePaths()
+        db.withTransaction {
+            messageDao.deleteAll()
+            conversationDao.resetAll()
+        }
+        images.forEach(files::delete)
+        contacts.forEach(notifier::cancelReply)
+    }
+
+    suspend fun setPinned(contactId: Long, pinned: Boolean) {
+        ensureConversation(contactId)
+        conversationDao.setPinned(contactId, pinned)
+    }
 
     suspend fun markUnread(contactId: Long) = conversationDao.markUnread(contactId)
 
@@ -171,10 +201,24 @@ class ChatRepository @Inject constructor(
     }
 
     suspend fun searchContacts(query: String): List<Contact> =
-        if (query.isBlank()) emptyList() else contactDao.search(query.trim())
+        if (query.isBlank()) emptyList() else contactDao.search(escapeLike(query.trim()))
 
-    suspend fun searchMessages(query: String): List<MessageSearchHit> =
-        if (query.isBlank()) emptyList() else messageDao.search(query.trim())
+    /**
+     * 全局搜索聊天记录：按聊天分组。只命中一条的聊天带上那条消息，点击直接跳过去；
+     * 命中多条的显示「N 条相关聊天记录」，点击进入这个聊天的查找结果。
+     */
+    suspend fun searchMessageGroups(query: String): List<MessageSearchResult> {
+        if (query.isBlank()) return emptyList()
+        val q = escapeLike(query.trim())
+        return messageDao.searchGrouped(q).map { group ->
+            val single = if (group.hitCount == 1) messageDao.searchInChat(group.contactId, q, limit = 1).firstOrNull() else null
+            MessageSearchResult(group, single)
+        }
+    }
+
+    /** 聊天信息页「查找聊天记录」：这个聊天里命中的文字消息，最新的在前 */
+    suspend fun searchInChat(contactId: Long, query: String): List<Message> =
+        if (query.isBlank()) emptyList() else messageDao.searchInChat(contactId, escapeLike(query.trim()))
 
     /**
      * 启动时检查：等待中但已经没有对应任务的消息（App 在等待中被系统杀掉），标记为失败，可重试。
@@ -205,3 +249,6 @@ class ChatRepository @Inject constructor(
         MessageType.IMAGE -> context.getString(R.string.preview_image)
     }
 }
+
+/** 全局搜索里的一个聊天；[single] 是只命中一条时的那条消息 */
+data class MessageSearchResult(val group: MessageSearchGroup, val single: Message?)

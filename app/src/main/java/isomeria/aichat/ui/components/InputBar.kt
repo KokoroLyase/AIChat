@@ -15,9 +15,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -50,7 +47,7 @@ enum class InputPanel { NONE, EMOJI, MORE }
 
 /**
  * 聊天输入栏：语音切换、输入框（自动增高，最多 5 行）、表情、「+」；
- * 输入文字后「+」变成绿色「发送」按钮。语音和表情在 0.1.0 只有外观（表情可以插入 Unicode 表情）。
+ * 输入文字后「+」变成绿色「发送」按钮。语音只有外观；表情面板见 EmojiPanel.kt。
  */
 @Composable
 fun ChatInputBar(
@@ -194,31 +191,6 @@ private fun HoldToTalkButton(onPress: () -> Unit, modifier: Modifier) {
     }
 }
 
-/** 表情面板：0.1.0 先放常用 Unicode 表情，点击插入输入框。 */
-@Composable
-fun EmojiPanel(onPick: (String) -> Unit, modifier: Modifier = Modifier) {
-    val colors = WeTheme.colors
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(8),
-        modifier = modifier
-            .fillMaxWidth()
-            .height(WeTheme.dimens.panelHeight)
-            .background(colors.barBackground),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-    ) {
-        items(COMMON_EMOJI) { emoji ->
-            Box(
-                Modifier
-                    .height(44.dp)
-                    .clickable { onPick(emoji) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(emoji, style = WeTheme.typography.emoji)
-            }
-        }
-    }
-}
-
 /** 「+」面板：相册、拍照。当前模型不支持图片时置灰。 */
 @Composable
 fun MorePanel(
@@ -228,10 +200,10 @@ fun MorePanel(
     modifier: Modifier = Modifier,
 ) {
     val colors = WeTheme.colors
+    // 高度由调用方给（和键盘一样高）
     Column(
         modifier
             .fillMaxWidth()
-            .height(WeTheme.dimens.panelHeight)
             .background(colors.barBackground)
             .padding(horizontal = 24.dp, vertical = 20.dp),
     ) {
@@ -271,12 +243,3 @@ private fun PanelItem(icon: ImageVector, label: String, enabled: Boolean, onClic
         Text(label, style = WeTheme.typography.listTime, color = if (enabled) colors.textTertiary else colors.disabled)
     }
 }
-
-private val COMMON_EMOJI = listOf(
-    "😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😜",
-    "🤔", "😏", "😌", "😴", "😭", "😤", "😡", "😱",
-    "😳", "🥺", "🥰", "😎", "🤗", "🙄", "😅", "😉",
-    "👍", "👌", "👏", "🙏", "💪", "🤝", "✌️", "👋",
-    "❤️", "💔", "🌹", "🎉", "🔥", "✨", "☀️", "🌙",
-    "☕", "🍺", "🍰", "🍉", "🐱", "🐶", "💤", "💯",
-)

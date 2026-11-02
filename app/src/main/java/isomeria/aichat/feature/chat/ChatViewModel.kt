@@ -19,6 +19,7 @@ import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.settings.SettingsStore
 import isomeria.aichat.di.ApplicationScope
 import isomeria.aichat.navigation.ChatRoute
+import isomeria.aichat.ui.components.RECENT_EMOJI_LIMIT
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -81,7 +82,11 @@ class ChatViewModel @Inject constructor(
     private val activeChat: ActiveChatTracker,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
-    val contactId: Long = savedState.toRoute<ChatRoute>().contactId
+    private val route = savedState.toRoute<ChatRoute>()
+    val contactId: Long = route.contactId
+
+    /** 从搜索结果进来时要定位并高亮的消息；0 表示没有 */
+    val focusMessageId: Long = route.focusMessageId
 
     private val events = Channel<ChatEvent>(Channel.BUFFERED)
     val eventFlow: Flow<ChatEvent> = events.receiveAsFlow()
@@ -204,6 +209,20 @@ class ChatViewModel @Inject constructor(
     fun delete(messageId: Long) {
         appScope.launch { chats.deleteMessage(messageId) }
     }
+
+    /** 表情面板「最近使用」，最近的在前 */
+    fun recentEmoji(): List<String> = settings.recentEmoji
+
+    fun addRecentEmoji(emoji: String) {
+        settings.recentEmoji = (listOf(emoji) + settings.recentEmoji.filter { it != emoji }).take(RECENT_EMOJI_LIMIT)
+    }
+
+    /** 上次键盘高度（px），面板用同样的高度 */
+    var keyboardHeightPx: Int
+        get() = settings.keyboardHeightPx
+        set(value) {
+            settings.keyboardHeightPx = value
+        }
 
     /** 第一次发送消息时申请通知权限，只申请一次 */
     fun shouldAskNotificationPermission(): Boolean {

@@ -49,7 +49,7 @@ data class WeTypography(
     /** 索引滑动时屏幕中间的放大字母 */
     val indexOverlay: TextStyle = TextStyle(fontSize = 40.sp, fontWeight = FontWeight.Medium),
     /** 表情面板里的表情 */
-    val emoji: TextStyle = TextStyle(fontSize = 24.sp),
+    val emoji: TextStyle = TextStyle(fontSize = 28.sp),
     /** 默认头像上的首字（相对头像大小在组件里再缩放） */
     val avatarLetter: TextStyle = TextStyle(fontWeight = FontWeight.Medium),
 )

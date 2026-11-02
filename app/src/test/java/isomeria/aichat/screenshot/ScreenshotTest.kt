@@ -19,6 +19,8 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import isomeria.aichat.feature.chat.ChatPageSample
+import isomeria.aichat.feature.chatinfo.ChatInfoContent
+import isomeria.aichat.feature.chatinfo.previewChatInfo
 import isomeria.aichat.feature.chatlist.ChatListContent
 import isomeria.aichat.feature.chatlist.previewItems
 import isomeria.aichat.feature.contactedit.ContactDetailContent
@@ -26,11 +28,18 @@ import isomeria.aichat.feature.contactedit.previewState
 import isomeria.aichat.feature.contacts.ContactsContent
 import isomeria.aichat.feature.contacts.previewSections
 import isomeria.aichat.feature.me.MeContent
+import isomeria.aichat.ui.components.EmojiCatalog
+import isomeria.aichat.ui.components.EmojiPanel
 import isomeria.aichat.ui.components.TabItem
+import isomeria.aichat.ui.components.UpdateDialog
 import isomeria.aichat.ui.components.WeBottomBar
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.theme.AIChatTheme
 import isomeria.aichat.ui.theme.WeTheme
+import isomeria.aichat.update.ReleaseInfo
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
+import java.io.File
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -123,5 +132,43 @@ class ScreenshotTest {
             }
         }
         captureScreenRoboImage("screenshots/6-dialog-light.png")
+    }
+
+    @Test fun chatInfoLight() = shot("7-chat-info", false) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}) }
+
+    @Test fun chatInfoDark() = shot("7-chat-info", true) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}) }
+
+    private val emojiGroups = File("src/main/assets/emoji.txt").bufferedReader().useLines { EmojiCatalog.parse(it) { true } }
+
+    @Composable
+    private fun Emoji() = Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f))
+        EmojiPanel(emojiGroups, listOf("😂", "👍", "🌹"), canSend = true, canDelete = true, {}, {}, {}, Modifier.height(320.dp))
+    }
+
+    @Test fun emojiLight() = shot("8-emoji", false) { Emoji() }
+
+    @Test fun emojiDark() = shot("8-emoji", true) { Emoji() }
+
+    private val release = ReleaseInfo(
+        version = "0.2.0",
+        tag = "v0.2.0",
+        notes = "智信 0.2.0：数据与更新。\n\n• 导出数据和恢复数据\n• 检查更新\n• 聊天信息、搜索、表情面板、草稿",
+        pageUrl = "https://github.com/KokoroLyase/AIChat/releases/tag/v0.2.0",
+        apkUrl = null,
+    )
+
+    @Test fun updateDialogLight() = dialogShot("9-update", false)
+
+    @Test fun updateDialogDark() = dialogShot("9-update", true)
+
+    private fun dialogShot(name: String, dark: Boolean) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark) {
+                Me()
+                UpdateDialog(release, {}, {}, {})
+            }
+        }
+        captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
 }
