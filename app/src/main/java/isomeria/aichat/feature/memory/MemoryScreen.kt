@@ -267,7 +267,7 @@ fun MemoryContent(
                         .fillMaxWidth()
                         .background(colors.listBackground)
                         .clickable(onClick = onClearAll)
-                        .height(dimens.listRowHeight),
+                        .heightIn(min = dimens.listRowHeight),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(stringResource(R.string.memory_clear), style = WeTheme.typography.listTitle, color = colors.danger)
@@ -367,7 +367,7 @@ fun MemoryEditScreen(onBack: () -> Unit, viewModel: MemoryEditViewModel = hiltVi
                     .fillMaxWidth()
                     .background(colors.listBackground)
                     .clickable { confirmDelete = true }
-                    .height(dimens.listRowHeight),
+                    .heightIn(min = dimens.listRowHeight),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(stringResource(R.string.memory_delete), style = WeTheme.typography.listTitle, color = colors.danger)

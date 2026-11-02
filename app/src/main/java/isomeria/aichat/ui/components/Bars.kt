@@ -22,6 +22,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.layout.Layout
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -34,7 +37,8 @@ import isomeria.aichat.R
 import isomeria.aichat.ui.theme.WeTheme
 
 /**
- * 顶栏：高 50dp，标题居中 17sp 中粗。沉浸式：背景延伸到状态栏下方。
+ * 顶栏：最小高 50dp，标题居中 17sp 中粗。沉浸式：背景延伸到状态栏下方。
+ * 字体调大时顶栏跟着长高，标题放不下时显示省略号，不会压到两侧的返回键和按钮。
  */
 @Composable
 fun WeTopBar(
@@ -47,8 +51,32 @@ fun WeTopBar(
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
-    Box(
-        modifier
+    Layout(
+        content = {
+            Box(Modifier.layoutId(TOP_BAR_START).padding(start = 4.dp)) {
+                if (onBack != null) {
+                    TopBarIcon(
+                        icon = WeIcons.Back,
+                        contentDescription = stringResource(R.string.action_back),
+                        onClick = onBack,
+                    )
+                }
+            }
+            Text(
+                text = title,
+                style = WeTheme.typography.topBarTitle,
+                color = colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.layoutId(TOP_BAR_TITLE),
+            )
+            Row(
+                modifier = Modifier.layoutId(TOP_BAR_END).padding(end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = actions,
+            )
+        },
+        modifier = modifier
             .fillMaxWidth()
             .background(background)
             .drawBehind {
@@ -58,33 +86,31 @@ fun WeTopBar(
                 }
             }
             .statusBarsPadding()
-            .height(dimens.topBarHeight),
-    ) {
-        if (onBack != null) {
-            TopBarIcon(
-                icon = WeIcons.Back,
-                contentDescription = stringResource(R.string.action_back),
-                onClick = onBack,
-                modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp),
-            )
+            .heightIn(min = dimens.topBarHeight),
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        fun find(id: String) = measurables.first { it.layoutId == id }
+        val start = find(TOP_BAR_START).measure(loose)
+        val end = find(TOP_BAR_END).measure(loose)
+        // 标题居中：两边按较宽的一侧留白，至少 96dp
+        val side = maxOf(start.width, end.width, TOP_BAR_MIN_SIDE.roundToPx())
+        val titleWidth = (constraints.maxWidth - side * 2).coerceAtLeast(0)
+        val title = find(TOP_BAR_TITLE).measure(loose.copy(maxWidth = titleWidth))
+        val height = maxOf(constraints.minHeight, start.height, end.height, title.height)
+        layout(constraints.maxWidth, height) {
+            // 和 Alignment.Center 一样四舍五入，标题的位置不会差 1 像素
+            fun centered(space: Int) = (space + 1) / 2
+            start.placeRelative(0, centered(height - start.height))
+            title.placeRelative(centered(constraints.maxWidth - title.width), centered(height - title.height))
+            end.placeRelative(constraints.maxWidth - end.width, centered(height - end.height))
         }
-        Text(
-            text = title,
-            style = WeTheme.typography.topBarTitle,
-            color = colors.textPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 96.dp),
-        )
-        Row(
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = actions,
-        )
     }
 }
+
+private const val TOP_BAR_START = "start"
+private const val TOP_BAR_TITLE = "title"
+private const val TOP_BAR_END = "end"
+private val TOP_BAR_MIN_SIDE = 96.dp
 
 @Composable
 fun TopBarIcon(
@@ -118,7 +144,7 @@ data class TabItem(
 )
 
 /**
- * 底部 Tab 栏：高 56dp。选中态为实心绿色图标 + 绿字；点击无涟漪。
+ * 底部 Tab 栏：最小高 56dp，字体调大时跟着长高。选中态为实心绿色图标 + 绿字；点击无涟漪。
  */
 @Composable
 fun WeBottomBar(
@@ -137,7 +163,7 @@ fun WeBottomBar(
                 drawLine(colors.divider, Offset.Zero, Offset(size.width, 0f), dimens.dividerThickness.toPx())
             }
             .navigationBarsPadding()
-            .height(dimens.bottomBarHeight),
+            .heightIn(min = dimens.bottomBarHeight),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -147,7 +173,7 @@ fun WeBottomBar(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .height(dimens.bottomBarHeight)
+                    .heightIn(min = dimens.bottomBarHeight)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -176,6 +202,7 @@ fun WeBottomBar(
                     item.label,
                     style = WeTheme.typography.tab,
                     color = tint,
+                    maxLines = 1,
                     modifier = Modifier.padding(top = 2.dp).wrapContentSize(),
                 )
             }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -451,7 +452,7 @@ fun ProviderEditContent(
                         .fillMaxWidth()
                         .background(colors.listBackground)
                         .clickable { confirmDelete = true }
-                        .height(dimens.listRowHeight),
+                        .heightIn(min = dimens.listRowHeight),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(stringResource(R.string.llm_delete_provider), style = WeTheme.typography.listTitle, color = colors.danger)

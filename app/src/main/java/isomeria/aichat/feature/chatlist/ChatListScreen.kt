@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -167,7 +168,7 @@ private fun ConversationRow(
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(dimens.chatRowHeight)
+                .heightIn(min = dimens.chatRowHeight)
                 .background(if (item.pinned) colors.pinnedBackground else colors.listBackground)
                 .pointerInput(Unit) {
                     // 只记录按下位置，用来在手指处弹出菜单，不消费事件

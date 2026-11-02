@@ -93,7 +93,7 @@ internal fun UpdateButton(text: String, color: Color, onClick: () -> Unit, bold:
     Box(
         Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .heightIn(min = 52.dp)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

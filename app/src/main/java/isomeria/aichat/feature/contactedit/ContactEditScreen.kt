@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -243,7 +244,7 @@ fun ContactEditScreen(
                         .fillMaxWidth()
                         .background(colors.listBackground)
                         .clickable { showDelete = true }
-                        .height(dimens.listRowHeight),
+                        .heightIn(min = dimens.listRowHeight),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(stringResource(R.string.contact_delete), style = WeTheme.typography.listTitle, color = colors.danger)
@@ -477,7 +478,9 @@ private fun Stepper(value: Int, onChange: (Int) -> Unit) {
             style = WeTheme.typography.listTitle,
             color = colors.textPrimary,
             textAlign = TextAlign.Center,
-            modifier = Modifier.size(width = 72.dp, height = 32.dp).padding(top = 4.dp),
+            softWrap = false,
+            maxLines = 1,
+            modifier = Modifier.widthIn(min = 72.dp).heightIn(min = 32.dp).padding(top = 4.dp),
         )
         StepButton("+", enabled = value < Contact.MAX_CONTEXT_TOKENS) { onChange(ContextBudgetSteps.increase(value)) }
     }

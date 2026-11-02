@@ -2,6 +2,7 @@ package isomeria.aichat.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -146,7 +148,7 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Box(
         modifier
             .fillMaxWidth()
-            .height(dimens.groupHeaderHeight)
+            .heightIn(min = dimens.groupHeaderHeight)
             .background(WeTheme.colors.pageBackground)
             .padding(horizontal = dimens.horizontalPadding),
         contentAlignment = Alignment.CenterStart,
@@ -194,15 +196,15 @@ fun WeListRow(
             Box(Modifier.size(dimens.listRowAvatar), contentAlignment = Alignment.Center) { leading() }
             Spacer(Modifier.width(dimens.listRowTextStart - dimens.horizontalPadding - dimens.listRowAvatar))
         }
-        // 有值或右侧控件时，标题按自身宽度显示，剩下的宽度全给右侧，让值和控件靠右对齐
-        val hasEnd = value != null || trailing != null
+        // 有值时，标题按自身宽度显示，剩下的宽度全给值，让值靠右对齐
         Text(
             title,
             style = titleStyle,
             color = if (enabled) titleColor else colors.textSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = if (hasEnd) Modifier else Modifier.weight(1f),
+            // 只有右侧控件（如开关）时，标题占满剩下的宽度，太长时换省略号，不压到控件
+            modifier = if (value != null) Modifier else Modifier.weight(1f),
         )
         if (value != null) {
             Text(
@@ -216,7 +218,7 @@ fun WeListRow(
             )
         }
         if (trailing != null) {
-            if (value == null) Spacer(Modifier.weight(1f).widthIn(min = 16.dp)) else Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(if (value == null) 16.dp else 8.dp))
             trailing()
         }
         if (showArrow) {
@@ -242,6 +244,8 @@ fun <T> WeSegmented(
     val colors = WeTheme.colors
     Row(
         modifier
+            // 字体调到最大时可能放不下，可以左右滑动
+            .horizontalScroll(rememberScrollState())
             .clip(RoundedCornerShape(6.dp))
             .background(colors.pageBackground)
             .padding(2.dp),
@@ -265,6 +269,8 @@ fun <T> WeSegmented(
                         active -> colors.brand
                         else -> colors.textTertiary
                     },
+                    softWrap = false,
+                    maxLines = 1,
                 )
             }
         }
@@ -293,7 +299,7 @@ fun WeButton(
     }
     Box(
         modifier
-            .height(dimens.buttonHeight)
+            .heightIn(min = dimens.buttonHeight)
             .clip(RoundedCornerShape(dimens.buttonCorner))
             .background(background)
             .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
@@ -317,7 +323,7 @@ fun WeSmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
     Box(
         modifier
             .padding(end = 8.dp)
-            .height(32.dp)
+            .heightIn(min = 32.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(
                 when {
@@ -334,6 +340,8 @@ fun WeSmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
             text,
             style = WeTheme.typography.small,
             color = if (enabled) Color.White else colors.textSecondary,
+            softWrap = false,
+            maxLines = 1,
         )
     }
 }

@@ -37,6 +37,22 @@ import java.io.File
  * 真机上的导出与恢复：用真实的 Android Keystore 和 PBKDF2，单元测试里这两样都是假的。
  * 只碰内存数据库；恢复前的自动备份会写到测试包所在 App 的 files/backups，只在 debug 包上跑。
  */
+private class MemorySettings : BackupSettingsAccess {
+    private var value = AppSettingsSnapshot(ThemeMode.SYSTEM, FontSize.STANDARD, "", null, true, true, true)
+
+    override fun read(): AppSettingsSnapshot = value
+
+    override fun write(snapshot: AppSettingsSnapshot) {
+        value = snapshot
+    }
+}
+
+private class NoReplies : ReplyControl {
+    override fun cancel(contactId: Long) = Unit
+
+    override suspend fun isActive(contactId: Long): Boolean = false
+}
+
 @RunWith(AndroidJUnit4::class)
 class BackupDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -44,25 +60,12 @@ class BackupDeviceTest {
     private lateinit var db: AppDatabase
     private lateinit var backup: BackupManager
 
-    private val settings = object : BackupSettingsAccess {
-        var value = AppSettingsSnapshot(ThemeMode.SYSTEM, FontSize.STANDARD, "", null, true, true, true)
-        override fun read() = value
-        override fun write(snapshot: AppSettingsSnapshot) {
-            value = snapshot
-        }
-    }
-
-    private val replies = object : ReplyControl {
-        override fun cancel(contactId: Long) = Unit
-        override suspend fun isActive(contactId: Long) = false
-    }
-
     @Before
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .addCallback(AppDatabase.seedCallback)
             .build()
-        backup = BackupManager(context, db, FileStorage(context), cipher, settings, replies)
+        backup = BackupManager(context, db, FileStorage(context), cipher, MemorySettings(), NoReplies())
     }
 
     @After
