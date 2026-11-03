@@ -39,7 +39,7 @@ class ChatRepository @Inject constructor(
     private val paging = ChatPaging(db)
     private val messageActions = ChatMessageActions(db)
     suspend fun chatEntry(contactId: Long, focusId: Long): ChatEntry = paging.entry(contactId, focusId)
-    fun pagedMessages(contactId: Long) = messageDao.pagingByContact(contactId)
+    fun pagedMessages(contactId: Long) = AbsoluteRefreshPagingSource(messageDao.pagingByContact(contactId))
     fun timeline(contactId: Long): Flow<ChatTimeline> = paging.timeline(contactId)
     suspend fun latestVisible(contactId: Long): Message? = messageDao.latestVisible(contactId, System.currentTimeMillis())
     suspend fun newerVisibleCount(contactId: Long, anchor: Message, now: Long): Int =

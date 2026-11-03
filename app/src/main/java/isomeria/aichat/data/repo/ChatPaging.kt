@@ -1,5 +1,7 @@
 package isomeria.aichat.data.repo
 
+import androidx.paging.PagingSource
+import androidx.paging.PagingState
 import androidx.room.withTransaction
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.Message
@@ -9,6 +11,36 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.transformLatest
+
+/**
+ * Room 的分页源把 anchorPosition 当成数据库偏移，但关闭占位后它只是已加载窗口里的下标。
+ * 窗口不在最新一端时（搜索定位、往上翻很远），一次消息表写入就会刷新到错误的位置，列表跳走。
+ * 这里用 Page.itemsBefore 换算成数据库偏移，其余全部交给 Room 生成的分页源。
+ */
+class AbsoluteRefreshPagingSource<V : Any>(private val source: PagingSource<Int, V>) : PagingSource<Int, V>() {
+    init {
+        source.registerInvalidatedCallback(::invalidate)
+        registerInvalidatedCallback(source::invalidate)
+    }
+
+    override val jumpingSupported: Boolean get() = source.jumpingSupported
+    override val keyReuseSupported: Boolean get() = source.keyReuseSupported
+
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, V> = source.load(params)
+
+    override fun getRefreshKey(state: PagingState<Int, V>): Int? {
+        val anchor = state.anchorPosition ?: return null
+        var skipped = 0
+        for (page in state.pages) {
+            if (anchor < skipped + page.data.size) {
+                if (page.itemsBefore == LoadResult.Page.COUNT_UNDEFINED) return null
+                return maxOf(0, page.itemsBefore + (anchor - skipped) - state.config.initialLoadSize / 2)
+            }
+            skipped += page.data.size
+        }
+        return null
+    }
+}
 
 data class ChatEntry(val offset: Int = 0, val targetId: Long = 0)
 data class ChatTimeline(
