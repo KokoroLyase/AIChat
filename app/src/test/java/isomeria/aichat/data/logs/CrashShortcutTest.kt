@@ -21,6 +21,9 @@ class CrashShortcutTest {
         context.resources.getXml(R.xml.shortcuts).use { parser ->
             while (parser.next() != XmlPullParser.END_DOCUMENT) {
                 if (parser.eventType == XmlPullParser.START_TAG && parser.name == "intent") {
+                    // The system shortcut parser consumes a literal package; generic Intent
+                    // parsing in Robolectric alone also resolves references and misses the device bug.
+                    assertEquals(BuildConfig.APPLICATION_ID, parser.getAttributeValue("http://schemas.android.com/apk/res/android", "targetPackage"))
                     val intent = Intent.parseIntent(context.resources, parser, Xml.asAttributeSet(parser))
                     assertEquals(BuildConfig.APPLICATION_ID, intent.component?.packageName)
                     assertEquals("isomeria.aichat.feature.settings.CrashLogsActivity", intent.component?.className)
