@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import isomeria.aichat.data.backup.AppSettingsSnapshot
 import isomeria.aichat.data.backup.BackupManager
 import isomeria.aichat.data.backup.BackupContainer
+import isomeria.aichat.data.backup.BackupFormat
 import isomeria.aichat.data.backup.BackupSettingsAccess
 import isomeria.aichat.data.backup.RestoreMode
 import isomeria.aichat.data.backup.WrongPasswordException
@@ -41,10 +42,15 @@ import java.io.File
  */
 private class MemorySettings : BackupSettingsAccess {
     private var value = AppSettingsSnapshot(ThemeMode.SYSTEM, FontSize.STANDARD, "", null, true, true, true)
+    var failNextWrite = false
 
     override fun read(): AppSettingsSnapshot = value
 
     override fun write(snapshot: AppSettingsSnapshot) {
+        if (failNextWrite) {
+            failNextWrite = false
+            throw java.io.IOException("fixture write failure")
+        }
         value = snapshot
     }
 }
@@ -61,6 +67,7 @@ class BackupDeviceTest {
     private val cipher = KeystoreSecretCipher()
     private lateinit var db: AppDatabase
     private lateinit var backup: BackupManager
+    private val settings = MemorySettings()
 
     @Before
     fun setUp() {
@@ -68,7 +75,7 @@ class BackupDeviceTest {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .addCallback(AppDatabase.seedCallback)
             .build()
-        backup = BackupManager(context, db, FileStorage(context), cipher, MemorySettings(), NoReplies())
+        backup = BackupManager(context, db, FileStorage(context), cipher, settings, NoReplies())
     }
 
     @After
@@ -173,5 +180,112 @@ class BackupDeviceTest {
             assertFalse(plain.exists()); assertFalse(backup.snapshotFile.exists())
             restored.delete()
         } finally { source.delete(); image.delete(); backup.snapshotFile.delete() }
+    }
+
+    private fun writeZip(name: String, manifest: String, data: String): File =
+        File(context.cacheDir, name).also { file ->
+            java.util.zip.ZipOutputStream(file.outputStream()).use { zip ->
+                zip.putNextEntry(java.util.zip.ZipEntry(BackupFormat.MANIFEST)); zip.write(manifest.toByteArray()); zip.closeEntry()
+                zip.putNextEntry(java.util.zip.ZipEntry(BackupFormat.DATA)); zip.write(data.toByteArray()); zip.closeEntry()
+            }
+        }
+
+    @Test
+    fun plainV1AndV2BackupsRestoreThroughTheChainAndDeleteTheSnapshot() = runBlocking {
+        val v1 = writeZip(
+            "legacy-v1-fixture.zip",
+            """{"app":"isomeria.aichat","appVersion":"0.2.0","appVersionCode":200,"formatVersion":1,"exportedAt":1}""",
+            """{"contacts":[{"id":1,"name":"旧一","avatarColor":0,"providerId":1,"model":"deepseek-flash","temperature":1.3,"contextCount":50,"createdAt":1,"updatedAt":1}],
+                "conversations":[{"contactId":1}],
+                "messages":[{"id":1,"contactId":1,"role":"ASSISTANT","type":"TEXT","content":"虚构","status":"SUCCESS","createdAt":1793448000000}],
+                "providers":[{"id":1,"kind":"LLM","provider":"deepseek","baseUrl":"https://api.deepseek.com","defaultModel":"deepseek-flash","models":[{"modelId":"deepseek-flash","displayName":"Flash"}]}]}""",
+        )
+        val v2 = writeZip(
+            "legacy-v2-fixture.zip",
+            """{"app":"isomeria.aichat","appVersion":"0.3.0","appVersionCode":300,"formatVersion":2,"exportedAt":1}""",
+            """{"contacts":[{"id":2,"name":"旧二","avatarColor":0,"providerId":3,"model":"m","temperature":1.0,"contextTokens":4000,"createdAt":1,"updatedAt":1}],
+                "providers":[{"id":3,"kind":"LLM","provider":"openai","name":"虚构","baseUrl":"https://second.example.com/v1","defaultModel":"m","models":[{"modelId":"m"}]}]}""",
+        )
+        try {
+            backup.restore(backup.inspect(v1), RestoreMode.OVERWRITE, null)
+            assertEquals("旧一", db.contactDao().get(1)!!.name)
+            assertEquals(10_000, db.contactDao().get(1)!!.contextTokens)
+            assertEquals(1, db.messageDao().listAll().size)
+            assertFalse(backup.snapshotFile.exists())
+
+            backup.restore(backup.inspect(v2), RestoreMode.OVERWRITE, null)
+            assertEquals("旧二", db.contactDao().get(2)!!.name)
+            assertFalse(backup.snapshotFile.exists())
+        } finally { v1.delete(); v2.delete(); backup.snapshotFile.delete() }
+    }
+
+    @Test
+    fun plainCurrentExportRestores() = runBlocking {
+        val contact = db.contactDao().insert(Contact(name = "明文", avatarColor = 0, providerId = 1, model = "m", createdAt = 1, updatedAt = 1))
+        val output = ByteArrayOutputStream()
+        val summary = backup.export(output, null, includeApiKey = false)
+        assertFalse(summary.encrypted)
+        val file = File(context.cacheDir, "plain-v3-fixture.zip").apply { writeBytes(output.toByteArray()) }
+        try {
+            db.contactDao().delete(contact)
+            val preview = backup.inspect(file)
+            assertFalse(preview.decryptedTemporary)
+            backup.restore(preview, RestoreMode.OVERWRITE, null)
+            assertEquals("明文", db.contactDao().get(contact)!!.name)
+            assertTrue("调用方自己的 zip 不能被删", file.exists())
+            assertFalse(backup.snapshotFile.exists())
+        } finally { file.delete(); backup.snapshotFile.delete() }
+    }
+
+    @Test
+    fun truncatedEncryptedFileIsRefusedWithoutTouchingData() = runBlocking {
+        val files = FileStorage(context)
+        val image = files.newMediaFile(isomeria.aichat.data.repo.MediaKind.IMAGE).apply { writeBytes(ByteArray(300_000).also(java.util.Random(7)::nextBytes)) }
+        val contact = db.contactDao().insert(Contact(name = "截断", avatarColor = 0, providerId = 1, model = "m", createdAt = 1, updatedAt = 1))
+        db.messageDao().insert(isomeria.aichat.data.db.Message(contactId = contact, role = isomeria.aichat.data.db.Role.USER,
+            type = isomeria.aichat.data.db.MessageType.IMAGE, status = isomeria.aichat.data.db.MessageStatus.SUCCESS, imagePath = image.path, createdAt = 1))
+        val output = ByteArrayOutputStream()
+        backup.export(output, "pw123456".toCharArray(), includeApiKey = false)
+        val whole = output.toByteArray()
+        val record = BackupContainer.RECORD_HEADER_BYTES + BackupContainer.CHUNK_BYTES + 16
+        val cuts = listOf(BackupContainer.HEADER_BYTES + record, BackupContainer.HEADER_BYTES + 2 * record, whole.size - 1, BackupContainer.HEADER_BYTES + 10)
+        val before = db.contactDao().listAll()
+        try {
+            for ((index, cut) in cuts.withIndex()) {
+                val file = File(context.cacheDir, "truncated-$index.aichat").apply { writeBytes(whole.copyOf(cut)) }
+                try {
+                    backup.inspect(file, "pw123456".toCharArray())
+                    fail("截断在 $cut 字节的文件不能通过")
+                } catch (_: isomeria.aichat.data.backup.InvalidBackupException) {
+                } catch (_: WrongPasswordException) {
+                } finally { file.delete() }
+                assertEquals(before, db.contactDao().listAll())
+                assertFalse(backup.snapshotFile.exists())
+                assertTrue("不留解密临时文件", files.restoreCacheDir.listFiles().orEmpty().none { it.name.startsWith("decrypted-") })
+            }
+        } finally { image.delete() }
+    }
+
+    @Test
+    fun failureAfterTheTransactionRollsBackAndKeepsTheSnapshot() = runBlocking {
+        val mine = db.contactDao().insert(Contact(name = "本机", avatarColor = 0, providerId = 1, model = "m", createdAt = 1, updatedAt = 1))
+        val other = writeZip(
+            "rollback-fixture.zip",
+            """{"app":"isomeria.aichat","appVersion":"0.4.0","appVersionCode":400,"formatVersion":3,"exportedAt":1}""",
+            """{"contacts":[{"id":50,"name":"备份里的","avatarColor":0,"providerId":3,"model":"m","temperature":1.0,"contextTokens":4000,"createdAt":1,"updatedAt":1}],
+                "providers":[{"id":3,"kind":"LLM","provider":"openai","name":"虚构","baseUrl":"https://second.example.com/v1","defaultModel":"m","models":[{"modelId":"m"}]}]}""",
+        )
+        try {
+            val preview = backup.inspect(other)
+            settings.failNextWrite = true
+            try {
+                backup.restore(preview, RestoreMode.OVERWRITE, null)
+                fail("写设置失败时恢复应该报错")
+            } catch (_: Exception) {
+            }
+            assertEquals("本机", db.contactDao().get(mine)!!.name)
+            assertEquals(null, db.contactDao().get(50))
+            assertTrue("失败时快照要留着", backup.snapshotFile.exists())
+        } finally { other.delete(); backup.snapshotFile.delete() }
     }
 }
