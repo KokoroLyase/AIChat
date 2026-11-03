@@ -8,6 +8,8 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.performScrollTo
 import isomeria.aichat.R
 import isomeria.aichat.data.db.Contact
@@ -245,4 +247,14 @@ class MemoryStatusUiTest {
         assertEquals(1, clearClicks)
         compose.onNodeWithText(text(R.string.memory_empty_title)).assertDoesNotExist()
     }
+
+    private fun readableEmptyCopy(dark: Boolean) {
+        compose.setContent { AIChatTheme(darkTheme = dark) { MemoryContent(base, {}, {}, {}, {}) } }
+        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText(text(R.string.memory_empty_on)).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(results) }
+        val background = (if (dark) isomeria.aichat.ui.theme.DarkWeColors else isomeria.aichat.ui.theme.LightWeColors).listBackground
+        org.junit.Assert.assertTrue("空状态说明文字对比度至少 4.5:1", androidx.core.graphics.ColorUtils.calculateContrast(results.single().layoutInput.style.color.toArgb(), background.toArgb()) >= 4.5)
+    }
+    @Test fun emptyCopyContrastLight() = readableEmptyCopy(false)
+    @Test fun emptyCopyContrastDark() = readableEmptyCopy(true)
 }

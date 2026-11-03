@@ -295,7 +295,7 @@ fun MemoryContent(
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.memory_empty_title), style = WeTheme.typography.listTitle, color = colors.textPrimary)
                     Text(stringResource(if (state.autoMemory) R.string.memory_empty_on else R.string.memory_empty_off),
-                        style = WeTheme.typography.small, color = colors.textSecondary)
+                        style = WeTheme.typography.small, color = colors.textTertiary)
                 }
             } else {
                 state.rows.forEachIndexed { index, row ->
