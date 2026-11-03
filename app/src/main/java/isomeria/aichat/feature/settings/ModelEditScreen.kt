@@ -192,7 +192,7 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
                         change(user.copy(thinking = thinking.copy(efforts = thinking.efforts + NativeEffort(effortValue.trim(), effortLabel.trim()))))
                         effortValue = ""; effortLabel = ""
                     }
-                }, enabled = issue == null)
+                }, enabled = issue == null, showArrow = false)
             }
             SectionHeader(stringResource(R.string.contact_temperature))
             TemperatureForm(stringResource(R.string.temperature_normal), effective.temperature?.normal, onInvalid, note = sourceLabel(user.temperature != null, reported.temperature != null)) {

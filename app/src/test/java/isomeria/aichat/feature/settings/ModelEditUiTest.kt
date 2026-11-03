@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -66,6 +68,20 @@ class ModelEditUiTest {
 
     private fun normalTemperature() = ModelRules.decode(current.userConfig).temperature!!.normal
     private fun efforts() = ModelRules.decode(current.userConfig).thinking!!.efforts.map { it.value }
+
+    @Test fun addEffortActionHasNoNavigationArrow() {
+        page()
+        val pixels = compose.onNodeWithText("添加强度档位").performScrollTo().captureToImage().toPixelMap()
+        // The title ends well before this strip. A navigation chevron would draw here.
+        var colored = 0
+        for (x in (pixels.width * .91f).toInt() until (pixels.width * .96f).toInt()) {
+            for (y in 0 until pixels.height) {
+                val p = pixels[x, y]
+                if (p.red < .97f || p.green < .97f || p.blue < .97f) colored++
+            }
+        }
+        assertEquals("An immediate action must leave the arrow strip empty", 0, colored)
+    }
 
     @Test
     fun conflictButtonsStayOnScreenWithLongList() {
