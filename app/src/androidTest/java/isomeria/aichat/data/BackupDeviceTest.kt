@@ -161,7 +161,7 @@ class BackupDeviceTest {
     }
 
     @Test
-    fun passwordProtectedFileWithoutKeysRestoresImageAndDeletesPlaintext() = runBlocking {
+    fun passwordProtectedFileWithoutKeysRestoresImageAndDeletesPlaintext() = runBlocking<Unit> {
         val files = FileStorage(context)
         val image = files.newMediaFile(isomeria.aichat.data.repo.MediaKind.IMAGE).apply { writeBytes(ByteArray(200_000) { it.toByte() }) }
         val contact = db.contactDao().insert(Contact(name = "fixture", avatarColor = 0, providerId = 1, model = "fixture", createdAt = 1, updatedAt = 1))
@@ -204,7 +204,7 @@ class BackupDeviceTest {
             "legacy-v2-fixture.zip",
             """{"app":"isomeria.aichat","appVersion":"0.3.0","appVersionCode":300,"formatVersion":2,"exportedAt":1}""",
             """{"contacts":[{"id":2,"name":"旧二","avatarColor":0,"providerId":3,"model":"m","temperature":1.0,"contextTokens":4000,"createdAt":1,"updatedAt":1}],
-                "providers":[{"id":3,"kind":"LLM","provider":"openai","name":"虚构","baseUrl":"https://second.example.com/v1","defaultModel":"m","models":[{"modelId":"m"}]}]}""",
+                "providers":[{"id":3,"kind":"LLM","provider":"openai","name":"虚构","baseUrl":"https://second.example.com/v1","defaultModel":"m","models":[{"modelId":"m","displayName":"m"}]}]}""",
         )
         try {
             backup.restore(backup.inspect(v1), RestoreMode.OVERWRITE, null)
@@ -273,7 +273,7 @@ class BackupDeviceTest {
             "rollback-fixture.zip",
             """{"app":"isomeria.aichat","appVersion":"0.4.0","appVersionCode":400,"formatVersion":3,"exportedAt":1}""",
             """{"contacts":[{"id":50,"name":"备份里的","avatarColor":0,"providerId":3,"model":"m","temperature":1.0,"contextTokens":4000,"createdAt":1,"updatedAt":1}],
-                "providers":[{"id":3,"kind":"LLM","provider":"openai","name":"虚构","baseUrl":"https://second.example.com/v1","defaultModel":"m","models":[{"modelId":"m"}]}]}""",
+                "providers":[{"id":3,"kind":"LLM","provider":"openai","name":"虚构","baseUrl":"https://second.example.com/v1","defaultModel":"m","models":[{"modelId":"m","displayName":"m"}]}],"settings":{"nickname":"备份昵称"}}""",
         )
         try {
             val preview = backup.inspect(other)
