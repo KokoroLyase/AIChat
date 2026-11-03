@@ -284,6 +284,7 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     WeButton(stringResource(R.string.restore_pick), onPick, Modifier.width(184.dp))
                 }
+                FootnoteText(stringResource(R.string.restore_pick_hint), Modifier.padding(top = 16.dp))
             } else {
                 BackupInfo(preview)
                 // 加密文件解锁时已经输过密码，内层的 Key 用同一个密码，不再问第二次

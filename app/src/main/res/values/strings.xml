@@ -279,6 +279,7 @@
     <string name="restore_title">恢复数据</string>
     <string name="restore_intro">从导出的 .zip 或 .aichat 文件恢复联系人、聊天记录、记忆、用量统计、服务商和设置。恢复前会临时备份当前数据，失败时自动撤销，成功后删除这份临时备份。</string>
     <string name="restore_pick">选择备份文件</string>
+    <string name="restore_pick_hint">加密文件（.aichat）在系统选择器的“最近”里可能看不到，可以到导出时保存的文件夹里找。</string>
     <string name="restore_pick_again">重新选择</string>
     <string name="restore_reading">正在读取…</string>
     <string name="restore_info_time">导出时间</string>
