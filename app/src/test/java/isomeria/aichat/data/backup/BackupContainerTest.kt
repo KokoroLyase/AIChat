@@ -21,6 +21,15 @@ class BackupContainerTest {
         catch (_: WrongPasswordException) { rejected = true }
         assertTrue("Corrupted container accepted", rejected)
     }
+    @Test fun abortedExportHasNoAuthenticatedFinalChunk() {
+        val output = ByteArrayOutputStream()
+        BackupContainer.encrypting(output, password).run {
+            write(ByteArray(70_000) { it.toByte() })
+            abort()
+            close()
+        }
+        refused(output.toByteArray())
+    }
     @Test fun roundTripsEmptyPartialExactAndMultipleChunks() {
         for (length in listOf(0, 1, 65_535, 65_536, 65_537, 196_615)) {
             val plain = ByteArray(length) { (it * 31).toByte() }

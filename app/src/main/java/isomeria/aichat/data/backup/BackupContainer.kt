@@ -16,6 +16,11 @@ import javax.crypto.spec.SecretKeySpec
 
 class EncryptedPasswordRequiredException : Exception("EncryptedPasswordRequired")
 
+/** [abort] 后关闭不再写认证的最后块：导出途中失败的文件不能被当成完整文件接受。 */
+abstract class AbortableOutputStream : OutputStream() {
+    abstract fun abort()
+}
+
 /** Outer container v1. The authenticated plaintext is the unchanged v3 backup zip. */
 object BackupContainer {
     val MAGIC: ByteArray get() = "AICHATBK".toByteArray(Charsets.US_ASCII)
@@ -41,7 +46,7 @@ object BackupContainer {
     }
 
     /** Owns [output]. Full chunks are non-final; close always adds an authenticated final record. */
-    fun encrypting(output: OutputStream, password: CharArray): OutputStream {
+    fun encrypting(output: OutputStream, password: CharArray): AbortableOutputStream {
         require(password.size >= PasswordCipher.MIN_PASSWORD_LENGTH)
         val salt = ByteArray(SALT_BYTES).also(random::nextBytes)
         val noncePrefix = ByteArray(NONCE_PREFIX_BYTES).also(random::nextBytes)
@@ -109,7 +114,7 @@ object BackupContainer {
     private class EncryptingStream(
         private val output: OutputStream, private val header: ByteArray,
         private val prefix: ByteArray, private val key: ByteArray,
-    ) : OutputStream() {
+    ) : AbortableOutputStream() {
         private val buffer = ByteArray(CHUNK_BYTES)
         private var used = 0
         private var sequence = 0L
@@ -142,6 +147,7 @@ object BackupContainer {
                 sequence++; used = 0
             } catch (error: Throwable) { failed = true; throw error }
         }
+        override fun abort() { failed = true }
         override fun flush() { check(!closed); output.flush() }
         override fun close() {
             if (closed) return

@@ -137,7 +137,15 @@ class BackupManager @Inject constructor(
                 require(!includeApiKey || password != null)
                 val key = if (includeApiKey) KeyExport.Password(requireNotNull(password)) else KeyExport.None
                 val stream = if (password != null) BackupContainer.encrypting(target, password) else target
-                stream.use { writeBackup(it, key).copy(encrypted = password != null) }
+                // writeBackup 的 zip 关闭时只收尾到这一层；成功才写认证的最后块
+                try {
+                    val summary = writeBackup(NonClosingOutputStream(stream), key).copy(encrypted = password != null)
+                    stream.close()
+                    summary
+                } catch (error: Throwable) {
+                    (stream as? AbortableOutputStream)?.abort()
+                    throw error
+                }
             }
         } }
     }
