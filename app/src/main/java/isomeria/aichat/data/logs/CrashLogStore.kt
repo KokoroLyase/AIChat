@@ -4,7 +4,11 @@ import java.io.File
 import java.util.UUID
 
 /** Has no Android, Room or settings dependency; also usable from an uncaught handler. */
-class CrashLogStore(private val directory: File, private val environment: String) {
+class CrashLogStore(
+    private val directory: File,
+    private val environment: String,
+    private val exportDirectory: File? = null,
+) {
     @Synchronized
     fun record(error: Throwable, time: Long = System.currentTimeMillis()): File =
         write(time, "JAVA", safeStack(error))
@@ -37,7 +41,14 @@ class CrashLogStore(private val directory: File, private val environment: String
     }
 
     @Synchronized fun read(name: String): String = resolve(name).readText(Charsets.UTF_8)
-    @Synchronized fun clear() { list().forEach { check(it.delete()) } }
+    @Synchronized fun clear() {
+        list().forEach { check(it.delete()) }
+        exportDirectory?.takeIf { it.exists() }?.let { exports ->
+            check(exports.isDirectory)
+            (exports.listFiles() ?: throw java.io.IOException("ExportDirectoryUnavailable"))
+                .forEach { check(it.delete()) }
+        }
+    }
     private fun resolve(name: String): File {
         require(NAME.matches(name))
         return File(directory, name)

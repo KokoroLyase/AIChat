@@ -61,11 +61,12 @@ class StorageFilesTest {
         val camera = file(cacheDir, "camera/stale.jpg")
         val update = file(cacheDir, "updates/stale.apk")
         val restore = file(cacheDir, "restore/stale.zip")
+        val export = file(cacheDir, "crash-exports/crash.txt")
         val other = file(cacheDir, "unrelated/keep")
         val result = storage.clearRegenerableCacheDirectories()
-        assertEquals(3, result.count)
+        assertEquals(4, result.count)
         listOf(image, avatar, log, snapshot, pinned, other).forEach { assertTrue(it.exists()) }
-        listOf(camera, update, restore).forEach { assertFalse(it.exists()) }
+        listOf(camera, update, restore, export).forEach { assertFalse(it.exists()) }
         StorageOperations.unpin(pinned)
     }
     @Test fun privateDeletionCannotRemoveSiblingDirectoryFiles() {

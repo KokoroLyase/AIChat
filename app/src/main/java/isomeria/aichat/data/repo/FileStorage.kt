@@ -117,7 +117,7 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         var count = 0
         var bytes = 0L
         val pinned = StorageOperations.pinnedPaths()
-        for (name in listOf("camera", "updates", "restore")) {
+        for (name in listOf("camera", "updates", "restore", isomeria.aichat.data.logs.CrashLogs.EXPORT_DIRECTORY)) {
             val dir = File(context.cacheDir, name)
             check(dir.canonicalPath.startsWith(context.cacheDir.canonicalPath + File.separator))
             for (file in storageFiles(dir)) {

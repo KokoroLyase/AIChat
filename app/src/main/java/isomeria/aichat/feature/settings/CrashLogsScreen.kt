@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -63,7 +65,7 @@ class CrashLogsViewModel @Inject constructor(@ApplicationContext private val con
     }
     fun export(share: (File) -> Unit) = work {
         val name = state.value.selected ?: return@work
-        val directory = File(context.cacheDir, "crash-exports").apply { mkdirs() }
+        val directory = File(context.cacheDir, CrashLogs.EXPORT_DIRECTORY).apply { mkdirs() }
         directory.listFiles().orEmpty().forEach { it.delete() }
         val target = File(directory, "crash.txt").apply { writeText(store.read(name)) }
         withContext(Dispatchers.Main) { share(target) }
@@ -98,6 +100,11 @@ fun CrashLogsScreen(onBack: () -> Unit, viewModel: CrashLogsViewModel = hiltView
 @Composable
 private fun crashLogTitle(name: String): String {
     val millis = name.substringBefore('-').toLongOrNull() ?: return name
+    return crashLogTime(millis)
+}
+
+@Composable
+private fun crashLogTime(millis: Long): String {
     val time = remember(millis) { Calendar.getInstance().apply { timeInMillis = millis } }
     return stringResource(
         R.string.time_full,
@@ -107,6 +114,26 @@ private fun crashLogTitle(name: String): String {
         time.get(Calendar.HOUR_OF_DAY),
         time.get(Calendar.MINUTE),
     )
+}
+
+/** Presentation only: the stored/exported text remains byte-for-byte unchanged. */
+@Composable
+internal fun CrashLogDetail(raw: String) {
+    val millis = remember(raw) { raw.lineSequence().firstOrNull()?.removePrefix("time=")?.toLongOrNull() }
+    val display = if (millis != null) {
+        stringResource(R.string.crash_detail_time, crashLogTime(millis)) + "\n" + raw.substringAfter('\n', "")
+    } else raw
+    SelectionContainer {
+        Text(
+            display,
+            Modifier.fillMaxWidth().background(WeTheme.colors.listBackground)
+                .horizontalScroll(rememberScrollState()).padding(WeTheme.dimens.horizontalPadding),
+            color = WeTheme.colors.textPrimary,
+            style = WeTheme.typography.small.copy(fontFamily = FontFamily.Monospace),
+            softWrap = false,
+        )
+    }
+    FootnoteText(stringResource(R.string.crash_detail_scroll))
 }
 
 @Composable
@@ -128,14 +155,7 @@ fun CrashLogsContent(
             when {
                 state.loading -> FootnoteText(stringResource(R.string.local_loading))
                 state.detail != null -> {
-                    SelectionContainer {
-                        Text(
-                            state.detail,
-                            Modifier.fillMaxWidth().background(colors.listBackground).padding(WeTheme.dimens.horizontalPadding),
-                            color = colors.textPrimary,
-                            style = WeTheme.typography.small,
-                        )
-                    }
+                    CrashLogDetail(state.detail)
                     GroupSpacer()
                     WeListRow(stringResource(R.string.crash_export), enabled = !state.busy, onClick = onExport, showArrow = false)
                 }

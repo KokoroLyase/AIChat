@@ -10,9 +10,11 @@ import isomeria.aichat.BuildConfig
 import java.io.File
 
 object CrashLogs {
+    const val EXPORT_DIRECTORY = "crash-exports"
     fun store(context: Context) = CrashLogStore(
         File(context.filesDir, "logs"),
         "app=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\ndevice=${Build.MODEL.replace('\n', '_')}\nandroid=${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT})",
+        File(context.cacheDir, EXPORT_DIRECTORY),
     )
 
     fun install(context: Context) {
