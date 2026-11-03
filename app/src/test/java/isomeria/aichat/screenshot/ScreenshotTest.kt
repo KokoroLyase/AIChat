@@ -555,4 +555,24 @@ class ScreenshotTest {
         }
         captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
+
+    @Test fun contextInputLight() = shot("48-context-input", false) { isomeria.aichat.feature.contactedit.ContextBudgetRow(200000, {}) }
+    @Test fun contextInputDark() = shot("48-context-input", true) { isomeria.aichat.feature.contactedit.ContextBudgetRow(200000, {}) }
+    @Test fun contextInputLarge() = large("48-context-input-large", false) { isomeria.aichat.feature.contactedit.ContextBudgetRow(200000, {}) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contextInputNarrow() = large("48-context-input-narrow", true) { isomeria.aichat.feature.contactedit.ContextBudgetRow(200000, {}) }
+    @Test fun contextInvalid() = shot("48-context-invalid", false) { isomeria.aichat.feature.contactedit.ContextBudgetRow(4000, {}, "") }
+    private val emptyMemory = memorySettings.copy(rows = emptyList(), backlog = 0, task = MemoryTaskState())
+    @Test fun emptyMemoryLight() = shot("49-memory-empty", false) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
+    @Test fun emptyMemoryDark() = shot("49-memory-empty", true) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
+    @Test fun emptyMemoryLarge() {
+        large("49-memory-empty-large", false) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
+        compose.onNodeWithText(isomeria.aichat.R.string.memory_empty_on.let { org.robolectric.RuntimeEnvironment.getApplication().getString(it) }).performScrollTo()
+        compose.onRoot().captureRoboImage("screenshots/49-memory-empty-large-light.png")
+    }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun emptyMemoryNarrow() {
+        large("49-memory-empty-narrow", true) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
+        compose.onNodeWithText(isomeria.aichat.R.string.memory_empty_on.let { org.robolectric.RuntimeEnvironment.getApplication().getString(it) }).performScrollTo()
+        compose.onRoot().captureRoboImage("screenshots/49-memory-empty-narrow-dark.png")
+    }
+    @Test fun emptyMemoryOff() = shot("49-memory-empty-off", false) { MemoryContent(emptyMemory.copy(autoMemory = false), {}, {}, {}, {}) }
 }

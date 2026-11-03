@@ -50,11 +50,13 @@ class MemoryStatusUiTest {
 
     private var providerOpened = -1L
     private var modelOpened: Pair<Long, String>? = null
+    private var openedMemory: Long? = null
+    private var clearClicks = 0
     private var summarizeClicks = 0
 
     private fun page(state: MemoryListState) = compose.setContent {
         AIChatTheme(darkTheme = false) {
-            MemoryContent(state, {}, {}, { summarizeClicks++ }, {}, onOpenProvider = { providerOpened = it },
+            MemoryContent(state, {}, { openedMemory = it }, { summarizeClicks++ }, { clearClicks++ }, onOpenProvider = { providerOpened = it },
                 onOpenModel = { id, model -> modelOpened = id to model })
         }
     }
@@ -163,7 +165,7 @@ class MemoryStatusUiTest {
         page(base)
         compose.onNodeWithText("可用模型").assertExists()
         compose.onNodeWithText(text(R.string.memory_section_settings)).assertExists()
-        compose.onNodeWithText(text(R.string.memory_section_list)).performScrollTo().assertExists()
+        compose.onNodeWithText(text(R.string.memory_section_empty)).performScrollTo().assertExists()
     }
 
     @Test
@@ -218,5 +220,29 @@ class MemoryStatusUiTest {
         compose.onNodeWithText(app.getString(R.string.memory_backlog_count, 5)).assertExists()
         compose.onNode(hasText(text(R.string.memory_backlog)) and hasClickAction()).performScrollTo().assertIsEnabled().performClick()
         assertEquals(1, summarizeClicks)
+    }
+
+    @Test fun emptyMemoryIsCompactAndHonest() {
+        page(base)
+        compose.onNodeWithText(text(R.string.memory_empty_title)).assertExists()
+        compose.onNodeWithText(text(R.string.memory_empty_on)).assertExists()
+        compose.onNodeWithText(text(R.string.memory_section_list)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.memory_hint)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.memory_clear)).assertDoesNotExist()
+    }
+    @Test fun emptyMemoryOffDoesNotPromiseAutomaticSummary() {
+        page(base.copy(autoMemory = false))
+        compose.onNodeWithText(text(R.string.memory_empty_off)).assertExists()
+        compose.onNodeWithText(text(R.string.memory_empty_on)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.memory_hint_off)).assertDoesNotExist()
+    }
+    @Test fun existingMemoryKeepsContentAndActions() {
+        page(base.copy(rows = listOf(MemoryRow(1, "今天", "虚构记忆", false))))
+        compose.onNodeWithText("虚构记忆").performClick()
+        assertEquals(1L, openedMemory)
+        compose.onNodeWithText(text(R.string.memory_hint)).assertExists()
+        compose.onNodeWithText(text(R.string.memory_clear)).performScrollTo().performClick()
+        assertEquals(1, clearClicks)
+        compose.onNodeWithText(text(R.string.memory_empty_title)).assertDoesNotExist()
     }
 }

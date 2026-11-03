@@ -357,7 +357,6 @@
     <!-- 长期记忆 -->
     <string name="memory_title">记忆</string>
     <string name="memory_count">%1$d 条</string>
-    <string name="memory_empty">还没有记忆。聊得多了，较早的聊天会自动总结到这里</string>
     <string name="memory_hint">每次请求都会带上这些记忆，最多占上下文上限的四分之一。超出时最早的、没改过的记忆会被合并。</string>
     <string name="memory_hint_off">这个联系人关闭了自动记忆，不再生成新的记忆，已有的记忆仍会带上。可以在联系人编辑页打开。</string>
     <string name="memory_edited">已修改</string>
@@ -609,4 +608,9 @@
     <string name="restore_encrypted_notice">这个文件已加密，输入导出时设的密码后才能查看和恢复。忘记密码无法恢复。</string>
     <string name="restore_unlock">解锁</string>
     <string name="restore_cleanup_pending">数据已恢复，但有临时文件没能删除。可以在“存储空间”里清理缓存；恢复前的临时备份会在下次恢复成功后删除。</string>
+    <string name="contact_context_invalid">请输入 1000～200000 的整数</string>
+    <string name="memory_section_empty">记忆内容</string>
+    <string name="memory_empty_title">暂无记忆</string>
+    <string name="memory_empty_on">较早的聊天会自动总结到这里。</string>
+    <string name="memory_empty_off">自动记忆已关闭，可在联系人编辑页开启。</string>
 </resources>

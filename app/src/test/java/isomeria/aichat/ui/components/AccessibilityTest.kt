@@ -138,7 +138,7 @@ class AccessibilityTest {
 
     @Test
     fun stepperButtonsAre48dpAndNamed() {
-        compose.setContent { AIChatTheme(darkTheme = false) { ContextBudgetRow(isomeria.aichat.data.db.Contact.DEFAULT_CONTEXT_TOKENS) {} } }
+        compose.setContent { AIChatTheme(darkTheme = false) { ContextBudgetRow(isomeria.aichat.data.db.Contact.DEFAULT_CONTEXT_TOKENS, {}) } }
         listOf(R.string.contact_context_decrease, R.string.contact_context_increase).forEach {
             val bounds = compose.onNodeWithContentDescription(app.getString(it)).assertHasClickAction().assertIsEnabled().getBoundsInRoot()
             assertTrue("${bounds.width}x${bounds.height}", bounds.width >= 48.dp && bounds.height >= 48.dp)
@@ -147,7 +147,7 @@ class AccessibilityTest {
 
     @Test
     fun stepperButtonIsDisabledAtTheLimit() {
-        compose.setContent { AIChatTheme(darkTheme = false) { ContextBudgetRow(isomeria.aichat.data.db.Contact.MIN_CONTEXT_TOKENS) {} } }
+        compose.setContent { AIChatTheme(darkTheme = false) { ContextBudgetRow(isomeria.aichat.data.db.Contact.MIN_CONTEXT_TOKENS, {}) } }
         compose.onNodeWithContentDescription(app.getString(R.string.contact_context_decrease)).assertIsNotEnabled()
         compose.onNodeWithContentDescription(app.getString(R.string.contact_context_increase)).assertIsEnabled()
     }

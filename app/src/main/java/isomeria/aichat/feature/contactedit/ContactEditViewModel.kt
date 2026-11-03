@@ -59,11 +59,17 @@ data class ContactEditState(
     val original: ContactForm? = null,
     val showNameError: Boolean = false,
     val showModelError: Boolean = false,
+    val contextInput: String = form.contextTokens.toString(),
+    val contextFocusRequest: Int = 0,
     /** 正在裁剪的图片 */
     val cropSource: Bitmap? = null,
 ) {
-    val dirty: Boolean get() = loaded && form != original
+    val dirty: Boolean get() = loaded && (form != original || contextInput != form.contextTokens.toString())
 }
+
+/** 输入草稿不强制截断或钳位，避免把用户的数字改成另一个值。 */
+internal fun parseContextInput(text: String): Int? = text.takeIf { it.isNotEmpty() && it.all { c -> c in '0'..'9' } }
+    ?.toIntOrNull()?.takeIf { it in Contact.MIN_CONTEXT_TOKENS..Contact.MAX_CONTEXT_TOKENS }
 
 /**
  * 模型是否挡住保存。已有联系人没换模型时不挡：改名、改提示词不用先修模型，
@@ -142,6 +148,18 @@ class ContactEditViewModel @Inject constructor(
         _state.update { it.copy(form = transform(it.form), showNameError = false) }
     }
 
+    fun setContextInput(text: String) {
+        if (text.any { it !in '0'..'9' }) return
+        _state.update { state -> state.copy(contextInput = text,
+            form = parseContextInput(text)?.let { state.form.copy(contextTokens = it) } ?: state.form) }
+    }
+
+    fun setContextValue(value: Int) = setContextInput(value.toString())
+
+    fun finishContextInput() {
+        _state.update { state -> parseContextInput(state.contextInput)?.let { state.copy(contextInput = it.toString()) } ?: state }
+    }
+
     fun setName(name: String) = update { it.copy(name = name.take(Contact.NAME_MAX_LENGTH)) }
 
     /** 换服务商：模型换成它的默认模型（没有时用列表里的第一个） */
@@ -196,6 +214,11 @@ class ContactEditViewModel @Inject constructor(
 
     /** 保存。名称为空或没选模型时提示，返回 null；成功时返回联系人 id。 */
     suspend fun save(): Long? {
+        if (parseContextInput(_state.value.contextInput) == null) {
+            _state.update { it.copy(contextFocusRequest = it.contextFocusRequest + 1) }
+            return null
+        }
+        finishContextInput()
         val form = _state.value.form
         val name = form.name.trim()
         if (name.isEmpty()) {

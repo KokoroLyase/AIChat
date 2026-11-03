@@ -278,7 +278,7 @@ fun MemoryContent(
                 MemoryTaskFeedback(state.task)
             }
 
-            SectionHeader(stringResource(R.string.memory_section_list))
+            SectionHeader(stringResource(if (state.rows.isEmpty()) R.string.memory_section_empty else R.string.memory_section_list))
             // 入口放在列表上面：记忆多的时候不用翻到底，也离任务状态近
             if (state.backlog > 0) {
                 ConfigActionRow(
@@ -290,13 +290,13 @@ fun MemoryContent(
                 )
             }
             if (state.rows.isEmpty()) {
-                Text(
-                    stringResource(R.string.memory_empty),
-                    style = WeTheme.typography.small,
-                    color = colors.textTertiary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = dimens.horizontalPadding, vertical = 48.dp),
-                )
+                Column(Modifier.fillMaxWidth().background(colors.listBackground)
+                    .padding(horizontal = dimens.horizontalPadding, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.memory_empty_title), style = WeTheme.typography.listTitle, color = colors.textPrimary)
+                    Text(stringResource(if (state.autoMemory) R.string.memory_empty_on else R.string.memory_empty_off),
+                        style = WeTheme.typography.small, color = colors.textSecondary)
+                }
             } else {
                 state.rows.forEachIndexed { index, row ->
                     Column(
@@ -328,7 +328,7 @@ fun MemoryContent(
                 }
             }
 
-            FootnoteText(
+            if (state.rows.isNotEmpty()) FootnoteText(
                 stringResource(if (state.autoMemory) R.string.memory_hint else R.string.memory_hint_off),
             )
 

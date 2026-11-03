@@ -22,6 +22,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -211,7 +228,8 @@ fun ContactEditScreen(
             FootnoteText(stringResource(R.string.contact_prompt_hint))
 
             GroupSpacer()
-            ContextBudgetRow(form.contextTokens) { n -> viewModel.update { it.copy(contextTokens = n) } }
+            ContextBudgetRow(form.contextTokens, viewModel::setContextValue, state.contextInput,
+                viewModel::setContextInput, viewModel::finishContextInput, state.contextFocusRequest)
             WeListRow(
                 title = stringResource(R.string.contact_split),
                 showArrow = false,
@@ -369,7 +387,10 @@ private fun InlineField(value: String, onValueChange: (String) -> Unit, hint: St
 }
 
 @Composable
-internal fun ContextBudgetRow(value: Int, onChange: (Int) -> Unit) {
+internal fun ContextBudgetRow(value: Int, onChange: (Int) -> Unit,
+    input: String = value.toString(), onInput: (String) -> Unit = { parseContextInput(it)?.let(onChange) },
+    onFinish: () -> Unit = {}, focusRequest: Int = 0,
+) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     Column(
@@ -378,15 +399,26 @@ internal fun ContextBudgetRow(value: Int, onChange: (Int) -> Unit) {
             .background(colors.listBackground)
             .padding(horizontal = dimens.horizontalPadding, vertical = 12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Layout(content = {
             Text(
                 stringResource(R.string.contact_context_tokens),
                 style = WeTheme.typography.listTitle,
                 color = colors.textPrimary,
-                modifier = Modifier.weight(1f),
             )
-            Stepper(value, onChange)
+            Stepper(input, onInput, onFinish, focusRequest, onChange)
+        }) { measurables, constraints ->
+            val loose = constraints.copy(minWidth = 0, minHeight = 0)
+            val title = measurables[0].measure(loose)
+            val control = measurables[1].measure(loose)
+            val gap = 8.dp.roundToPx()
+            val stacked = title.width + control.width + gap > constraints.maxWidth
+            val height = if (stacked) title.height + gap + control.height else maxOf(title.height, control.height)
+            layout(constraints.maxWidth, height) {
+                title.placeRelative(0, if (stacked) 0 else (height - title.height) / 2)
+                control.placeRelative(constraints.maxWidth - control.width, if (stacked) title.height + gap else (height - control.height) / 2)
+            }
         }
+        if (parseContextInput(input) == null) ErrorNote(stringResource(R.string.contact_context_invalid))
         Text(
             stringResource(R.string.contact_context_tokens_hint),
             style = WeTheme.typography.listTime,
@@ -397,8 +429,27 @@ internal fun ContextBudgetRow(value: Int, onChange: (Int) -> Unit) {
 }
 
 @Composable
-private fun Stepper(value: Int, onChange: (Int) -> Unit) {
+private fun Stepper(input: String, onInput: (String) -> Unit, onFinish: () -> Unit, focusRequest: Int, onChange: (Int) -> Unit) {
     val colors = WeTheme.colors
+    val value = parseContextInput(input)
+    val focus = remember { FocusRequester() }
+    val bring = remember { BringIntoViewRequester() }
+    val manager = LocalFocusManager.current
+    var field by remember { mutableStateOf(TextFieldValue(input)) }
+    var focused by remember { mutableStateOf(false) }
+    // 首次触摸的光标定位会晚于焦点回调；等该帧结束再全选。
+    LaunchedEffect(focused) {
+        if (focused) {
+            androidx.compose.runtime.withFrameNanos { }
+            field = field.copy(selection = TextRange(0, field.text.length))
+        }
+    }
+    val label = stringResource(R.string.contact_context_tokens)
+    val style = WeTheme.typography.listTitle.copy(color = colors.textPrimary, textAlign = TextAlign.Center)
+    val measured = rememberTextMeasurer().measure("200000", style).size.width
+    val fieldWidth = with(LocalDensity.current) { measured.toDp() } + 16.dp
+    LaunchedEffect(input) { if (field.text != input) field = TextFieldValue(input, TextRange(input.length)) }
+    LaunchedEffect(focusRequest) { if (focusRequest > 0) { bring.bringIntoView(); focus.requestFocus() } }
     Row(
         // 按钮的点击区是 48dp，看到的灰底仍是原来的高度；字放大后灰底跟着变高
         Modifier.drawBehind {
@@ -408,17 +459,22 @@ private fun Stepper(value: Int, onChange: (Int) -> Unit) {
         },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StepButton("−", stringResource(R.string.contact_context_decrease), enabled = value > Contact.MIN_CONTEXT_TOKENS) { onChange(ContextBudgetSteps.decrease(value)) }
-        Text(
-            value.toString(),
-            style = WeTheme.typography.listTitle,
-            color = colors.textPrimary,
-            textAlign = TextAlign.Center,
-            softWrap = false,
-            maxLines = 1,
-            modifier = Modifier.widthIn(min = 48.dp),
+        StepButton("−", stringResource(R.string.contact_context_decrease), enabled = value != null && value > Contact.MIN_CONTEXT_TOKENS) { value?.let { onChange(ContextBudgetSteps.decrease(it)) } }
+        BasicTextField(
+            value = field,
+            onValueChange = { next -> if (next.text.all { it in '0'..'9' }) { field = next; onInput(next.text) } },
+            singleLine = true,
+            textStyle = style,
+            cursorBrush = SolidColor(colors.brand),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { onFinish(); if (value != null) manager.clearFocus() }),
+            modifier = Modifier.widthIn(min = 48.dp, max = fieldWidth).heightIn(min = 48.dp)
+                .focusRequester(focus).bringIntoViewRequester(bring)
+                .onFocusChanged { focused = it.isFocused; if (!it.isFocused) onFinish() }
+                .semantics { contentDescription = label },
+            decorationBox = { inner -> Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) { inner() } },
         )
-        StepButton("+", stringResource(R.string.contact_context_increase), enabled = value < Contact.MAX_CONTEXT_TOKENS) { onChange(ContextBudgetSteps.increase(value)) }
+        StepButton("+", stringResource(R.string.contact_context_increase), enabled = value != null && value < Contact.MAX_CONTEXT_TOKENS) { value?.let { onChange(ContextBudgetSteps.increase(it)) } }
     }
 }
 
