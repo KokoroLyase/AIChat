@@ -185,6 +185,8 @@ fun WeListRow(
     enabled: Boolean = true,
     /** 可展开的行：null 表示不是，展开后箭头朝下 */
     expanded: Boolean? = null,
+    /** 标题最多几行；只有时间这类不能截断的标题才放宽 */
+    titleMaxLines: Int = 1,
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -216,7 +218,7 @@ fun WeListRow(
             title,
             style = titleStyle,
             color = if (enabled) titleColor else colors.textSecondary,
-            maxLines = 1,
+            maxLines = titleMaxLines,
             overflow = TextOverflow.Ellipsis,
             // 只有右侧控件（如开关）时，标题占满剩下的宽度，太长时换省略号，不压到控件
             modifier = if (value != null) Modifier else Modifier.weight(1f),

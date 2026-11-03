@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Contacts
@@ -91,6 +92,16 @@ class ScreenshotTest {
         compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
 
+    /** App 内特大（1.25）叠加 JVM 大字体（2.0）：手机系统字体不改，极端情况用这里看 */
+    private fun large(name: String, dark: Boolean, content: @Composable () -> Unit) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark, fontScale = 2.5f) {
+                Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) { content() }
+            }
+        }
+        compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+
     @Composable
     private fun WithTabs(selected: Int, unread: Int = 0, content: @Composable () -> Unit) {
         Column(Modifier.fillMaxSize()) {
@@ -120,8 +131,30 @@ class ScreenshotTest {
 
     @Test fun chatListLight() = shot("1-chatlist", false) { ChatList() }
 
-    @Test fun crashLogsLight() = shot("40-crash-logs", false) { CrashLogsContent(CrashLogsState(loading = false, names = listOf("fixture.txt")), {}, {}, {}, {}, {}) }
-    @Test fun crashLogsDark() = shot("40-crash-logs", true) { CrashLogsContent(CrashLogsState(loading = false), {}, {}, {}, {}, {}) }
+    private val crashNames = listOf(
+        "1793664000000-00000000-0000-0000-0000-000000000001.txt",
+        "1793577600000-00000000-0000-0000-0000-000000000002.txt",
+        "1793491200000-00000000-0000-0000-0000-000000000003.txt",
+    )
+    private val crashDetail = "time=1793664000000\napp=0.4.0-perf (400)\ndevice=Fixture Phone\nandroid=16 (36)\nkind=JAVA\njava.lang.IllegalStateException\n" +
+        (1..24).joinToString("\n") { "  at isomeria.aichat.feature.chat.VeryLongFixtureClassNameForWrapping\$\$ExternalSyntheticLambda$it.invoke(ChatViewModel.kt:${100 + it})" }
+    @Test fun crashLogsLight() = shot("40-crash-logs", false) { CrashLogsContent(CrashLogsState(loading = false, names = crashNames), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsDark() = shot("40-crash-logs", true) { CrashLogsContent(CrashLogsState(loading = false, names = crashNames), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsEmptyLight() = shot("40-crash-empty", false) { CrashLogsContent(CrashLogsState(loading = false), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsEmptyDark() = shot("40-crash-empty", true) { CrashLogsContent(CrashLogsState(loading = false), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsDetailLongDark() = shot("40-crash-detail-long", true) { CrashLogsContent(CrashLogsState(loading = false, selected = "fixture", detail = crashDetail), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsDetailLongLight() = shot("40-crash-detail-long", false) { CrashLogsContent(CrashLogsState(loading = false, selected = "fixture", detail = crashDetail), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsFailureLight() = shot("40-crash-failure", false) { CrashLogsContent(CrashLogsState(loading = false, failed = true), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsLoadingDark() = shot("40-crash-loading", true) { CrashLogsContent(CrashLogsState(), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsCompletedLight() = shot("40-crash-completed", false) { CrashLogsContent(CrashLogsState(loading = false, completed = true), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsLargeLight() = large("40-crash-large", false) { CrashLogsContent(CrashLogsState(loading = false, names = crashNames), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsLargeDark() = large("40-crash-detail-large", true) { CrashLogsContent(CrashLogsState(loading = false, selected = "fixture", detail = crashDetail), {}, {}, {}, {}, {}) }
+    @Test fun crashClearConfirm() {
+        compose.setContent { AIChatTheme(darkTheme = false) { CrashLogsContent(CrashLogsState(loading = false, names = crashNames), {}, {}, {}, {}, {}) } }
+        compose.onNodeWithText("清空崩溃日志").performClick()
+        compose.waitForIdle()
+        captureScreenRoboImage("screenshots/40-crash-clear-confirm-light.png")
+    }
     @Test fun crashLogsLoading() = shot("40-crash-loading", false) { CrashLogsContent(CrashLogsState(), {}, {}, {}, {}, {}) }
     @Test fun crashLogsFailure() = shot("40-crash-failure", true) { CrashLogsContent(CrashLogsState(loading = false, failed = true), {}, {}, {}, {}, {}) }
     @Test fun crashLogsDetail() = shot("40-crash-detail", false) { CrashLogsContent(CrashLogsState(loading = false, selected = "fixture", detail = "java.lang.IllegalStateException\n at fixture.App.run(App.kt:42)"), {}, {}, {}, {}, {}) }
@@ -147,6 +180,31 @@ class ScreenshotTest {
     @Test fun restoreCompleted() = backupDialogShot("44-restore-completed", true) { RestoreSample(RestoreUiState(done = RestoreSummary(2, 1000, true))) }
     @Test fun restoreCleanupPending() = backupDialogShot("44-restore-cleanup-pending", false) { RestoreSample(RestoreUiState(done = RestoreSummary(2, 1000, true, cleanupPending = true))) }
     @Test fun restoreInvalidFile() = backupDialogShot("44-restore-invalid", true) { RestoreSample(RestoreUiState(error = RestoreError.Invalid)) }
+    private fun sampleBackupPreview(decrypted: Boolean, keyEncrypted: Boolean) = BackupPreview(
+        java.io.File("fixture.zip"),
+        BackupManifest(appVersion = "0.4.0", appVersionCode = 400, formatVersion = 3, exportedAt = 1793664000000, includesApiKey = keyEncrypted, contactCount = 2, messageCount = 1000, imageCount = 2),
+        BackupData(providers = if (keyEncrypted) listOf(ProviderDto(1, ProviderKind.LLM, "deepseek", baseUrl = "https://example.invalid", defaultModel = "fixture", apiKey = SecretDto(SecretDto.SCHEME_PASSWORD, data = "fixture"))) else emptyList()),
+        decryptedTemporary = decrypted,
+    )
+    // 解锁后的加密文件不再问第二次密码
+    @Test fun restoreUnlockedPreviewLight() = shot("44-restore-unlocked", false) { RestoreSample(RestoreUiState(preview = sampleBackupPreview(decrypted = true, keyEncrypted = true), password = "123456")) }
+    @Test fun restoreUnlockedPreviewDark() = shot("44-restore-unlocked", true) { RestoreSample(RestoreUiState(preview = sampleBackupPreview(decrypted = true, keyEncrypted = true), password = "123456")) }
+    // 只加密 Key 的旧备份仍然在预览页单独输密码
+    @Test fun restoreLegacyPreviewLight() = shot("44-restore-legacy-key", false) { RestoreSample(RestoreUiState(preview = sampleBackupPreview(decrypted = false, keyEncrypted = true), wrongPassword = true)) }
+    @Test fun restoreLegacyPreviewDark() = shot("44-restore-legacy-key", true) { RestoreSample(RestoreUiState(preview = sampleBackupPreview(decrypted = false, keyEncrypted = true))) }
+    @Test fun restoreWrongPasswordDark() = shot("44-restore-password-failed", true) { RestoreSample(RestoreUiState(locked = true, password = "123456", wrongPassword = true)) }
+    @Test fun restorePickLight() = shot("44-restore-pick", false) { RestoreSample(RestoreUiState()) }
+    @Test fun restorePickDark() = shot("44-restore-pick", true) { RestoreSample(RestoreUiState()) }
+    @Test fun restoreLockedLargeLight() = large("44-restore-locked-large", false) { RestoreSample(RestoreUiState(locked = true, password = "123456", wrongPassword = true)) }
+    @Test fun restoreLockedLargeDark() = large("44-restore-locked-large", true) { RestoreSample(RestoreUiState(locked = true)) }
+    @Test fun restoreCleanupPendingDark() = backupDialogShot("44-restore-cleanup-pending", true) { RestoreSample(RestoreUiState(done = RestoreSummary(2, 1000, true, cleanupPending = true))) }
+    @Test fun exportPlainDark() = shot("43-export-plain", true) { ExportSample(ExportUiState()) }
+    @Test fun exportProtectedLight() = shot("43-export-protected", false) { ExportSample(ExportUiState(password = "123456", confirm = "123456")) }
+    @Test fun exportIncludesKeysDark() = shot("43-export-keys", true) { ExportSample(ExportUiState(hasApiKey = true, includeKey = true, password = "123456", confirm = "123456")) }
+    @Test fun exportMismatchLight() = shot("43-export-mismatch", false) { ExportSample(ExportUiState(password = "123456", confirm = "654321", errorRes = isomeria.aichat.R.string.export_password_mismatch)) }
+    @Test fun exportPlainCompletedLight() = backupDialogShot("43-export-completed-plain", false) { ExportSample(ExportUiState(result = ExportSummary(2, 1000, 2, false, encrypted = false))) }
+    @Test fun exportLargeLight() = large("43-export-large", false) { ExportSample(ExportUiState(hasApiKey = true, includeKey = true, password = "123", confirm = "", errorRes = isomeria.aichat.R.string.export_password_mismatch)) }
+    @Test fun exportLargeDark() = large("43-export-large", true) { ExportSample(ExportUiState()) }
     private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789))
     @Test fun storageLight() = shot("42-storage", false) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageDark() = shot("42-storage", true) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
@@ -173,8 +231,31 @@ class ScreenshotTest {
     @Test fun chatLight() = shot("2-chat", false) { ChatPageSample() }
 
     @Test fun chatDark() = shot("2-chat", true) { ChatPageSample(input = "好的") }
-    @Test fun newMessagesLight() = shot("41-new-messages", false) { isomeria.aichat.feature.chat.NewMessagesButton(12, {}) }
-    @Test fun newMessagesDark() = shot("41-new-messages", true) { isomeria.aichat.feature.chat.NewMessagesButton(125, {}) }
+    @Composable private fun NewMessagesOverChat(count: Int) = Box(Modifier.fillMaxSize()) {
+        ChatPageSample()
+        isomeria.aichat.feature.chat.NewMessagesButton(count, {}, Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(bottom = 72.dp))
+    }
+    @Test fun newMessagesLight() = shot("41-new-messages", false) { NewMessagesOverChat(12) }
+    @Test fun newMessagesDark() = shot("41-new-messages", true) { NewMessagesOverChat(12345) }
+    @Test fun newMessagesLargeLight() = large("41-new-messages-large", false) { NewMessagesOverChat(12345) }
+    @Test fun storageLargeLight() = large("42-storage-large", false) { StorageContent(storageSample.copy(result = CleanupResult(3, 65536), error = StorageError.BUSY), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageLargeDark() = large("42-storage-large", true) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
+    @Test fun storageDarkStates() = shot("42-storage-loading", true) { StorageContent(StorageState(), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageFailedLight() = shot("42-storage-failed", false) { StorageContent(storageSample.copy(error = StorageError.FAILED), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageBusyDark() = shot("42-storage-busy", true) { StorageContent(storageSample.copy(error = StorageError.BUSY), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageEmptyLight() = shot("42-storage-empty", false) { StorageContent(storageSample.copy(orphans = OrphanPreview(emptyList())), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageCompletedDark() = shot("42-storage-completed", true) { StorageContent(storageSample.copy(result = CleanupResult(3, 65536)), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageLoadFailedNoUsage() = shot("42-storage-load-failed", false) { StorageContent(StorageState(loading = false, error = StorageError.FAILED), {}, {}, {}, {}, {}, {}) }
+    @Test fun storageConfirmOrphansLight() {
+        compose.setContent { AIChatTheme(darkTheme = false) { StorageContent(storageSample.copy(orphans = OrphanPreview(listOf(OrphanFile("fixture", 1024, 1)))), {}, {}, {}, {}, {}, {}) } }
+        captureScreenRoboImage("screenshots/42-storage-confirm-light.png")
+    }
+    @Test fun storageConfirmCache() {
+        compose.setContent { AIChatTheme(darkTheme = false) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) } }
+        compose.onNodeWithText("清理缓存").performClick()
+        compose.waitForIdle()
+        captureScreenRoboImage("screenshots/42-storage-confirm-cache-light.png")
+    }
 
     @Test fun chatTypingLight() = shot("2-chat-typing", false) { ChatPageSample(typing = true) }
 

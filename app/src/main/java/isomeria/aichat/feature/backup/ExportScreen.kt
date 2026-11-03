@@ -190,7 +190,10 @@ fun ExportContent(state: ExportUiState, onBack: () -> Unit, onIncludeKey: (Boole
                     PasswordField(
                         value = state.password,
                         onValueChange = onPassword,
-                        hint = stringResource(R.string.export_password_hint, PasswordCipher.MIN_PASSWORD_LENGTH),
+                        hint = stringResource(
+                            if (state.includeKey) R.string.export_password_hint else R.string.export_password_optional_hint,
+                            PasswordCipher.MIN_PASSWORD_LENGTH,
+                        ),
                         imeAction = ImeAction.Next,
                     )
                 }

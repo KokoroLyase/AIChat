@@ -4,7 +4,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.Modifier
@@ -12,6 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import isomeria.aichat.ui.theme.AIChatTheme
+import isomeria.aichat.ui.theme.WeTheme
 
 /** Launcher shortcut: remains available even when opening the database crashes the main process. */
 class CrashLogsActivity : ComponentActivity() {
@@ -20,7 +23,7 @@ class CrashLogsActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             AIChatTheme(darkTheme = isSystemInDarkTheme()) {
-                Box(Modifier.safeDrawingPadding()) {
+                Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground).safeDrawingPadding()) {
                     CrashLogsScreen(onBack = ::finish, viewModel = viewModel(factory = viewModelFactory {
                         initializer { CrashLogsViewModel(applicationContext) }
                     }))

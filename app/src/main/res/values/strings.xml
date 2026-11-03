@@ -257,11 +257,11 @@
 
     <!-- 导出数据 -->
     <string name="export_title">导出数据</string>
-    <string name="export_intro">导出联系人、聊天记录、记忆、用量、服务商、图片和设置。不设密码时保存为 zip；设置密码后加密整个文件，可在「恢复数据」中导入。卸载后只能依靠导出文件找回数据。</string>
+    <string name="export_intro">导出联系人、聊天记录、记忆、用量统计、服务商、头像、聊天图片和设置。不设密码时是普通 zip 文件，拿到文件的人都能打开；设置密码后整个文件都会加密。卸载 App 后，只能靠导出文件找回数据。</string>
     <string name="export_include_key">包含 API Key</string>
     <string name="export_no_key">还没有保存 API Key</string>
-    <string name="export_key_hint">包含 API Key 时必须设置密码。整个导出文件都会被加密；忘记密码将无法恢复其中的任何数据。</string>
-    <string name="export_key_off_hint">默认不导出 API Key。密码可以不填；设置后会保护整个文件，忘记密码无法恢复。换机后需要重新填写 Key。</string>
+    <string name="export_key_hint">包含 API Key 时必须设置密码。忘记密码后，这个文件里的所有数据都无法恢复。</string>
+    <string name="export_key_off_hint">默认不导出 API Key，恢复后需要重新填写。设置密码后整个文件都会加密；忘记密码后无法恢复。</string>
     <string name="export_password">设置密码</string>
     <string name="export_password_hint">至少 %1$d 位</string>
     <string name="export_password_confirm">确认密码</string>
@@ -277,7 +277,7 @@
 
     <!-- 恢复数据 -->
     <string name="restore_title">恢复数据</string>
-    <string name="restore_intro">从导出的 zip 文件恢复联系人、聊天记录、记忆、用量统计、服务商和设置。恢复前会自动备份当前数据，恢复失败时自动撤销。</string>
+    <string name="restore_intro">从导出的 .zip 或 .aichat 文件恢复联系人、聊天记录、记忆、用量统计、服务商和设置。恢复前会临时备份当前数据，失败时自动撤销，成功后删除这份临时备份。</string>
     <string name="restore_pick">选择备份文件</string>
     <string name="restore_pick_again">重新选择</string>
     <string name="restore_reading">正在读取…</string>
@@ -571,18 +571,23 @@
     <string name="temperature_use_separate">单独设置思考温度规则</string>
     <string name="temperature_use_default">沿用默认温度规则</string>
     <string name="crash_title">崩溃日志</string>
-    <string name="crash_notice">仅保留最近 20 份本地日志，含版本、设备和堆栈，不含异常说明、聊天正文或 API Key。</string>
-    <string name="crash_empty">暂无崩溃日志</string>
+    <string name="crash_notice">只保留最近 20 份，保存在本机。内容包括时间、App 版本、设备型号、系统版本和堆栈，不包括异常说明、聊天内容和 API Key。只有你主动分享才会离开手机。</string>
+    <string name="crash_empty">没有崩溃日志</string>
     <string name="crash_export">分享这份日志</string>
-    <string name="crash_clear_confirm">清空全部崩溃日志？此操作无法撤销。</string>
+    <string name="crash_clear_confirm">清空全部崩溃日志？清空后无法找回。</string>
+    <string name="crash_detail_title">日志详情</string>
+    <string name="crash_clear">清空崩溃日志</string>
+    <string name="crash_cleared">已清空</string>
+    <string name="action_clean">清理</string>
+    <string name="storage_calculating">计算中…</string>
+    <string name="export_password_optional_hint">可不填，至少 %1$d 位</string>
     <string name="local_loading">正在加载…</string>
     <string name="local_failed">操作失败，请重试。</string>
-    <string name="local_completed">操作完成</string>
-    <string name="local_refresh">刷新 / 重试</string>
+    <string name="local_refresh">重试</string>
     <string name="local_working">正在处理…</string>
     <string name="chat_new_messages">↓ %1$d 条新消息</string>
-    <string name="chat_target_missing">目标消息已不存在，或暂时无法定位。</string>
-    <string name="chat_page_retry">聊天记录加载失败，点此重试</string>
+    <string name="chat_target_missing">这条消息已经不存在了</string>
+    <string name="chat_page_retry">聊天记录加载失败，点这里重试</string>
     <string name="storage_title">存储空间</string>
     <string name="storage_images">聊天图片</string>
     <string name="storage_avatars">头像</string>
@@ -590,15 +595,15 @@
     <string name="storage_database">数据库</string>
     <string name="storage_clear_cache">清理缓存</string>
     <string name="storage_orphans">清理孤立文件</string>
-    <string name="storage_notice">统计在后台计算。清理缓存只移除可再生文件，不会删除聊天图片、头像或数据库。编辑中尚未保存的图片会暂时保留。</string>
-    <string name="storage_busy">回复、更新或恢复等操作进行中，请稍后再清理。</string>
+    <string name="storage_notice">清理缓存只删可以重新生成的临时文件，不影响聊天图片、头像和数据库。孤立文件是没有任何联系人或消息在用的头像和图片，清理前会先告诉你数量。聊天图片只在删除对应消息时才会删除。</string>
+    <string name="storage_busy">正在回复、更新或恢复，请稍后再清理。</string>
     <string name="storage_result">已清理 %1$d 个文件，释放约 %2$s。</string>
-    <string name="storage_no_orphans">没有发现可清理的孤立文件。</string>
-    <string name="storage_confirm_orphans">将清理 %1$d 个未被引用的文件（约 %2$s）。确认前会重新核对引用，已开始使用的文件会保留。是否继续？</string>
-    <string name="storage_confirm_cache">清理相机临时文件、更新缓存、恢复临时文件和图片缓存？正在使用的临时文件会保留。</string>
-    <string name="export_encrypted_done">整个导出文件已用密码加密。请保管好密码，忘记后无法恢复。</string>
+    <string name="storage_no_orphans">没有发现孤立文件。</string>
+    <string name="storage_confirm_orphans">有 %1$d 个文件没有被任何联系人或消息使用，共约 %2$s。清理后无法找回。清理前会再核对一次，正在使用的文件会保留。</string>
+    <string name="storage_confirm_cache">清理相机临时文件、更新安装包、恢复临时文件和图片缓存？正在使用的会保留，聊天图片不受影响。</string>
+    <string name="export_encrypted_done">整个文件已用密码加密。请记好密码，忘记后无法恢复。</string>
     <string name="export_plain_done">这是未加密的 zip 文件，请妥善保管。</string>
-    <string name="restore_encrypted_notice">此文件已加密。输入导出时的密码后才能预览和恢复；忘记密码无法找回。恢复需要临时存储空间，结束后会清理解密文件。</string>
-    <string name="restore_unlock">解锁并预览</string>
-    <string name="restore_cleanup_pending">数据已恢复，但部分恢复临时文件未能删除。可稍后在存储空间清理缓存；恢复前快照将在下一次恢复成功后再清理。</string>
+    <string name="restore_encrypted_notice">这个文件已加密，输入导出时设的密码后才能查看和恢复。忘记密码无法恢复。</string>
+    <string name="restore_unlock">解锁</string>
+    <string name="restore_cleanup_pending">数据已恢复，但有临时文件没能删除。可以在“存储空间”里清理缓存；恢复前的临时备份会在下次恢复成功后删除。</string>
 </resources>

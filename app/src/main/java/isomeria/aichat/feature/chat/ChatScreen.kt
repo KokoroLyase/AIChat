@@ -61,6 +61,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -170,7 +173,8 @@ fun ChatScreen(
     }
 
     var focusDone by rememberSaveable { mutableStateOf(false) }
-    var atBottom by remember { mutableStateOf(false) }
+    // 进图片查看或联系人页再回来时，这里的状态要保留，否则停在底部也会误显示新消息浮标
+    var atBottom by rememberSaveable { mutableStateOf(false) }
     var pendingLatest by remember { mutableStateOf<Long?>(null) }
     var targetMissing by remember { mutableStateOf(false) }
     var highlightId by remember { mutableStateOf<Long?>(null) }
@@ -189,7 +193,11 @@ fun ChatScreen(
         }
         val index = pagedRows.itemSnapshotList.items.indexOfFirst { it is ChatRow.Item && it.message.id == start.targetId }
         if (index < 0) {
-            if (!state.typing && pagedRows.itemCount > 0) { targetMissing = true; focusDone = true }
+            if (!state.typing && pagedRows.itemCount > 0) {
+                // 只有搜索定位才提示；未读定位找不到时留在当前位置就好
+                targetMissing = viewModel.focusMessageId != 0L
+                focusDone = true
+            }
             return@LaunchedEffect
         }
         listState.scrollToItem(index)
@@ -232,6 +240,9 @@ fun ChatScreen(
         focusDone = true
         pendingLatest = null
         viewModel.markLatestSeen()
+    }
+    LaunchedEffect(targetMissing) {
+        if (targetMissing) Toast.makeText(context, R.string.chat_target_missing, Toast.LENGTH_SHORT).show()
     }
     LaunchedEffect(highlightId) {
         if (highlightId == null) return@LaunchedEffect
@@ -359,7 +370,6 @@ fun ChatScreen(
             onImageClick = onOpenImage,
             onAvatarClick = { contact?.let { onOpenContact(it.id) } },
         )
-        if (targetMissing) FootnoteText(stringResource(R.string.chat_target_missing))
         Box(Modifier.weight(1f)) {
         ChatMessageList(
             rows = emptyList(),
@@ -375,11 +385,19 @@ fun ChatScreen(
             highlightAlpha = { highlight.value },
             modifier = Modifier.fillMaxSize(),
         )
-        if (pagedRows.loadState.refresh is LoadState.Loading) {
+        // 只有真的没内容时才显示：发消息回到底部也会刷新，那时不能闪一下“正在加载”
+        if (pagedRows.loadState.refresh is LoadState.Loading && pagedRows.itemCount == 0) {
             Box(Modifier.align(Alignment.TopCenter)) { FootnoteText(stringResource(R.string.local_loading)) }
         }
         if (pagedRows.loadState.refresh is LoadState.Error || pagedRows.loadState.append is LoadState.Error || pagedRows.loadState.prepend is LoadState.Error) {
-            WeListRow(stringResource(R.string.chat_page_retry), Modifier.align(Alignment.TopCenter), onClick = pagedRows::retry)
+            WeListRow(
+                stringResource(R.string.chat_page_retry),
+                Modifier.align(Alignment.TopCenter),
+                onClick = pagedRows::retry,
+                titleColor = colors.dangerText,
+                titleStyle = WeTheme.typography.small,
+                showArrow = false,
+            )
         }
         if (newMessageCount > 0 && !atBottom && focusDone) {
             NewMessagesButton(newMessageCount, viewModel::goToLatest, Modifier.align(Alignment.BottomEnd))
@@ -599,11 +617,18 @@ fun ChatMessageList(
 
 @Composable
 fun NewMessagesButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.padding(WeTheme.dimens.horizontalPadding)
-        .background(WeTheme.colors.listBackground)
-        .heightIn(min = WeTheme.dimens.buttonHeight)
-        .clickable(role = Role.Button, onClick = onClick)
-        .padding(WeTheme.dimens.horizontalPadding), contentAlignment = Alignment.Center) {
+    val shape = RoundedCornerShape(percent = 50)
+    Box(
+        modifier
+            .padding(end = WeTheme.dimens.chatAvatarEdge, bottom = WeTheme.dimens.messageSpacing)
+            .shadow(2.dp, shape)
+            .clip(shape)
+            .background(WeTheme.colors.listBackground)
+            .clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = WeTheme.dimens.buttonHeight)
+            .padding(horizontal = WeTheme.dimens.horizontalPadding, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(stringResource(R.string.chat_new_messages, count), color = WeTheme.colors.brandText, style = WeTheme.typography.small)
     }
 }

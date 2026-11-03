@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -55,6 +56,7 @@ import isomeria.aichat.data.backup.WrongPasswordException
 import isomeria.aichat.data.repo.FileStorage
 import isomeria.aichat.data.repo.StorageOperations
 import isomeria.aichat.di.ApplicationScope
+import isomeria.aichat.ui.components.ErrorNote
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.FormRow
@@ -265,8 +267,18 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
             FootnoteText(stringResource(R.string.restore_intro), Modifier.padding(top = 8.dp))
             val preview = state.preview
             if (state.locked) {
-                EncryptedBackupUnlock(state.password, state.wrongPassword, state.reading, onPassword, onUnlock)
-                WeListRow(stringResource(R.string.restore_pick_again), onClick = onPick, enabled = !state.reading)
+                EncryptedBackupUnlock(state.password, state.wrongPassword, onPassword)
+                Spacer(Modifier.height(32.dp))
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    WeButton(
+                        stringResource(R.string.restore_unlock),
+                        onUnlock,
+                        Modifier.width(184.dp),
+                        enabled = !state.reading && state.password.isNotEmpty(),
+                    )
+                    PickAgainLink(onPick)
+                }
+                Spacer(Modifier.height(24.dp))
             } else if (preview == null) {
                 Spacer(Modifier.height(40.dp))
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -274,7 +286,8 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
                 }
             } else {
                 BackupInfo(preview)
-                if (preview.needsPassword) {
+                // 加密文件解锁时已经输过密码，内层的 Key 用同一个密码，不再问第二次
+                if (preview.needsPassword && !preview.decryptedTemporary) {
                     GroupSpacer()
                     FormRow(stringResource(R.string.restore_password)) {
                         PasswordField(
@@ -319,14 +332,7 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
                         modifier = Modifier.width(184.dp),
                         enabled = !state.restoring,
                     )
-                    Box(
-                        Modifier
-                            .padding(top = 8.dp)
-                            .clickable(onClick = onPick)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                    ) {
-                        Text(stringResource(R.string.restore_pick_again), style = WeTheme.typography.listTitle, color = colors.link)
-                    }
+                    PickAgainLink(onPick)
                 }
                 Spacer(Modifier.height(24.dp))
             }
@@ -376,6 +382,20 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
             onDismiss = onDismissError,
             onConfirm = onDismissError,
         )
+    }
+}
+
+@Composable
+private fun PickAgainLink(onPick: () -> Unit) {
+    Box(
+        Modifier
+            .padding(top = 8.dp)
+            .clickable(role = Role.Button, onClick = onPick)
+            .heightIn(min = WeTheme.dimens.buttonHeight)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(stringResource(R.string.restore_pick_again), style = WeTheme.typography.listTitle, color = WeTheme.colors.link)
     }
 }
 
@@ -465,13 +485,11 @@ private fun ModeRow(title: String, description: String, selected: Boolean, showD
 }
 
 @Composable
-fun EncryptedBackupUnlock(password: String, wrongPassword: Boolean, reading: Boolean,
-    onPassword: (String) -> Unit, onUnlock: () -> Unit,
-) {
-    FootnoteText(stringResource(R.string.restore_encrypted_notice))
+fun EncryptedBackupUnlock(password: String, wrongPassword: Boolean, onPassword: (String) -> Unit) {
+    GroupSpacer()
     FormRow(stringResource(R.string.restore_password)) {
         PasswordField(password, onPassword, hint = stringResource(R.string.restore_password_hint))
     }
-    if (wrongPassword) FootnoteText(stringResource(R.string.restore_wrong_password))
-    WeButton(stringResource(R.string.restore_unlock), onUnlock, enabled = !reading && password.isNotEmpty())
+    if (wrongPassword) ErrorNote(stringResource(R.string.restore_wrong_password))
+    FootnoteText(stringResource(R.string.restore_encrypted_notice))
 }
