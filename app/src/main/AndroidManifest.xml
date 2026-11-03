@@ -23,7 +23,7 @@
 
         <activity
             android:name=".feature.settings.CrashLogsActivity"
-            android:exported="true"
+            android:exported="false"
             android:process=":diagnostics"
             android:label="@string/crash_title" />
 
