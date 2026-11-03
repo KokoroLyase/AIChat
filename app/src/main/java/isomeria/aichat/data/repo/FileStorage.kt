@@ -2,6 +2,7 @@ package isomeria.aichat.data.repo
 
 import android.content.ContentValues
 import android.content.Context
+import androidx.core.content.edit
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -179,6 +180,18 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
     }
 
     companion object {
+        /**
+         * 0.3.1 及更早版本恢复成功后不删快照，一份完整的明文副本会一直留在手机上。
+         * 只在升级后第一次启动时清理一次；之后恢复失败留下的快照不受影响。
+         */
+        fun clearLegacySnapshotOnce(context: Context) {
+            val prefs = context.getSharedPreferences("storage-cleanup", Context.MODE_PRIVATE)
+            if (prefs.getBoolean("legacySnapshotCleared", false)) return
+            val backups = File(context.filesDir, "backups")
+            val cleared = listOf("before-restore.zip", "before-restore.zip.tmp").map { File(backups, it) }.all { !it.exists() || it.delete() }
+            if (cleared) prefs.edit(commit = true) { putBoolean("legacySnapshotCleared", true) }
+        }
+
         /** Main-process startup only, before any restore screen or worker can start. */
         fun clearStaleRestoreCache(context: Context) {
             val root = File(context.cacheDir, "restore")
