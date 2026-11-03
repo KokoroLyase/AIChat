@@ -2,6 +2,12 @@ package isomeria.aichat.testtools
 
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
+import android.os.SystemClock
+import android.system.Os
+import android.system.OsConstants
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.core.graphics.createBitmap
@@ -21,6 +27,10 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class TestToolsActivity : ComponentActivity() {
     @Inject lateinit var db: AppDatabase
+    @Inject lateinit var chats: isomeria.aichat.data.repo.ChatRepository
+    @Inject lateinit var files: isomeria.aichat.data.repo.FileStorage
+    @Inject lateinit var settings: isomeria.aichat.data.settings.SettingsStore
+    @Inject lateinit var providers: isomeria.aichat.data.repo.ProviderRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,6 +38,76 @@ class TestToolsActivity : ComponentActivity() {
         setContentView(text)
         when (intent.getStringExtra("action")) {
             "crash" -> throw IllegalStateException("LocalCrashFixture")
+            "own_avatar" -> lifecycleScope.launch {
+                try {
+                    val bitmap = createBitmap(80, 80).apply { eraseColor(0xFFB85A36.toInt()) }
+                    val old = settings.avatarPath.value
+                    val path = try { files.saveAvatar(bitmap) } finally { bitmap.recycle() }
+                    settings.setAvatarPath(path)
+                    files.commitAvatar(path)
+                    files.delete(old)
+                    text.setText(R.string.tools_avatar_ready)
+                } catch (_: Exception) { text.setText(R.string.tools_failed) }
+            }
+            "appearance" -> {
+                settings.setThemeMode(if (intent.getBooleanExtra("dark", false)) isomeria.aichat.data.settings.ThemeMode.DARK else isomeria.aichat.data.settings.ThemeMode.LIGHT)
+                settings.setFontSize(if (intent.getBooleanExtra("large", false)) isomeria.aichat.data.settings.FontSize.EXTRA_LARGE else isomeria.aichat.data.settings.FontSize.STANDARD)
+                text.setText(R.string.tools_appearance_ready)
+            }
+            "verify_fixture" -> lifecycleScope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        val configured = providers.list().filter { it.apiKeyEncrypted != null }
+                        val keysMatch = configured.isNotEmpty() && configured.all { providers.apiKey(it) == "123456" }
+                        val avatar = settings.avatarPath.value?.let { File(it).isFile } ?: false
+                        "fixtureKeys=$keysMatch; configured=${configured.size}; ownAvatar=$avatar"
+                    }
+                    text.text = getString(R.string.tools_fixture_result, result)
+                } catch (_: Exception) { text.setText(R.string.tools_failed) }
+            }
+            // Only local test packages contain these actions. No private data is included.
+            "native_crash" -> Handler(Looper.getMainLooper()).postDelayed({
+                Os.kill(Process.myPid(), OsConstants.SIGABRT)
+            }, 500)
+            "anr" -> {
+                text.setText(R.string.tools_anr)
+                Handler(Looper.getMainLooper()).postDelayed({ Thread.sleep(30_000) }, 1_000)
+            }
+            "deny_snapshot_delete" -> {
+                val directory = File(filesDir, "backups").apply { mkdirs() }
+                val snapshot = File(directory, "before-restore.zip")
+                require(!snapshot.exists())
+                // After a real restore writes its snapshot, deny directory unlink permission.
+                // No restore implementation hooks or simulated File.delete results are involved.
+                Thread {
+                    val deadline = SystemClock.elapsedRealtime() + 120_000
+                    while (SystemClock.elapsedRealtime() < deadline) {
+                        if (snapshot.isFile) {
+                            Os.chmod(directory.path, 0x140) // 0500; restore with run-as chmod 700.
+                            return@Thread
+                        }
+                        Thread.sleep(2)
+                    }
+                }.apply { isDaemon = true; start() }
+                text.setText(R.string.tools_snapshot_watch)
+            }
+            "search" -> lifecycleScope.launch {
+                try {
+                    val query = intent.getStringExtra("query") ?: "123"
+                    val contact = intent.getLongExtra("contact", 1L)
+                    val measurements = withContext(Dispatchers.IO) {
+                        List(3) {
+                            val start = SystemClock.elapsedRealtimeNanos()
+                            val contacts = chats.searchContacts(query).size
+                            val groups = chats.searchMessageGroups(query).size
+                            val messages = chats.searchInChat(contact, query).size
+                            val nanos = SystemClock.elapsedRealtimeNanos() - start
+                            "${nanos / 1_000_000.0} ms; contacts=$contacts groups=$groups messages=$messages"
+                        }.joinToString("\n")
+                    }
+                    text.text = getString(R.string.tools_search_result, measurements)
+                } catch (_: Exception) { text.setText(R.string.tools_failed) }
+            }
             "seed" -> lifecycleScope.launch {
                 try {
                     val count = intent.getIntExtra("count", 10_000)
