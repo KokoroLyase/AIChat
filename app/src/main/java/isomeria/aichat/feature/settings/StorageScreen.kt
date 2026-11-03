@@ -100,8 +100,8 @@ fun StorageContent(state: StorageState, onBack: () -> Unit, onRefresh: () -> Uni
                 }
                 GroupSpacer()
             }
-            WeListRow(stringResource(R.string.storage_clear_cache), onClick = { confirmCache = true }, enabled = !state.working, showDivider = true)
-            WeListRow(stringResource(R.string.storage_orphans), onClick = onPreviewOrphans, enabled = !state.working)
+            WeListRow(stringResource(R.string.storage_clear_cache), onClick = { confirmCache = true }, enabled = !state.working, showDivider = true, showArrow = false)
+            WeListRow(stringResource(R.string.storage_orphans), onClick = onPreviewOrphans, enabled = !state.working, showArrow = false)
             state.error?.let { ErrorNote(stringResource(if (it == StorageError.BUSY) R.string.storage_busy else R.string.local_failed)) }
             if (state.error == StorageError.FAILED) {
                 WeListRow(stringResource(R.string.local_refresh), onClick = onRefresh, enabled = !state.working, showArrow = false)

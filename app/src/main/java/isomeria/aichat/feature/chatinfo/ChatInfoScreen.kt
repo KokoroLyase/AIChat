@@ -177,7 +177,7 @@ fun ChatInfoContent(
                 trailing = { WeSwitch(state.pinned, onPinnedChange) },
             )
             GroupSpacer()
-            WeListRow(title = stringResource(R.string.chat_info_clear), onClick = onClear)
+            WeListRow(title = stringResource(R.string.chat_info_clear), onClick = onClear, showArrow = false)
             Spacer(Modifier.height(24.dp))
         }
     }

@@ -230,7 +230,7 @@ fun SettingsScreen(
             WeListRow(title = stringResource(R.string.storage_title), onClick = onOpenStorage, showDivider = true)
             WeListRow(title = stringResource(R.string.settings_export), onClick = onOpenExport, showDivider = true)
             WeListRow(title = stringResource(R.string.settings_restore), onClick = onOpenRestore, showDivider = true)
-            WeListRow(title = stringResource(R.string.settings_clear_all), onClick = { confirmClearAll = true })
+            WeListRow(title = stringResource(R.string.settings_clear_all), onClick = { confirmClearAll = true }, showArrow = false)
             FootnoteText(stringResource(R.string.settings_data_notice))
 
             SectionHeader(stringResource(R.string.settings_group_about))
@@ -243,6 +243,7 @@ fun SettingsScreen(
             )
             WeListRow(
                 title = stringResource(R.string.settings_check_update),
+                showArrow = false,
                 value = newerRelease?.let { stringResource(R.string.settings_new_version, it.version) },
                 trailing = if (newerRelease != null) {
                     { UnreadBadge(0, dotOnly = true) }
