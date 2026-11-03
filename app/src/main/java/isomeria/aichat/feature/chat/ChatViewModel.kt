@@ -125,8 +125,8 @@ class ChatViewModel @Inject constructor(
     private val messages = pageVersion.flatMapLatest { version ->
         flow {
             val start = entryDeferred.await()
-            emitAll(Pager(PagingConfig(pageSize = 40, initialLoadSize = 40, prefetchDistance = 40, maxSize = 200, enablePlaceholders = false),
-                initialKey = if (version == 0L) start.offset else 0,
+            emitAll(Pager(PagingConfig(pageSize = PAGE_SIZE, initialLoadSize = PAGE_SIZE, prefetchDistance = PAGE_SIZE, maxSize = 200, enablePlaceholders = false),
+                initialKey = if (version == 0L) pagingStartKey(start.offset) else 0,
             ) { chats.pagedMessages(contactId) }.flow)
         }
     }.cachedIn(viewModelScope)
@@ -284,6 +284,11 @@ internal fun canRegenerate(message: Message, current: ChatTimeline): Boolean {
     return current.regenerationAllowed && !current.waiting && !current.pending && latest.role == Role.ASSISTANT && message.role == Role.ASSISTANT &&
         (message.id == latest.id || (message.replyGroup != null && message.replyGroup == latest.replyGroup))
 }
+
+private const val PAGE_SIZE = 40
+
+/** 首屏把定位目标放在窗口中间：目标下面也要有内容，才能滚到屏幕中间。 */
+internal fun pagingStartKey(targetOffset: Int): Int = maxOf(0, targetOffset - PAGE_SIZE / 2)
 
 /** Descending data: the time bar goes after its message, including at the oldest terminal edge. */
 internal fun chatTimeSeparator(newer: ChatRow.Item?, older: ChatRow.Item?, formatter: ChatTimeFormatter, now: Long): ChatRow.TimeBar? {

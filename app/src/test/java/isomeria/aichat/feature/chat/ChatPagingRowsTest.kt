@@ -19,6 +19,11 @@ class ChatPagingRowsTest {
         assertNull(chatTimeSeparator(null, newer, formatter, 500_000))
         assertNull(chatTimeSeparator(row(3, 600_000), newer, formatter, 600_000))
     }
+    @Test fun initialWindowLeavesRoomToCenterTheTarget() {
+        assertEquals(100, pagingStartKey(120))
+        assertEquals(0, pagingStartKey(5))
+        assertEquals(0, pagingStartKey(0))
+    }
     @Test fun regenerateOnlyAppliesToLastCompleteReplyGroup() {
         val latest = row(4, 4, group = "last").message
         val state = ChatTimeline(latest = latest, regenerationAllowed = true)
