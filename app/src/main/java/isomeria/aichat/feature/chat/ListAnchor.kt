@@ -19,7 +19,12 @@ internal fun KeepFirstVisibleItem(state: LazyListState, keys: List<Any>, enabled
     val anchor = remember { ListAnchor() }
     val currentKeys by rememberUpdatedState(keys)
     LaunchedEffect(state) {
-        snapshotFlow { Triple(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset, state.layoutInfo.visibleItemsInfo.firstOrNull()?.key) }
+        snapshotFlow {
+            val index = state.firstVisibleItemIndex
+            // visibleItemsInfo also includes items visible only in content padding;
+            // firstVisibleItemIndex excludes those. Pair the offset with the same item.
+            Triple(index, state.firstVisibleItemScrollOffset, state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }?.key)
+        }
             .collect { (index, offset, laidOut) ->
                 // 布局可能先于组合用上新数据：两边的 key 对不上时，这是刷新造成的位移，不能记成锚点
                 if (laidOut != null && currentKeys.getOrNull(index) == laidOut) {

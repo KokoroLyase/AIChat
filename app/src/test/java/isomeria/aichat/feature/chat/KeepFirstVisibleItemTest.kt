@@ -2,6 +2,7 @@ package isomeria.aichat.feature.chat
 
 import android.app.Application
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -31,13 +33,13 @@ class KeepFirstVisibleItemTest {
 
     private lateinit var state: LazyListState
 
-    private fun show(initial: List<String>, enabled: Boolean, setKeys: ((List<String>) -> Unit) -> Unit) {
+    private fun show(initial: List<String>, enabled: Boolean, padding: Dp = 0.dp, setKeys: ((List<String>) -> Unit) -> Unit) {
         compose.setContent {
             state = rememberLazyListState()
             var keys by androidx.compose.runtime.remember { mutableStateOf(initial) }
             setKeys { keys = it }
             KeepFirstVisibleItem(state, keys, enabled)
-            LazyColumn(state = state, reverseLayout = true) {
+            LazyColumn(state = state, reverseLayout = true, contentPadding = PaddingValues(vertical = padding)) {
                 items(keys, key = { it }) { Box(Modifier.fillMaxWidth().height(50.dp)) }
             }
         }
@@ -45,6 +47,24 @@ class KeepFirstVisibleItemTest {
     }
 
     private fun window(from: Int, size: Int) = (from until from + size).map { "m$it" }
+
+    @Test fun itemVisibleOnlyInPaddingCannotLeaveAStaleAnchor() {
+        var change: (List<String>) -> Unit = {}
+        show(window(0, 200), enabled = true, padding = 8.dp) { change = it }
+        compose.runOnUiThread { runBlocking { state.scrollToItem(170, 60) } }
+        compose.waitForIdle()
+        compose.runOnUiThread { runBlocking { state.scrollToItem(171, 8) } }
+        compose.waitForIdle()
+        val index = state.firstVisibleItemIndex
+        val offset = state.firstVisibleItemScrollOffset
+        assertEquals(171, index)
+        // The previous row is still visible in content padding, exactly like the real chat.
+        assertEquals(170, state.layoutInfo.visibleItemsInfo.first().index)
+        compose.runOnUiThread { change(window(155, 40)) }
+        compose.waitForIdle()
+        assertEquals(16, state.firstVisibleItemIndex)
+        assertEquals(offset, state.firstVisibleItemScrollOffset)
+    }
 
     @Test fun refreshToSmallerWindowKeepsTheFirstVisibleItem() {
         var change: (List<String>) -> Unit = {}
