@@ -5,7 +5,8 @@
 - 包名 `isomeria.aichat`，需要 Android 14（API 34）及以上
 - 原生 Kotlin + Jetpack Compose，单 Activity，MVVM + StateFlow，Hilt 依赖注入
 - 大语言模型：7 家连接预置和自定义 OpenAI Chat Completions 兼容 API；只接入用户自己的 API Key
-- 当前版本 **0.3.1**（versionCode 301）
+- 当前版本 **0.4.0**（versionCode 400）
+- 后续路线见 [docs/roadmap.md](docs/roadmap.md)，隐私说明草稿见 [docs/privacy-draft.md](docs/privacy-draft.md)
 - 设计方案见 [智信 AIChat 设计方案.md](智信%20AIChat%20设计方案.md)
 
 > 本项目与腾讯、微信没有任何关系。界面只参考布局与配色，不使用微信的图标、素材和名称。
@@ -62,6 +63,22 @@
 
 更新说明见 [v0.3.1](docs/release-notes/v0.3.1.md)。七家预置目前只用模拟接口测试过，模拟测试通过不能表示真实服务商全部兼容。
 
+## 0.4.0 功能
+
+| 功能 | 说明 |
+| --- | --- |
+| 分页加载 | 聊天记录用 Paging 3 加 Room 分页，每页 40 条，不再一次读整个聊天；重试、重新生成只查需要的范围 |
+| 定位 | 搜索和聊天内查找定位到消息并居中高亮；有未读时定位到第一条未读，只标红点时定位到最新 |
+| 新消息浮标 | 看历史时收到消息不跳走，显示“↓ N 条新消息”，点击回到底部；自己发消息总是回到底部 |
+| 导出加密 | 可选密码，设了就加密整个文件（`.aichat`，分块 AES-256-GCM，PBKDF2-SHA256 31 万次，防截断、调换和拼接）；包含 API Key 必须设密码；内层格式仍是 v3，明文 zip 和只加密 Key 的旧备份继续能恢复。0.3.1 读不了加密文件 |
+| 恢复快照 | 恢复成功后立即删除 `before-restore.zip` 和解密临时文件；失败仍从快照回滚 |
+| 存储空间 | 设置 → 数据：聊天图片、头像、崩溃日志、缓存、数据库的占用；清理缓存只删可再生内容；清理孤立文件先显示数量，确认时重新核对引用，回复或恢复进行中不执行 |
+| 崩溃日志 | 设置 → 关于，或长按 App 图标（独立进程，不依赖数据库）：本地保留 20 份，不含异常说明、聊天内容和 Key；ANR 和原生崩溃从系统退出记录补记；release 保留行号，CI 把 `mapping.txt` 存为产物 |
+
+Room 和备份内层格式都没有变，从 0.3.1 升级没有数据迁移；发给模型的请求内容没有变。App 自己加密的只有 API Key 和设了密码的导出文件，其余本地数据依靠系统的应用隔离和全盘加密。
+
+更新说明见 [v0.4.0](docs/release-notes/v0.4.0.md)。
+
 ## 构建
 
 本机使用 JDK 25（不修改系统 JAVA_HOME）和 Android SDK（平台 37、构建工具 37）。
@@ -71,6 +88,14 @@
 ./gradlew lintDebug           # 代码检查
 ./gradlew assembleDebug       # debug 包：包名 isomeria.aichat.debug，可与正式包同时安装
 ./gradlew assembleRelease     # release 包：需要正式签名（见下）
+./gradlew assemblePerf        # perf 包：本地验证用，R8 开启、debug 签名，包名 isomeria.aichat.perf，不发布
+```
+
+`perf` 和 debug 包带测试工具（`app/src/testTools/`），release 不含。用 adb 生成虚构消息或触发一次崩溃：
+
+```bash
+adb shell am start -n isomeria.aichat.perf/isomeria.aichat.testtools.TestToolsActivity --es action seed --ei count 10000
+adb shell am start -n isomeria.aichat.perf/isomeria.aichat.testtools.TestToolsActivity --es action crash
 ```
 
 命令行构建时，`local.properties` 里写 `sdk.dir=Android SDK 路径`，`JAVA_HOME` 临时指向 JDK 25。本机下载依赖需要代理 127.0.0.1:10808，GRADLE_OPTS 和 Gradle 命令均设置 http/https proxyHost、proxyPort。
@@ -105,7 +130,7 @@ GitHub Actions 从仓库 Secrets 读取签名，需要配置：
 
 1. 在 `app/build.gradle.kts` 里改 `appVersionName`（versionCode 按「主版本×10000 + 次版本×100 + 修订号」自动计算），和代码在同一个提交里
 2. 在 `docs/release-notes/` 下写 `v<版本号>.md`，App 内更新弹窗会直接显示它
-3. 推送 tag `v<版本号>`：`release.yml` 会核对 tag 与 versionName、构建签名包、生成 `AIChat-<版本号>.apk` 和 `.sha256`，并创建正式 Release（不是 Pre-release）
+3. 推送 tag `v<版本号>`：`release.yml` 会核对 tag 与 versionName、构建签名包、生成 `AIChat-<版本号>.apk` 和 `.sha256`，并创建正式 Release（不是 Pre-release）；R8 的 `mapping.txt` 存为 CI 产物，用来还原崩溃日志，不放进 Release
 
 不要把 debug 包发到 Release：debug 包与 release 包签名不同，互相不能覆盖。
 
@@ -133,7 +158,8 @@ isomeria.aichat
 ├─ data/reply      后台等待回复（WorkManager）与通知
 ├─ data/settings   MMKV 设置
 ├─ data/crypto     Android Keystore 加密
-├─ data/backup     导出与恢复（格式、密码加密、迁移）
+├─ data/backup     导出与恢复（格式、整文件加密容器、密码加密、迁移）
+├─ data/logs       本地崩溃日志（不依赖 Room 和 MMKV）
 └─ update          检查更新与应用内更新（GitHub Release、下载、校验、安装）
 ```
 
