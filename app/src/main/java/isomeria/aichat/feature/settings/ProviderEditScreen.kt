@@ -529,7 +529,7 @@ fun ProviderEditContent(
 
             GroupSpacer()
             val keyLabel = stringResource(R.string.llm_api_key)
-            // 摘要被输入框盖住，读屏读不到，所以写进输入框的说明里
+            // 输入框也说明已保存的摘要，替换 Key 时可直接知道原有状态。
             val keyDescription = state.savedKeyMasked?.takeIf { state.keyInput.isEmpty() }
                 ?.let { keyLabel + stringResource(R.string.reference_separator) + stringResource(R.string.llm_api_key_saved, it) } ?: keyLabel
             FormRow(keyLabel, showDivider = state.savedKeyMasked != null) {
@@ -537,12 +537,9 @@ fun ProviderEditContent(
                     Box(Modifier.weight(1f).padding(vertical = 12.dp)) {
                         if (state.keyInput.isEmpty()) {
                             Text(
-                                state.savedKeyMasked?.let { stringResource(R.string.llm_api_key_saved, it) }
-                                    ?: stringResource(R.string.llm_api_key_hint),
+                                stringResource(R.string.llm_api_key_hint),
                                 style = WeTheme.typography.listTitle,
-                                // 已保存的摘要是要读的信息，不是占位文字
-                                color = if (state.savedKeyMasked != null) colors.textTertiary else colors.textSecondary,
-                                // 不换行：打码的 Key 是一整串，放不下时会整体换到第二行，被裁掉后看不到
+                                color = colors.textSecondary,
                                 softWrap = false,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -574,6 +571,7 @@ fun ProviderEditContent(
                 }
             }
             if (state.savedKeyMasked != null) {
+                if (state.keyInput.isEmpty()) FootnoteText(stringResource(R.string.llm_api_key_saved, state.savedKeyMasked))
                 WeListRow(
                     title = stringResource(R.string.llm_api_key_clear),
                     titleColor = colors.danger,
