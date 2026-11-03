@@ -24,9 +24,10 @@ class StorageRepository @Inject constructor(
 ) {
     suspend fun usage(): StorageUsage = withContext(Dispatchers.IO) {
         fun size(root: File) = storageFiles(root).sumOf { it.length() }
+        val diskCache = SingletonImageLoader.get(context).diskCache
         StorageUsage(
             size(File(context.filesDir, "images")), size(File(context.filesDir, "avatars")),
-            size(File(context.filesDir, "logs")), size(context.cacheDir),
+            size(File(context.filesDir, "logs")), cacheContentBytes(context.cacheDir, diskCache?.directory?.toFile(), diskCache?.size ?: 0L),
             size(requireNotNull(context.getDatabasePath(AppDatabase.NAME).parentFile)),
         )
     }
@@ -69,4 +70,12 @@ class StorageRepository @Inject constructor(
             result.copy(count = result.count + (diskFiles - afterFiles).coerceAtLeast(0), bytes = result.bytes + (diskBytes - afterBytes).coerceAtLeast(0))
         }
     }
+}
+
+/** Coil keeps an empty journal after clear(); count its entries, not maintenance metadata. */
+internal fun cacheContentBytes(root: File, imageDirectory: File?, imageBytes: Long): Long {
+    val rootPath = root.canonicalPath + File.separator
+    val imagePath = imageDirectory?.canonicalPath?.takeIf { it.startsWith(rootPath) }?.plus(File.separator)
+    return storageFiles(root).filterNot { imagePath != null && it.canonicalPath.startsWith(imagePath) }
+        .sumOf { it.length() } + if (imagePath != null) imageBytes else 0L
 }
