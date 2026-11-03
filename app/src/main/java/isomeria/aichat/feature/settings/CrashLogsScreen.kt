@@ -120,9 +120,16 @@ private fun crashLogTime(millis: Long): String {
 @Composable
 internal fun CrashLogDetail(raw: String) {
     val millis = remember(raw) { raw.lineSequence().firstOrNull()?.removePrefix("time=")?.toLongOrNull() }
-    val display = if (millis != null) {
-        stringResource(R.string.crash_detail_time, crashLogTime(millis)) + "\n" + raw.substringAfter('\n', "")
-    } else raw
+    if (millis != null) {
+        Text(
+            stringResource(R.string.crash_detail_time, crashLogTime(millis)),
+            Modifier.fillMaxWidth().background(WeTheme.colors.listBackground).padding(WeTheme.dimens.horizontalPadding),
+            color = WeTheme.colors.textPrimary,
+            style = WeTheme.typography.small,
+        )
+    }
+    FootnoteText(stringResource(R.string.crash_detail_scroll))
+    val display = if (millis != null) raw.substringAfter('\n', "") else raw
     SelectionContainer {
         Text(
             display,
@@ -133,7 +140,6 @@ internal fun CrashLogDetail(raw: String) {
             softWrap = false,
         )
     }
-    FootnoteText(stringResource(R.string.crash_detail_scroll))
 }
 
 @Composable

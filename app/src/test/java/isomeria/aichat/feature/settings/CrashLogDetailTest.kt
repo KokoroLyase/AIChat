@@ -29,12 +29,15 @@ class CrashLogDetailTest {
 
     private fun checkDisplay() {
         val layout = mutableListOf<TextLayoutResult>()
-        compose.onNodeWithText("时间：", substring = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layout) }
+        val timeLayout = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText("时间：", substring = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(timeLayout) }
+        assertTrue(timeLayout.single().layoutInput.text.text.startsWith("时间：2026年"))
+        assertFalse(timeLayout.single().hasVisualOverflow)
+        compose.onNodeWithText("Source.kt:42)", substring = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layout) }
         val result = layout.single()
-        assertEquals("One visual line per raw line", raw.lines().size, result.lineCount)
+        assertEquals("One visual line per raw stack line", raw.lines().size - 1, result.lineCount)
         assertFalse(result.layoutInput.text.text.contains("1793664000000"))
         assertTrue(result.layoutInput.text.text.contains("Source.kt:42)"))
-        assertTrue(result.layoutInput.text.text.startsWith("时间：2026年"))
         assertTrue(result.size.width > 400) // The frame is scrollable rather than clipped or wrapped.
         assertEquals("time=1793664000000", raw.lineSequence().first())
     }
