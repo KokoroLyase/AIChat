@@ -5,7 +5,7 @@
 - 包名 `isomeria.aichat`，需要 Android 14（API 34）及以上
 - 原生 Kotlin + Jetpack Compose，单 Activity，MVVM + StateFlow，Hilt 依赖注入
 - 大语言模型：7 家连接预置和自定义 OpenAI Chat Completions 兼容 API；只接入用户自己的 API Key
-- 当前版本 **0.4.0**（versionCode 400）
+- 当前版本 **0.4.1**（versionCode 401）
 - 后续路线见 [docs/roadmap.md](docs/roadmap.md)，隐私说明草稿见 [docs/privacy-draft.md](docs/privacy-draft.md)
 - 设计方案见 [智信 AIChat 设计方案.md](智信%20AIChat%20设计方案.md)
 
@@ -78,6 +78,16 @@
 Room 和备份内层格式都没有变，从 0.3.1 升级没有数据迁移；发给模型的请求内容没有变。App 自己加密的只有 API Key 和设了密码的导出文件，其余本地数据依靠系统的应用隔离和全盘加密。
 
 更新说明见 [v0.4.0](docs/release-notes/v0.4.0.md)。
+
+## 0.4.1 修复
+
+- 清空崩溃日志、清理缓存都会删除日志分享副本；详情显示可读时间，堆栈可横向滑动，分享文本仍保留原文。
+- 修复桌面崩溃日志快捷方式的目标包名；独立日志入口不再向其他 App 导出。
+- 修复看历史时锚点误用内边距中相邻消息、收到回复后发生小幅位移的问题。
+- 图片缓存按实际内容统计，清理后不再把空索引显示为残留缓存。
+- 大字体下完整显示已保存的 Key 摘要；立即动作不再显示导航箭头；提高开关关闭态的可辨识度。
+
+Room v3、备份内层 v3、加密容器 v1 和模型请求内容保持不变。更新说明见 [v0.4.1](docs/release-notes/v0.4.1.md)。
 
 ## 构建
 
