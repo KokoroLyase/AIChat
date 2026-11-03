@@ -58,6 +58,8 @@ import isomeria.aichat.ui.components.TabItem
 import isomeria.aichat.ui.components.UpdateDialog
 import isomeria.aichat.ui.components.WeBottomBar
 import isomeria.aichat.ui.components.WeDialog
+import isomeria.aichat.ui.components.WeListRow
+import isomeria.aichat.ui.components.WeSwitch
 import isomeria.aichat.ui.theme.AIChatTheme
 import isomeria.aichat.ui.theme.WeTheme
 import isomeria.aichat.update.ReleaseInfo
@@ -149,6 +151,7 @@ class ScreenshotTest {
     @Test fun crashLogsCompletedLight() = shot("40-crash-completed", false) { CrashLogsContent(CrashLogsState(loading = false, completed = true), {}, {}, {}, {}, {}) }
     @Test fun crashLogsLargeLight() = large("40-crash-large", false) { CrashLogsContent(CrashLogsState(loading = false, names = crashNames), {}, {}, {}, {}, {}) }
     @Test fun crashLogsLargeDark() = large("40-crash-detail-large", true) { CrashLogsContent(CrashLogsState(loading = false, selected = "fixture", detail = crashDetail), {}, {}, {}, {}, {}) }
+    @Test fun crashLogsDetailLargeLight() = large("40-crash-detail-large", false) { CrashLogsContent(CrashLogsState(loading = false, selected = "fixture", detail = crashDetail), {}, {}, {}, {}, {}) }
     @Test fun crashClearConfirm() {
         compose.setContent { AIChatTheme(darkTheme = false) { CrashLogsContent(CrashLogsState(loading = false, names = crashNames), {}, {}, {}, {}, {}) } }
         compose.onNodeWithText("清空崩溃日志").performClick()
@@ -328,6 +331,24 @@ class ScreenshotTest {
     @Test fun providerEditLight() = shot("11-provider-edit", false) { ProviderEditSample() }
 
     @Test fun providerEditDark() = shot("11-provider-edit", true) { ProviderEditSample() }
+
+    private fun largeKeySummary(dark: Boolean) {
+        compose.setContent { AIChatTheme(darkTheme = dark, fontScale = 2.5f) { ProviderEditSample() } }
+        compose.onNodeWithText("已保存：sk-o••••••3f9c", useUnmergedTree = true).performScrollTo()
+        compose.onRoot().captureRoboImage("screenshots/41-key-summary-large-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun keySummaryLargeLight() = largeKeySummary(false)
+    @Test fun keySummaryLargeDark() = largeKeySummary(true)
+
+    @Composable private fun SwitchStates() {
+        Column {
+            WeListRow("开启", trailing = { WeSwitch(true, {}, label = "开启") })
+            WeListRow("关闭", trailing = { WeSwitch(false, {}, label = "关闭") })
+            WeListRow("不可用", enabled = false, trailing = { WeSwitch(false, {}, enabled = false, label = "不可用") })
+        }
+    }
+    @Test fun switchStatesLight() = shot("41-switch-states", false) { SwitchStates() }
+    @Test fun switchStatesDark() = shot("41-switch-states", true) { SwitchStates() }
 
     @Test fun memoryLight() = shot("12-memory", false) { MemoryContent(previewMemoryState, {}, {}, {}, {}) }
 
