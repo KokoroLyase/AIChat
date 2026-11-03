@@ -179,6 +179,8 @@ fun ChatScreen(
     var targetMissing by remember { mutableStateOf(false) }
     var highlightId by remember { mutableStateOf<Long?>(null) }
     val highlight = remember { Animatable(0f) }
+    val focusIme = WindowInsets.ime
+    val focusDensity = LocalDensity.current
 
     LaunchedEffect(pageEntry, pagedRows.itemSnapshotList, pagedRows.loadState.refresh) {
         val start = pageEntry ?: return@LaunchedEffect
@@ -200,6 +202,8 @@ fun ChatScreen(
             }
             return@LaunchedEffect
         }
+        // 从搜索页带着键盘进来时，键盘收完可视区才变高；先算居中的话目标会被带到屏幕下半部分
+        withTimeoutOrNull(FOCUS_IME_WAIT_MILLIS) { snapshotFlow { focusIme.getBottom(focusDensity) }.first { it == 0 } }
         listState.scrollToItem(index)
         val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
         if (item != null) {
@@ -614,6 +618,8 @@ fun ChatMessageList(
         }
     }
 }
+
+private const val FOCUS_IME_WAIT_MILLIS = 800L
 
 @Composable
 fun NewMessagesButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
