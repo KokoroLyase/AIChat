@@ -410,6 +410,15 @@ class ScreenshotTest {
     @Test fun conflictBothKindsDark() = updateShot("37-config-conflict-both", true) { ConflictDialog(listOf(ModelReference("小雨", ReferencePurpose.CHAT, 1)), {}, existingConflicts) {} }
 
     private val manyConflicts = (1..30).flatMap { listOf(ModelReference("联系人$it", ReferencePurpose.CHAT), ModelReference("联系人$it", ReferencePurpose.MEMORY)) }
+    private val movedKeyUrl = "https://very-long-subdomain.example-provider.example/compatible-mode/openai/v1"
+    @Test fun keyMoveLight() = updateShot("50-provider-key-move", false) { KeyMoveDialog(movedKeyUrl, {}) {} }
+    @Test fun keyMoveDark() = updateShot("50-provider-key-move", true) { KeyMoveDialog(movedKeyUrl, {}) {} }
+    private fun keyMoveLarge(dark: Boolean) {
+        compose.setContent { AIChatTheme(darkTheme = dark, fontScale = 2.5f) { Me(); KeyMoveDialog(movedKeyUrl, {}) {} } }
+        captureScreenRoboImage("screenshots/50-provider-key-move-large-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun keyMoveLargeLight() = keyMoveLarge(false)
+    @Test fun keyMoveLargeDark() = keyMoveLarge(true)
     @Test fun conflictLongLight() = updateShot("23-config-conflict-long", false) { ConflictDialog(manyConflicts, {}) {} }
     @Test fun conflictLongDark() = updateShot("23-config-conflict-long", true) { ConflictDialog(manyConflicts, {}) {} }
     private val customUrlError = ProviderEditState(loaded = true, name = "我的接口", messageRes = isomeria.aichat.R.string.llm_base_url_invalid, messageIsError = true)

@@ -105,6 +105,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** 已保存的 Key 会不会被发给另一个地址：地址变了，又没有填新 Key。 */
+internal fun ProviderConfig.keyMovesTo(url: String, keyInput: String): Boolean =
+    !apiKeyEncrypted.isNullOrEmpty() && keyInput.isEmpty() && !BaseUrlRules.isSameUrl(baseUrl, url)
+
 /** 已保存的连接信息，用来判断有没有未保存的修改 */
 data class ProviderSavedForm(val name: String = "", val baseUrl: String = "", val compatibility: String = "GENERIC", val presetId: String? = null)
 
@@ -141,8 +145,21 @@ data class ProviderEditState(
     /** 不能删除的原因；操作在页面底部，提示要弹出来才看得到 */
     val deleteBlockedRes: Int? = null,
     val deleteBlockedArgs: List<Any> = emptyList(),
+    /** 不为空时要确认：已保存的 Key 会发给这个新地址 */
+    val keyMoveUrl: String? = null,
 ) {
     val dirty: Boolean get() = loaded && (ProviderSavedForm(name, baseUrl, compatibility, presetId) != savedForm || keyInput.isNotEmpty() || modelInput.isNotEmpty())
+}
+
+@Composable
+internal fun KeyMoveDialog(url: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    WeDialog(
+        title = stringResource(R.string.provider_key_move_title),
+        message = stringResource(R.string.provider_key_move_message, url),
+        confirmText = stringResource(R.string.provider_key_move_confirm),
+        onDismiss = onDismiss,
+        onConfirm = onConfirm,
+    )
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -236,8 +253,40 @@ class ProviderEditViewModel @Inject constructor(
         if (it.providerId != null) it else it.copy(presetId = preset?.id, name = name, baseUrl = preset?.baseUrl.orEmpty(), compatibility = (preset?.compatibility ?: Compatibility.GENERIC).name, messageRes = null)
     }
     fun setCompatibility(value: Compatibility) = _state.update { it.copy(compatibility = value.name) }
+    private var pendingKeyMove: (() -> Unit)? = null
+
+    /** 先确认再继续：保存、获取列表、手动添加模型都会让已保存的 Key 跟着新地址走。 */
+    private fun afterKeyMoveCheck(url: String, action: () -> Unit) {
+        val s = _state.value
+        viewModelScope.launch {
+            val saved = s.providerId?.let { providers.config(it) }
+            if (saved?.keyMovesTo(url, s.keyInput) == true) {
+                pendingKeyMove = action
+                _state.update { it.copy(keyMoveUrl = url) }
+            } else {
+                action()
+            }
+        }
+    }
+
+    fun confirmKeyMove() {
+        val action = pendingKeyMove ?: return
+        pendingKeyMove = null
+        _state.update { it.copy(keyMoveUrl = null) }
+        action()
+    }
+
+    fun dismissKeyMove() {
+        pendingKeyMove = null
+        _state.update { it.copy(keyMoveUrl = null) }
+    }
+
     fun save() {
         val url = validated() ?: return
+        afterKeyMoveCheck(url) { saveTo(url) }
+    }
+
+    private fun saveTo(url: String) {
         val s = _state.value
         viewModelScope.launch {
             val saved = s.providerId?.let { providers.config(it) }
@@ -253,6 +302,10 @@ class ProviderEditViewModel @Inject constructor(
     /** 获取模型列表：成功时保存配置并更新模型列表 */
     fun test() {
         val url = validated() ?: return
+        afterKeyMoveCheck(url) { fetchFrom(url) }
+    }
+
+    private fun fetchFrom(url: String) {
         val s = _state.value
         _state.update { it.copy(testing = true, messageRes = null) }
         viewModelScope.launch {
@@ -305,11 +358,13 @@ class ProviderEditViewModel @Inject constructor(
         val modelId = _state.value.modelInput
         if (modelId.isEmpty()) return
         val url = validated() ?: return
-        viewModelScope.launch {
-            val id = persist(url)
-            providers.addManualModel(id, modelId)
-            reload(id)
-            _state.update { it.copy(modelInput = "") }
+        afterKeyMoveCheck(url) {
+            viewModelScope.launch {
+                val id = persist(url)
+                providers.addManualModel(id, modelId)
+                reload(id)
+                _state.update { it.copy(modelInput = "") }
+            }
         }
     }
 
@@ -411,6 +466,7 @@ fun ProviderEditScreen(onBack: () -> Unit, onOpenModel: (Long, String) -> Unit =
         onCompatibility = viewModel::setCompatibility,
         onConfigureModel = { onOpenModel(it.providerId, it.modelId) },
     )
+    state.keyMoveUrl?.let { KeyMoveDialog(it, viewModel::dismissKeyMove, viewModel::confirmKeyMove) }
     if (state.conflicts.isNotEmpty()) ConflictDialog(state.conflicts, viewModel::dismiss, state.existingConflicts, viewModel::confirm)
     state.deleteBlockedRes?.let { res ->
         WeDialog(

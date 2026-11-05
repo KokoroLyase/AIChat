@@ -437,6 +437,9 @@
     <string name="provider_protocol">协议：OpenAI Chat Completions</string>
     <string name="provider_docs">官方文档</string>
     <string name="provider_advanced">高级连接设置</string>
+    <string name="provider_key_move_title">API Key 会发给新地址</string>
+    <string name="provider_key_move_message">地址已改为 %1$s。继续后，已保存的 API Key 会发送到这个地址。如果这个 Key 不属于新地址，请取消，然后清除 Key 或填写新的。</string>
+    <string name="provider_key_move_confirm">继续</string>
     <string name="model_configure">配置模型</string>
     <string name="model_legacy">升级保留 · 继续使用原参数规则；主动保存后采用新规则</string>
     <string name="model_pending_gaps">待配置 · 缺%1$s</string>
