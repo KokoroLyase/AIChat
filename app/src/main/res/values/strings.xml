@@ -175,7 +175,7 @@
     <string name="crop_title">移动和缩放</string>
 
     <!-- 新建联系人时预填的伴侣模板。{名称} 自动替换为联系人名称，花括号那一行没改时不会发给模型。 -->
-    <string name="prompt_template">你是{名称}，正在用微信和对方聊天。\n用自然、口语化的中文回复，像真人发微信一样简短；想分几条发时，用空行隔开。\n不使用 Markdown、标题、列表或代码块。\n{在这里写人设：性格、和对方的关系、说话习惯、是否使用 emoji}</string>
+    <string name="prompt_template">你是{名称}，正在用手机和对方聊天。\n用自然、口语化的中文回复，像真人发消息一样简短；想分几条发时，用空行隔开。\n不使用 Markdown、标题、列表或代码块。\n{在这里写人设：性格、和对方的关系、说话习惯、是否使用 emoji}</string>
     <string name="prompt_name_placeholder">{名称}</string>
     <string name="prompt_persona_placeholder_prefix">{在这里写人设</string>
     <!-- 参数：年、月、日、星期、时、分 -->

@@ -162,7 +162,7 @@ class ContactEditViewModel @Inject constructor(
 
     fun setName(name: String) = update { it.copy(name = name.take(Contact.NAME_MAX_LENGTH)) }
 
-    /** 换服务商：模型换成它的默认模型（没有时用列表里的第一个） */
+    /** 换服务商：模型换成它的默认模型；没有默认模型时留空，由用户主动选择，不自动选第一个 */
     fun selectProvider(config: ProviderConfig) {
         if (config.id == _state.value.form.providerId) return
         viewModelScope.launch {
