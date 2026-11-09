@@ -19,8 +19,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +45,8 @@ import isomeria.aichat.BuildConfig
 import isomeria.aichat.R
 import isomeria.aichat.data.repo.FileStorage
 import isomeria.aichat.data.settings.SettingsStore
+import isomeria.aichat.feature.settings.SettingsNavigation
+import isomeria.aichat.feature.settings.SettingsSections
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.AvatarCropDialog
 import isomeria.aichat.ui.components.FormRow
@@ -100,24 +103,24 @@ class MeViewModel @Inject constructor(
     }
 }
 
-/** 我：顶部个人卡片（头像、昵称、版本号），下方「设置」。 */
+/** 我：顶部个人卡片（头像、昵称、版本号），下面是全部设置，分四栏（0.4.2 起不再有单独的设置页）。 */
 @Composable
 fun MeScreen(
-    onOpenSettings: () -> Unit,
     onOpenProfile: () -> Unit,
+    settings: SettingsNavigation,
     viewModel: MeViewModel = hiltViewModel(),
 ) {
     val nickname by viewModel.nickname.collectAsStateWithLifecycle()
     val avatar by viewModel.avatarPath.collectAsStateWithLifecycle()
-    MeContent(nickname, avatar, onOpenSettings, onOpenProfile)
+    MeContent(nickname, avatar, onOpenProfile) { SettingsSections(settings) }
 }
 
 @Composable
-fun MeContent(nickname: String, avatarPath: String?, onOpenSettings: () -> Unit, onOpenProfile: () -> Unit) {
+fun MeContent(nickname: String, avatarPath: String?, onOpenProfile: () -> Unit, settings: @Composable ColumnScope.() -> Unit) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     val name = nickname.ifBlank { stringResource(R.string.default_nickname) }
-    Column(Modifier.fillMaxSize().background(colors.pageBackground)) {
+    Column(Modifier.fillMaxSize().background(colors.pageBackground).verticalScroll(rememberScrollState())) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -145,12 +148,7 @@ fun MeContent(nickname: String, avatarPath: String?, onOpenSettings: () -> Unit,
             }
             Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.size(18.dp))
         }
-        GroupSpacer()
-        WeListRow(
-            title = stringResource(R.string.me_settings),
-            onClick = onOpenSettings,
-            leading = { Icon(Icons.Outlined.Settings, null, tint = colors.link, modifier = Modifier.size(dimens.listRowIcon)) },
-        )
+        settings()
     }
 }
 
@@ -222,11 +220,11 @@ fun ProfileScreen(onBack: () -> Unit, viewModel: MeViewModel = hiltViewModel()) 
 @Preview(name = "我 浅色", showBackground = true)
 @Composable
 private fun MeLightPreview() {
-    AIChatTheme(darkTheme = false) { MeContent("Isomeria", null, {}, {}) }
+    AIChatTheme(darkTheme = false) { MeContent("Isomeria", null, {}) { isomeria.aichat.feature.settings.SettingsList(isomeria.aichat.feature.settings.SettingsUiState(), SettingsNavigation(), isomeria.aichat.feature.settings.SettingsActions()) } }
 }
 
 @Preview(name = "我 深色", showBackground = true)
 @Composable
 private fun MeDarkPreview() {
-    AIChatTheme(darkTheme = true) { MeContent("Isomeria", null, {}, {}) }
+    AIChatTheme(darkTheme = true) { MeContent("Isomeria", null, {}) { isomeria.aichat.feature.settings.SettingsList(isomeria.aichat.feature.settings.SettingsUiState(), SettingsNavigation(), isomeria.aichat.feature.settings.SettingsActions()) } }
 }

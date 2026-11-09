@@ -32,7 +32,7 @@ import isomeria.aichat.feature.settings.LicensesScreen
 import isomeria.aichat.feature.settings.ModelEditScreen
 import isomeria.aichat.feature.settings.ProviderEditScreen
 import isomeria.aichat.feature.settings.ProviderListScreen
-import isomeria.aichat.feature.settings.SettingsScreen
+import isomeria.aichat.feature.settings.SettingsNavigation
 import isomeria.aichat.feature.settings.CrashLogsScreen
 import isomeria.aichat.feature.settings.StorageScreen
 import isomeria.aichat.feature.usage.UsageDetailScreen
@@ -48,7 +48,6 @@ import kotlinx.serialization.Serializable
 
 /** contactId 为 -1 时是新建 */
 @Serializable data class ContactEditRoute(val contactId: Long = NEW_CONTACT)
-@Serializable data object SettingsRoute
 @Serializable data object CrashLogsRoute
 @Serializable data object StorageRoute
 @Serializable data object ProviderListRoute
@@ -109,8 +108,16 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenContact = { nav.navigate(ContactDetailRoute(it)) },
                 onNewContact = { nav.navigate(ContactEditRoute()) },
                 onSearch = { nav.navigate(SearchRoute) },
-                onOpenSettings = { nav.navigate(SettingsRoute) },
                 onOpenProfile = { nav.navigate(ProfileRoute) },
+                settings = SettingsNavigation(
+                    onOpenLlm = { nav.navigate(ProviderListRoute) },
+                    onOpenUsage = { nav.navigate(UsageRoute) },
+                    onOpenLicenses = { nav.navigate(LicensesRoute) },
+                    onOpenExport = { nav.navigate(ExportRoute) },
+                    onOpenRestore = { nav.navigate(RestoreRoute) },
+                    onOpenCrashLogs = { nav.navigate(CrashLogsRoute) },
+                    onOpenStorage = { nav.navigate(StorageRoute) },
+                ),
             )
         }
         page<ChatRoute>(nav) {
@@ -172,18 +179,6 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onDeleted = { nav.popBackStack(MainRoute, inclusive = false) },
                 onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
                 onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
-            )
-        }
-        page<SettingsRoute>(nav) {
-            SettingsScreen(
-                onBack = nav::popBackStackSafely,
-                onOpenLlm = { nav.navigate(ProviderListRoute) },
-                onOpenUsage = { nav.navigate(UsageRoute) },
-                onOpenLicenses = { nav.navigate(LicensesRoute) },
-                onOpenExport = { nav.navigate(ExportRoute) },
-                onOpenRestore = { nav.navigate(RestoreRoute) },
-                onOpenCrashLogs = { nav.navigate(CrashLogsRoute) },
-                onOpenStorage = { nav.navigate(StorageRoute) },
             )
         }
         page<ExportRoute>(nav) { ExportScreen(onBack = nav::popBackStackSafely) }

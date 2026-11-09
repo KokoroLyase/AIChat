@@ -49,8 +49,8 @@ fun MainScreen(
     onOpenContact: (Long) -> Unit,
     onNewContact: () -> Unit,
     onSearch: () -> Unit,
-    onOpenSettings: () -> Unit,
     onOpenProfile: () -> Unit,
+    settings: isomeria.aichat.feature.settings.SettingsNavigation,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val unread by viewModel.totalUnread.collectAsStateWithLifecycle()
@@ -80,7 +80,7 @@ fun MainScreen(
                     onNewContact = onNewContact,
                     onSearch = onSearch,
                 )
-                else -> MeScreen(onOpenSettings = onOpenSettings, onOpenProfile = onOpenProfile)
+                else -> MeScreen(onOpenProfile = onOpenProfile, settings = settings)
             }
         }
         WeBottomBar(

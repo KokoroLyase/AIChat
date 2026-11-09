@@ -130,7 +130,7 @@ class ScreenshotTest {
     private fun Contacts() = WithTabs(1) { ContactsContent(previewSections, {}, {}, {}) }
 
     @Composable
-    private fun Me() = WithTabs(2) { MeContent("Isomeria", null, {}, {}) }
+    private fun Me(state: SettingsUiState = SettingsUiState(hasKey = true)) = WithTabs(2) { MeContent("Isomeria", null, {}) { SettingsList(state, SettingsNavigation(), SettingsActions()) } }
 
     @Test fun chatListLight() = shot("1-chatlist", false) { ChatList() }
 
@@ -635,6 +635,20 @@ class ScreenshotTest {
     @Test fun contactDetailLargeLight() = large("54-contact-detail-large", false) { ContactDetailContent(detailFixed, {}, {}, {}, {}) }
     @Test fun contactDetailLargeDark() = large("54-contact-detail-large", true) { ContactDetailContent(detailNotSent.copy(temperature = RequestTemperature.Blocked(2.5f), chatIssue = ConfigurationIssue.TEMPERATURE), {}, {}, {}, {}) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contactDetailNarrow() = large("54-contact-detail-narrow", false) { ContactDetailContent(detailFixed, {}, {}, {}, {}) }
+
+    // ---------- 0.4.2「我」页：设置并入四个分栏 ----------
+
+    private fun meBottom(name: String, dark: Boolean, large: Boolean) {
+        val state = SettingsUiState(hasKey = true, canNotify = false, newerVersion = "0.4.3")
+        if (large) large(name, dark) { Me(state) } else shot(name, dark) { Me(state) }
+        compose.onNodeWithText("GitHub 仓库").performScrollTo()
+        compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun meBottomLight() = meBottom("55-me-bottom", false, large = false)
+    @Test fun meBottomDark() = meBottom("55-me-bottom", true, large = false)
+    @Test fun meLargeLight() = large("55-me-large", false) { Me(SettingsUiState(hasKey = false, canNotify = false)) }
+    @Test fun meLargeDark() = meBottom("55-me-large-bottom", true, large = true)
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun meNarrow() = large("55-me-narrow", false) { Me(SettingsUiState(hasKey = true, canNotify = false)) }
 
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun chatBackgroundNarrow() = large("53-chat-background-narrow", true) { ChatPageSample(background = stripes) }
 }
