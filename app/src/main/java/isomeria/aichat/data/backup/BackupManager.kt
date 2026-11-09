@@ -83,6 +83,14 @@ data class BackupPreview(
     val contactCount: Int get() = data.contacts.size
     val messageCount: Int get() = data.messages.size
     val imageCount: Int get() = data.messages.count { it.type == MessageType.IMAGE }
+
+    /** 备份里的全局记忆；0.4.2 及更早的备份没有 */
+    val globalMemory: GlobalMemoryCount get() = GlobalMemoryCount(data.globalCategories.size, data.globalItems.size)
+}
+
+/** 全局记忆的类别数和条数。类别数为 0 时就是没有全局记忆 */
+data class GlobalMemoryCount(val categories: Int, val items: Int) {
+    val isEmpty: Boolean get() = categories == 0
 }
 
 data class ExportSummary(val contacts: Int, val messages: Int, val images: Int, val includesApiKey: Boolean, val encrypted: Boolean = false)
@@ -192,17 +200,25 @@ class BackupManager @Inject constructor(
         } catch (_: Exception) { false }
     }
 
+    /** 本机现有的全局记忆；覆盖恢复前用它决定要不要问用户保留 */
+    suspend fun localGlobalMemory(): GlobalMemoryCount = withContext(Dispatchers.IO) {
+        GlobalMemoryCount(globalDao.categories().size, globalDao.items().size)
+    }
+
     /**
      * 恢复。备份里有加密的 API Key 但 [password] 为空时，跳过 Key、照常恢复其他数据；
      * 密码错误时抛 [WrongPasswordException]，本机数据不变。
+     *
+     * [keepGlobalMemory] 只对覆盖恢复有效：为 true 时本机的全局记忆原样保留，不用备份里的
+     * （0.4.2 及更早的备份没有全局记忆，不保留就会被清空）。由用户在覆盖前选择。
      */
-    suspend fun restore(preview: BackupPreview, mode: RestoreMode, password: CharArray?): RestoreSummary =
+    suspend fun restore(preview: BackupPreview, mode: RestoreMode, password: CharArray?, keepGlobalMemory: Boolean = false): RestoreSummary =
         try { mutex.withLock {
             StorageOperations.gate.activity { withContext(Dispatchers.IO) {
                 val apiKeys = importedApiKeys(preview, password)
                 writeSnapshot()
                 if (mode == RestoreMode.OVERWRITE) stopAllReplies()
-                val summary = apply(preview, mode, apiKeys, exactKey = false, rollback = snapshotFile)
+                val summary = apply(preview, mode, apiKeys, exactKey = false, rollback = snapshotFile, keepGlobalMemory = keepGlobalMemory)
                 // apply includes post-transaction settings writes and any required rollback.
                 val snapshotDeleted = !snapshotFile.exists() || snapshotFile.delete()
                 val temporaryDeleted = discardPreview(preview)
@@ -485,13 +501,14 @@ class BackupManager @Inject constructor(
         apiKeys: Map<Long, String>,
         exactKey: Boolean,
         rollback: File?,
+        keepGlobalMemory: Boolean = false,
     ): RestoreSummary {
         db.restoreInProgress.incrementAndGet()
         db.restoreGeneration.incrementAndGet()
         val created = ArrayList<File>()
         try {
             val paths = ZipFile(preview.file).use { zip -> extractMedia(zip, preview.data, created) }
-            val summary = writeDatabase(preview.data, mode, paths, apiKeys, exactKey)
+            val summary = writeDatabase(preview.data, mode, paths, apiKeys, exactKey, keepGlobalMemory)
             try {
                 writeSettings(preview.data.settings, mode, paths)
             } catch (e: Exception) {
@@ -545,10 +562,11 @@ class BackupManager @Inject constructor(
         paths: Map<String, String>,
         apiKeys: Map<Long, String>,
         exactKey: Boolean,
+        keepGlobalMemory: Boolean,
     ): RestoreSummary = db.withTransaction {
         val sources = data.providers.filter { it.kind == ProviderKind.LLM }
         when (mode) {
-            RestoreMode.OVERWRITE -> overwrite(data, sources, paths, apiKeys, exactKey)
+            RestoreMode.OVERWRITE -> overwrite(data, sources, paths, apiKeys, exactKey, keepGlobalMemory)
             RestoreMode.MERGE -> merge(data, sources, paths, apiKeys)
         }
     }
@@ -559,18 +577,22 @@ class BackupManager @Inject constructor(
         paths: Map<String, String>,
         apiKeys: Map<Long, String>,
         exactKey: Boolean,
+        keepGlobalMemory: Boolean,
     ): RestoreSummary {
         messageDao.deleteAll()
         memoryDao.deleteAll()
         usageDao.deleteAll()
         conversationDao.deleteAll()
         contactDao.deleteAll()
-        globalDao.deleteAllItems()
-        globalDao.deleteAllTopics()
-        globalDao.deleteAllCategories()
-        globalDao.insertCategories(data.globalCategories.map { it.toEntity() })
-        globalDao.insertTopics(data.globalTopics.map { it.toEntity(it.categoryId) })
-        globalDao.insertItems(data.globalItems.map { it.toEntity(it.topicId) })
+        // 用户选了保留本机的全局记忆时不动它，备份里的全局记忆不导入
+        if (!keepGlobalMemory) {
+            globalDao.deleteAllItems()
+            globalDao.deleteAllTopics()
+            globalDao.deleteAllCategories()
+            globalDao.insertCategories(data.globalCategories.map { it.toEntity() })
+            globalDao.insertTopics(data.globalTopics.map { it.toEntity(it.categoryId) })
+            globalDao.insertItems(data.globalItems.map { it.toEntity(it.topicId) })
+        }
 
         val providerIds = overwriteProviders(sources, apiKeys, exactKey)
         val fallback = providerDao.llmList().firstOrNull()?.id ?: error("缺少服务商配置")

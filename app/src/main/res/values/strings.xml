@@ -308,10 +308,18 @@
     <string name="restore_mode_merge">合并</string>
     <string name="restore_mode_merge_desc">保留本机数据，只加入本机没有的联系人、消息、记忆和服务商</string>
     <string name="restore_mode_overwrite">覆盖</string>
-    <string name="restore_mode_overwrite_desc">清空本机的联系人、聊天记录、记忆和用量统计，服务商也换成备份里的</string>
+    <string name="restore_mode_overwrite_desc">清空本机的联系人、聊天记录、记忆和用量统计，服务商也换成备份里的；本机有全局记忆时，会先问你是否保留</string>
     <string name="restore_button">开始恢复</string>
     <string name="restore_overwrite_confirm">本机现有的联系人、聊天记录、记忆、用量统计、服务商和设置将被备份里的内容替换。恢复前会自动备份当前数据。</string>
     <string name="restore_overwrite_action">覆盖</string>
+    <string name="restore_global_choice_backup_has" tools:ignore="PluralsCandidate">本机有全局记忆（%1$d 个类别，%2$d 条），备份里也有（%3$d 个类别，%4$d 条）。覆盖恢复时用哪一份？</string>
+    <string name="restore_global_choice_backup_none" tools:ignore="PluralsCandidate">本机有全局记忆（%1$d 个类别，%2$d 条），这个备份里没有（0.4.2 及更早的备份不含全局记忆）。覆盖恢复时要保留本机的吗？</string>
+    <string name="restore_global_keep">保留本机的全局记忆</string>
+    <string name="restore_global_use_backup">用备份里的全局记忆</string>
+    <string name="restore_global_clear">清空本机的全局记忆</string>
+    <string name="restore_overwrite_global_keep">全局记忆：保留本机的。</string>
+    <string name="restore_overwrite_global_replace">全局记忆：换成备份里的。</string>
+    <string name="restore_overwrite_global_clear">全局记忆：清空。</string>
     <string name="restore_running">正在恢复…</string>
     <string name="restore_done_title">恢复完成</string>
     <string name="restore_done_message">新增 %1$d 位联系人、%2$d 条消息。</string>

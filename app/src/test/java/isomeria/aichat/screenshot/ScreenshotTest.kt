@@ -723,6 +723,24 @@ class ScreenshotTest {
         ContactPromptContent(longPrompt, {}, {}, isomeria.aichat.feature.contactedit.PromptUsage(2_300, 4_000))
     }
 
+    // ---------- 0.5.0 覆盖恢复前问是否保留本机全局记忆 ----------
+
+    private fun overwriteState(choice: Boolean, keep: Boolean? = null) = RestoreUiState(
+        preview = sampleBackupPreview(decrypted = false, keyEncrypted = false), mode = RestoreMode.OVERWRITE,
+    ).let { if (choice) it.askingOverwrite(isomeria.aichat.data.backup.GlobalMemoryCount(3, 12)) else it.askingOverwrite(isomeria.aichat.data.backup.GlobalMemoryCount(3, 12)).choseGlobalMemory(keep ?: true) }
+
+    private fun restoreGlobalShot(name: String, dark: Boolean, fontScale: Float = 1f, state: RestoreUiState) {
+        compose.setContent { AIChatTheme(darkTheme = dark, fontScale = fontScale) { RestoreSample(state) } }
+        captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun restoreGlobalChoiceLight() = restoreGlobalShot("65-restore-global-choice", false, state = overwriteState(choice = true))
+    @Test fun restoreGlobalChoiceDark() = restoreGlobalShot("65-restore-global-choice", true, state = overwriteState(choice = true))
+    @Test fun restoreGlobalChoiceLarge() = restoreGlobalShot("65-restore-global-choice-large", false, 1.6f, overwriteState(choice = true))
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun restoreGlobalChoiceNarrow() = restoreGlobalShot("65-restore-global-choice-narrow", true, 1.6f, overwriteState(choice = true))
+    @Test fun restoreOverwriteKeepLight() = restoreGlobalShot("65-restore-overwrite-keep", false, state = overwriteState(choice = false, keep = true))
+    @Test fun restoreOverwriteClearDark() = restoreGlobalShot("65-restore-overwrite-clear", true, state = overwriteState(choice = false, keep = false))
+    @Test fun restoreOverwriteKeepLarge() = restoreGlobalShot("65-restore-overwrite-keep-large", true, 1.6f, overwriteState(choice = false, keep = true))
+
     // ---------- 0.4.2「我」页：四个入口，各进一栏设置页 ----------
 
     private val settingsSample = SettingsUiState(hasKey = true, canNotify = false, newerVersion = "0.4.3")

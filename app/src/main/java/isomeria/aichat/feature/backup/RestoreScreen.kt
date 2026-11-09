@@ -28,9 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -49,6 +47,7 @@ import isomeria.aichat.data.backup.BackupContainer
 import isomeria.aichat.data.backup.BackupManager
 import isomeria.aichat.data.backup.BackupPreview
 import isomeria.aichat.data.backup.BackupTooNewException
+import isomeria.aichat.data.backup.GlobalMemoryCount
 import isomeria.aichat.data.backup.InvalidBackupException
 import isomeria.aichat.data.backup.RestoreMode
 import isomeria.aichat.data.backup.RestoreSummary
@@ -63,6 +62,8 @@ import isomeria.aichat.ui.components.FormRow
 import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.PasswordField
 import isomeria.aichat.ui.components.SectionHeader
+import isomeria.aichat.ui.components.SheetOption
+import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeButton
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeListRow
@@ -104,7 +105,27 @@ data class RestoreUiState(
     /** 完成时用的恢复方式（提示文字不同） */
     val doneMode: RestoreMode = RestoreMode.MERGE,
     val error: RestoreError? = null,
-)
+    /** 覆盖前问是否保留本机全局记忆：不为空时显示选择菜单，内容是本机现有的数量 */
+    val globalChoice: GlobalMemoryCount? = null,
+    /** 覆盖时保留本机全局记忆（用户选的）；为空表示本机没有、不用问 */
+    val keepGlobalMemory: Boolean? = null,
+    /** 显示「覆盖」的最后确认 */
+    val confirmOverwrite: Boolean = false,
+) {
+    /** 点了「覆盖」方式的恢复，查到本机全局记忆的数量后：有就先问，没有直接最后确认 */
+    fun askingOverwrite(local: GlobalMemoryCount) =
+        if (local.isEmpty) copy(globalChoice = null, keepGlobalMemory = null, confirmOverwrite = true)
+        else copy(globalChoice = local, keepGlobalMemory = null, confirmOverwrite = false)
+
+    /** 在菜单里选了保留或不保留：接着做最后确认 */
+    fun choseGlobalMemory(keep: Boolean) = copy(globalChoice = null, keepGlobalMemory = keep, confirmOverwrite = true)
+
+    /** 放弃覆盖（最后确认点了取消） */
+    fun cancelledOverwrite() = copy(globalChoice = null, keepGlobalMemory = null, confirmOverwrite = false)
+
+    /** 菜单关闭：点了选项后菜单也会关，这时已经选过（globalChoice 已清空），不算取消；取消或点空白才算 */
+    fun globalChoiceDismissed() = if (globalChoice == null) this else cancelledOverwrite()
+}
 
 @HiltViewModel
 class RestoreViewModel @Inject constructor(
@@ -193,6 +214,22 @@ class RestoreViewModel @Inject constructor(
         else -> RestoreError.ReadFailed
     }
     fun setMode(mode: RestoreMode) = _state.update { it.copy(mode = mode) }
+
+    /** 点了「覆盖」方式的恢复：本机有全局记忆时先问保留哪一份，再做最后确认 */
+    fun askOverwrite() {
+        val current = _state.value
+        if (current.preview == null || current.restoring || current.reading) return
+        viewModelScope.launch {
+            val local = backup.localGlobalMemory()
+            _state.update { it.askingOverwrite(local) }
+        }
+    }
+
+    fun chooseGlobalMemory(keep: Boolean) = _state.update { it.choseGlobalMemory(keep) }
+
+    fun cancelOverwrite() = _state.update { it.cancelledOverwrite() }
+
+    fun dismissGlobalChoice() = _state.update { it.globalChoiceDismissed() }
     fun setPassword(value: String) = _state.update { it.copy(password = value, wrongPassword = false) }
     fun dismissError() = _state.update { it.copy(error = null) }
 
@@ -201,12 +238,13 @@ class RestoreViewModel @Inject constructor(
         val current = _state.value
         val preview = current.preview ?: return
         if (current.restoring || current.reading) return
-        _state.update { it.copy(restoring = true, wrongPassword = false) }
+        _state.update { it.copy(restoring = true, wrongPassword = false, confirmOverwrite = false, globalChoice = null) }
         val source = selectedFile
+        val keepGlobalMemory = current.mode == RestoreMode.OVERWRITE && current.keepGlobalMemory == true
         appScope.launch {
             val password = current.password.takeIf { preview.needsPassword && it.isNotEmpty() }?.toCharArray()
             try {
-                val summary = backup.restore(preview, current.mode, password)
+                val summary = backup.restore(preview, current.mode, password, keepGlobalMemory)
                 val cleaned = withContext(Dispatchers.IO) { releaseFile(source) }
                 _state.update { it.copy(restoring = false, done = summary.copy(cleanupPending = summary.cleanupPending || !cleaned),
                     doneMode = current.mode, preview = null, password = "", locked = false) }
@@ -250,15 +288,17 @@ fun RestoreScreen(onBack: () -> Unit, viewModel: RestoreViewModel = hiltViewMode
         if (uri != null) viewModel.pick(uri)
     }
     RestoreContent(state, onBack, { openDocument.launch(arrayOf("*/*")) }, viewModel::unlock,
-        viewModel::setPassword, viewModel::setMode, viewModel::restore, viewModel::dismissError)
+        viewModel::setPassword, viewModel::setMode, viewModel::restore, viewModel::dismissError,
+        viewModel::askOverwrite, viewModel::chooseGlobalMemory, viewModel::cancelOverwrite, viewModel::dismissGlobalChoice)
 }
 
 @Composable
 fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit, onUnlock: () -> Unit,
     onPassword: (String) -> Unit, onMode: (RestoreMode) -> Unit, onRestore: () -> Unit, onDismissError: () -> Unit,
+    onAskOverwrite: () -> Unit = {}, onChooseGlobalMemory: (Boolean) -> Unit = {}, onCancelOverwrite: () -> Unit = {},
+    onDismissGlobalChoice: () -> Unit = {},
 ) {
     val colors = WeTheme.colors
-    var confirmOverwrite by remember { mutableStateOf(false) }
     BackHandler(enabled = state.restoring) {}
     ImeBackHandler()
     Column(Modifier.fillMaxSize().background(colors.pageBackground).imePadding()) {
@@ -328,7 +368,7 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
                     WeButton(
                         stringResource(R.string.restore_button),
                         onClick = {
-                            if (state.mode == RestoreMode.OVERWRITE) confirmOverwrite = true else onRestore()
+                            if (state.mode == RestoreMode.OVERWRITE) onAskOverwrite() else onRestore()
                         },
                         modifier = Modifier.width(184.dp),
                         enabled = !state.restoring,
@@ -342,16 +382,39 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
 
     if (state.reading) WeLoading(stringResource(R.string.restore_reading))
     if (state.restoring) WeLoading(stringResource(R.string.restore_running))
-    if (confirmOverwrite) {
+    state.globalChoice?.let { local ->
+        val backupGlobal = state.preview?.globalMemory ?: GlobalMemoryCount(0, 0)
+        WeActionSheet(
+            title = if (backupGlobal.isEmpty) {
+                stringResource(R.string.restore_global_choice_backup_none, local.categories, local.items)
+            } else {
+                stringResource(R.string.restore_global_choice_backup_has, local.categories, local.items, backupGlobal.categories, backupGlobal.items)
+            },
+            options = listOf(
+                SheetOption(stringResource(R.string.restore_global_keep)) { onChooseGlobalMemory(true) },
+                if (backupGlobal.isEmpty) {
+                    SheetOption(stringResource(R.string.restore_global_clear), destructive = true) { onChooseGlobalMemory(false) }
+                } else {
+                    SheetOption(stringResource(R.string.restore_global_use_backup)) { onChooseGlobalMemory(false) }
+                },
+            ),
+            // 选项点完也会调到这里；由 ViewModel 按当前状态判断，只有还没选（取消、点空白）时才算放弃覆盖
+            onDismiss = onDismissGlobalChoice,
+        )
+    }
+    if (state.confirmOverwrite) {
+        val globalNote = when {
+            state.keepGlobalMemory == true -> stringResource(R.string.restore_overwrite_global_keep)
+            state.keepGlobalMemory == false && state.preview?.globalMemory?.isEmpty != false -> stringResource(R.string.restore_overwrite_global_clear)
+            state.keepGlobalMemory == false -> stringResource(R.string.restore_overwrite_global_replace)
+            else -> null
+        }
         WeDialog(
-            message = stringResource(R.string.restore_overwrite_confirm),
+            message = stringResource(R.string.restore_overwrite_confirm) + (globalNote?.let { "\n\n$it" } ?: ""),
             confirmText = stringResource(R.string.restore_overwrite_action),
             destructive = true,
-            onDismiss = { confirmOverwrite = false },
-            onConfirm = {
-                confirmOverwrite = false
-                onRestore()
-            },
+            onDismiss = onCancelOverwrite,
+            onConfirm = onRestore,
         )
     }
     state.done?.let { summary ->

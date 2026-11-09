@@ -374,6 +374,36 @@ class BackupManagerTest {
     }
 
     @Test
+    fun overwrite_userChoosesToKeepLocalGlobalMemory_forNewAndOldBackups() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        val dao = db.globalMemoryDao()
+        dao.insertCategory(GlobalMemoryCategory(name = "后来加的", sortOrder = 2, createdAt = 8_000, updatedAt = 8_000))
+        val local = Triple(dao.categories(), dao.topics(), dao.items())
+        // 页面用这些数量决定要不要问、怎么问
+        assertEquals(GlobalMemoryCount(3, 4), backup.localGlobalMemory())
+        val preview = backup.inspect(zip)
+        assertEquals(GlobalMemoryCount(2, 4), preview.globalMemory)
+
+        // 备份里有全局记忆，用户选保留本机的：本机三张表原样不动，其他数据照常换成备份里的
+        db.contactDao().insert(Contact(name = "本机新加", avatarColor = 0, providerId = 1, model = "m", createdAt = 9_000, updatedAt = 9_000))
+        backup.restore(preview, RestoreMode.OVERWRITE, null, keepGlobalMemory = true)
+        assertEquals(local, Triple(dao.categories(), dao.topics(), dao.items()))
+        assertTrue(db.contactDao().listAll().none { it.name == "本机新加" })
+
+        // 0.4.2 的备份没有全局记忆：选保留时也不会被清空
+        val v4 = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.4.2","appVersionCode":402,"formatVersion":4,"exportedAt":1}""",
+            BackupFormat.DATA to """{"contacts":[{"id":1,"name":"小雨","avatarColor":0,"providerId":1,"model":"m","temperature":1.3,"createdAt":1,"updatedAt":1}]}""",
+        )
+        val old = backup.inspect(v4)
+        assertTrue(old.globalMemory.isEmpty)
+        backup.restore(old, RestoreMode.OVERWRITE, null, keepGlobalMemory = true)
+        assertEquals(local, Triple(dao.categories(), dao.topics(), dao.items()))
+        assertEquals(listOf("小雨"), db.contactDao().listAll().map { it.name })
+    }
+
+    @Test
     fun v4Backup_contactsDefaultToUsingGlobalMemoryAndReplyPreferences_splitRepliesKept() = runBlocking {
         val zip = writeZip(
             BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.4.2","appVersionCode":402,"formatVersion":4,"exportedAt":1}""",
