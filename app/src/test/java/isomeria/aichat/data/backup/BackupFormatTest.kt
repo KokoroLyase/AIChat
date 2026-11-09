@@ -152,6 +152,29 @@ class BackupFormatTest {
     }
 
     @Test
+    fun v3ToV4_addsDefaultMuteAndBackground_andKeepsOtherFields() {
+        val v3 = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"conversations": [{"contactId": 1, "pinned": true, "draft": "草稿", "memoryStart": 5}], "contacts": []}""",
+        ) as JsonObject
+        val migrated = BackupMigrations().migrate(v3, from = 3)
+        val conversation = BackupFormat.json.decodeFromJsonElement(BackupData.serializer(), migrated).conversations.single()
+        assertEquals(false, conversation.muted)
+        assertEquals(null, conversation.background)
+        assertEquals(true, conversation.pinned)
+        assertEquals("草稿", conversation.draft)
+        assertEquals(5L, conversation.memoryStart)
+        // 没有会话的旧备份也能迁移
+        assertEquals(JsonObject(emptyMap()), BackupMigrations.v3ToV4(JsonObject(emptyMap())))
+    }
+
+    @Test
+    fun mediaNamePattern_acceptsBackgroundDir() {
+        assertTrue(BackupFormat.mediaNamePattern.matches("background/abc-1.jpg"))
+        assertTrue(!BackupFormat.mediaNamePattern.matches("background/../x.jpg"))
+        assertTrue(!BackupFormat.mediaNamePattern.matches("backgrounds/x.jpg"))
+    }
+
+    @Test
     fun migrations_newerVersion_rejected() {
         try {
             BackupMigrations().migrate(JsonObject(emptyMap()), BackupFormat.VERSION + 1)

@@ -46,11 +46,11 @@ data class OrphanPreview(val files: List<OrphanFile>) {
     val count get() = files.size
     val bytes get() = files.sumOf { it.bytes }
 }
-data class StorageUsage(val images: Long, val avatars: Long, val logs: Long, val cache: Long, val database: Long)
+data class StorageUsage(val images: Long, val avatars: Long, val logs: Long, val cache: Long, val database: Long, val backgrounds: Long = 0)
 data class CleanupResult(val count: Int, val bytes: Long)
 
-internal fun mediaReferences(avatars: List<String>, images: List<String>, ownAvatar: String?): Set<String> =
-    buildSet { addAll(avatars); addAll(images); ownAvatar?.let(::add) }
+internal fun mediaReferences(avatars: List<String>, images: List<String>, ownAvatar: String?, backgrounds: List<String> = emptyList()): Set<String> =
+    buildSet { addAll(avatars); addAll(images); ownAvatar?.let(::add); addAll(backgrounds) }
 
 /** Does not follow symlinks outside the requested root, including nested cache directories. */
 internal fun storageFiles(root: File): List<File> {

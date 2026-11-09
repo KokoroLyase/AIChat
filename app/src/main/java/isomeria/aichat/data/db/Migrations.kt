@@ -3,6 +3,14 @@ package isomeria.aichat.data.db
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+/** v3 → v4（0.4.2）：会话加免打扰和聊天背景，旧会话默认不静音、无背景。 */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE conversation ADD COLUMN muted INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE conversation ADD COLUMN backgroundPath TEXT")
+    }
+}
+
 /** v2 → v3：只加列，不按地址推断品牌或变更历史请求。 */
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {

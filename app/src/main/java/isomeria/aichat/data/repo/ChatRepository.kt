@@ -18,8 +18,8 @@ import isomeria.aichat.data.db.escapeLike
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.Role
-import isomeria.aichat.data.reply.ReplyNotifier
-import isomeria.aichat.data.reply.ReplyScheduler
+import isomeria.aichat.data.reply.ReplyNotifications
+import isomeria.aichat.data.reply.ReplyQueue
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -33,8 +33,8 @@ class ChatRepository @Inject constructor(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
     private val files: FileStorage,
-    private val replyScheduler: ReplyScheduler,
-    private val notifier: ReplyNotifier,
+    private val replyScheduler: ReplyQueue,
+    private val notifier: ReplyNotifications,
 ) {
     private val paging = ChatPaging(db)
     private val messageActions = ChatMessageActions(db)
@@ -140,11 +140,13 @@ class ChatRepository @Inject constructor(
     suspend fun deleteConversation(contactId: Long) {
         replyScheduler.cancel(contactId)
         val images = messageDao.imagePaths(contactId)
+        val background = conversationDao.get(contactId)?.backgroundPath
         db.withTransaction {
             messageDao.deleteByContact(contactId)
             conversationDao.reset(contactId)
         }
         images.forEach(files::delete)
+        files.delete(background)
         notifier.cancelReply(contactId)
     }
 
@@ -172,6 +174,42 @@ class ChatRepository @Inject constructor(
         }
         images.forEach(files::delete)
         contacts.forEach(notifier::cancelReply)
+    }
+
+    /** 消息免打扰：只影响回复到达通知 */
+    suspend fun setMuted(contactId: Long, muted: Boolean) {
+        ensureConversation(contactId)
+        conversationDao.setMuted(contactId, muted)
+        // 已经弹出的这个联系人的通知也收起
+        if (muted) notifier.cancelReply(contactId)
+    }
+
+    /** 设置当前聊天背景：按聊天图片的压缩流程存到 files/background，写库成功后再删旧文件 */
+    suspend fun setBackground(contactId: Long, uri: Uri) = setBackground(contactId) { files.importBackground(uri) }
+
+    internal suspend fun setBackground(contactId: Long, import: suspend () -> StoredImage) = StorageOperations.gate.activity {
+        val image = import()
+        val old = try {
+            db.withTransaction {
+                ensureConversation(contactId)
+                val previous = conversationDao.get(contactId)?.backgroundPath
+                conversationDao.setBackground(contactId, image.path)
+                previous
+            }
+        } catch (e: Throwable) {
+            files.delete(image.path)
+            throw e
+        } finally {
+            files.commitAvatar(image.path)
+        }
+        if (old != image.path) files.delete(old)
+    }
+
+    /** 恢复默认背景：去掉引用并删除背景文件 */
+    suspend fun clearBackground(contactId: Long) {
+        val old = conversationDao.get(contactId)?.backgroundPath ?: return
+        conversationDao.setBackground(contactId, null)
+        files.delete(old)
     }
 
     suspend fun setPinned(contactId: Long, pinned: Boolean) {

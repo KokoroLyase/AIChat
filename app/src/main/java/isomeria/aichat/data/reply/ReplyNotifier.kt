@@ -34,7 +34,7 @@ import javax.inject.Singleton
 class ReplyNotifier @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settings: SettingsStore,
-) {
+) : ReplyNotifications {
     private val manager = NotificationManagerCompat.from(context)
 
     fun createChannels() {
@@ -59,7 +59,7 @@ class ReplyNotifier @Inject constructor(
             PackageManager.PERMISSION_GRANTED && manager.areNotificationsEnabled()
 
     /** 回复到达。[parts] 是分条后的各条内容。 */
-    fun notifyReply(contact: Contact, parts: List<String>) {
+    override fun notifyReply(contact: Contact, parts: List<String>) {
         if (!settings.notifyEnabled.value || !canNotify()) return
         val text = when {
             !settings.notifyPreview.value -> context.getString(R.string.notification_hidden_content)
@@ -86,7 +86,7 @@ class ReplyNotifier @Inject constructor(
         }
     }
 
-    fun cancelReply(contactId: Long) {
+    override fun cancelReply(contactId: Long) {
         manager.cancel(messageNotificationId(contactId))
     }
 

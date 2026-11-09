@@ -254,7 +254,7 @@ class BackupManager @Inject constructor(
         }
         val data = BackupData(
             contacts = contacts.map { it.toDto(media.add(it.avatarPath, BackupFormat.AVATARS_DIR)) },
-            conversations = conversations.map { it.toDto() },
+            conversations = conversations.map { it.toDto(media.add(it.backgroundPath, BackupFormat.BACKGROUNDS_DIR)) },
             messages = messages.map { it.toDto(media.add(it.imagePath, BackupFormat.IMAGES_DIR)) },
             providers = providers,
             memories = tables.memories.map { it.toDto() },
@@ -401,7 +401,8 @@ class BackupManager @Inject constructor(
                     )
                 },
             contacts = contacts,
-            conversations = data.conversations.filter { it.contactId in ids }.distinctBy { it.contactId },
+            conversations = data.conversations.filter { it.contactId in ids }.distinctBy { it.contactId }
+                .map { it.copy(background = it.background?.takeIf { name -> name.startsWith(BackupFormat.BACKGROUNDS_DIR) && BackupFormat.mediaNamePattern.matches(name) }) },
             messages = data.messages.filter { it.contactId in ids }.distinctBy { it.id }
                 .map { it.copy(image = it.image?.takeIf(BackupFormat.mediaNamePattern::matches)) },
             settings = data.settings.copy(avatar = data.settings.avatar?.takeIf(BackupFormat.mediaNamePattern::matches)),
@@ -481,10 +482,15 @@ class BackupManager @Inject constructor(
         data.contacts.mapNotNullTo(names) { it.avatar }
         data.messages.mapNotNullTo(names) { it.image }
         data.settings.avatar?.let(names::add)
+        data.conversations.mapNotNullTo(names) { it.background }
         val result = HashMap<String, String>()
         for (name in names) {
             val entry = zip.getEntry(name) ?: continue
-            val kind = if (name.startsWith(BackupFormat.AVATARS_DIR)) MediaKind.AVATAR else MediaKind.IMAGE
+            val kind = when {
+                name.startsWith(BackupFormat.AVATARS_DIR) -> MediaKind.AVATAR
+                name.startsWith(BackupFormat.BACKGROUNDS_DIR) -> MediaKind.BACKGROUND
+                else -> MediaKind.IMAGE
+            }
             val target = files.newMediaFile(kind)
             created += target
             zip.getInputStream(entry).use { input ->
@@ -530,7 +536,7 @@ class BackupManager @Inject constructor(
         )
         val withConversation = data.conversations.mapTo(HashSet()) { it.contactId }
         conversationDao.upsertAll(
-            data.conversations.map { it.toEntity() } +
+            data.conversations.map { it.toEntity(it.background?.let(paths::get)) } +
                 data.contacts.filter { it.id !in withConversation }.map { Conversation(contactId = it.id, memoryCursor = null) },
         )
         messageDao.insertAll(data.messages.map { it.toEntity(it.contactId, it.image?.let(paths::get)) })
@@ -639,7 +645,7 @@ class BackupManager @Inject constructor(
         for (conversation in data.conversations) {
             val target = idMap[conversation.contactId] ?: continue
             if (target in localConversations) continue
-            conversationDao.upsert(conversation.toEntity().copy(contactId = target))
+            conversationDao.upsert(conversation.toEntity(conversation.background?.let(paths::get)).copy(contactId = target))
             localConversations += target
         }
         for (target in idMap.values) {
@@ -711,6 +717,7 @@ class BackupManager @Inject constructor(
         val referenced = HashSet<String>()
         contactDao.listAll().mapNotNullTo(referenced) { it.avatarPath }
         referenced += messageDao.allImagePaths()
+        referenced += conversationDao.backgroundPaths()
         settings.read().avatarPath?.let(referenced::add)
         files.deleteUnreferenced(referenced)
     }
@@ -732,16 +739,16 @@ class BackupManager @Inject constructor(
         thinkingOption = thinkingOption, memoryModel = memoryModel, memoryThinkingOption = memoryThinkingOption,
     )
 
-    private fun Conversation.toDto() = ConversationDto(
+    private fun Conversation.toDto(background: String?) = ConversationDto(
         contactId = contactId, pinned = pinned, unreadCount = unreadCount, markedUnread = markedUnread,
         draft = draft, lastMessageTime = lastMessageTime, lastMessagePreview = lastMessagePreview,
-        memoryCursor = memoryCursor, memoryStart = memoryStart,
+        memoryCursor = memoryCursor, memoryStart = memoryStart, muted = muted, background = background,
     )
 
-    private fun ConversationDto.toEntity() = Conversation(
+    private fun ConversationDto.toEntity(backgroundPath: String?) = Conversation(
         contactId = contactId, pinned = pinned, unreadCount = unreadCount, markedUnread = markedUnread,
         draft = draft, lastMessageTime = lastMessageTime, lastMessagePreview = lastMessagePreview,
-        memoryCursor = memoryCursor, memoryStart = memoryStart,
+        memoryCursor = memoryCursor, memoryStart = memoryStart, muted = muted, backgroundPath = backgroundPath,
     )
 
     private fun Memory.toDto() = MemoryDto(

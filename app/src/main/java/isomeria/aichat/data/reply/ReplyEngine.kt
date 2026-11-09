@@ -53,7 +53,7 @@ class ReplyEngine @Inject constructor(
     private val settings: SettingsStore,
     private val files: FileStorage,
     private val contextBuilder: ContextBuilder,
-    private val notifier: ReplyNotifier,
+    private val alerts: ReplyAlerts,
     private val activeChat: ActiveChatTracker,
 ) {
     suspend fun run(contactId: Long) = isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
@@ -169,7 +169,7 @@ class ReplyEngine @Inject constructor(
             )
         }
         debugLog("reply ok: parts=${parts.size} prompt=$promptTokens completion=$completionTokens")
-        if (!activeChat.isViewing(contactId)) notifier.notifyReply(contact, parts)
+        alerts.afterReply(contact, parts)
         if (contact.autoMemory) memoryScheduler.enqueue(contactId)
     }
 

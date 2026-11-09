@@ -5,6 +5,7 @@ import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.DeepSeekDefaults
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -46,7 +47,11 @@ class BackupMigrations(
 
     companion object {
         /** 键是旧版本号，值把这个版本的 data.json 转成下一个版本 */
-        val STEPS: Map<Int, (JsonObject) -> JsonObject> = mapOf(1 to { data -> v1ToV2(data) }, 2 to { data -> v2ToV3(data) })
+        val STEPS: Map<Int, (JsonObject) -> JsonObject> = mapOf(
+            1 to { data -> v1ToV2(data) },
+            2 to { data -> v2ToV3(data) },
+            3 to { data -> v3ToV4(data) },
+        )
 
         /**
          * v1 → v2（0.3.0）：
@@ -86,6 +91,16 @@ class BackupMigrations(
                 JsonObject(item.jsonObject + ("memoryThinkingOption" to JsonPrimitive("off")))
             }
             return JsonObject(data + ("providers" to JsonArray(providers)) + ("contacts" to JsonArray(contacts)))
+        }
+
+        /** 与 Room v3→v4 的默认值一致：旧会话不静音、无聊天背景。 */
+        fun v3ToV4(data: JsonObject): JsonObject {
+            val conversations = data.arrayOf("conversations") ?: return data
+            return JsonObject(
+                data + ("conversations" to JsonArray(conversations.map {
+                    JsonObject(it.jsonObject + ("muted" to JsonPrimitive(false)) + ("background" to JsonNull))
+                })),
+            )
         }
 
         private fun migrateProvider(provider: JsonObject): JsonObject {

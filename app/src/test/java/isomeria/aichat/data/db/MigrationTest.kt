@@ -72,7 +72,7 @@ class MigrationTest {
     private fun JsonObject.sql(key: String) = this[key]!!.jsonPrimitive.content
 
     private fun open(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
         .allowMainThreadQueries()
         .build()
         .also { room = it }
@@ -239,6 +239,58 @@ class MigrationTest {
         assertEquals("off", contact.memoryThinkingOption)
         assertEquals(8000, contact.contextTokens)
         assertFalse(contact.autoMemory)
+    }
+
+    @Test
+    fun v3ToV4_conversationsDefaultToNotMutedAndNoBackground_otherFieldsKept() = runBlocking {
+        createV1(version = 3) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com','encrypted','',1,'deepseek','DEEPSEEK')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,thinkingOption,memoryModel,memoryThinkingOption) VALUES(8,'旧联系人',1,1,'m','OFF',0.4,'人设',6000,0,1,10,20,'high',NULL,'off')")
+            execSQL("INSERT INTO conversation(contactId,pinned,unreadCount,markedUnread,draft,lastMessageTime,lastMessagePreview,memoryCursor,memoryStart) VALUES(8,1,4,1,'草稿',99,'预览',50,7)")
+        }
+        val db = open()
+        val conversation = db.conversationDao().get(8)!!
+        assertEquals(
+            Conversation(
+                contactId = 8, pinned = true, unreadCount = 4, markedUnread = true, draft = "草稿", lastMessageTime = 99,
+                lastMessagePreview = "预览", memoryCursor = 50, memoryStart = 7, muted = false, backgroundPath = null,
+            ),
+            conversation,
+        )
+        // 联系人（决定请求内容的字段）原样保留
+        val contact = db.contactDao().get(8)!!
+        assertEquals(0.4f, contact.temperature)
+        assertEquals("high", contact.thinkingOption)
+        assertEquals("人设", contact.systemPrompt)
+        assertEquals(6000, contact.contextTokens)
+        assertFalse(contact.splitReplies)
+        // 新列可以写
+        db.conversationDao().setMuted(8, true)
+        db.conversationDao().setBackground(8, "/x/background/a.jpg")
+        assertEquals(listOf("/x/background/a.jpg"), db.conversationDao().backgroundPaths())
+        assertTrue(db.conversationDao().get(8)!!.muted)
+    }
+
+    @Test
+    fun conversationResetDropsBackground_clearHistoryKeepsMuteAndBackground() = runBlocking {
+        createV1(version = 3) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption) VALUES(8,'甲',1,1,'m','OFF',1.3,'',4000,1,1,10,20,'off'),(9,'乙',1,1,'m','OFF',1.3,'',4000,1,1,10,20,'off')")
+            execSQL("INSERT INTO conversation(contactId,pinned,unreadCount,markedUnread,draft,lastMessageTime,lastMessagePreview,memoryStart) VALUES(8,1,4,0,'',99,'预览',0),(9,1,4,0,'',99,'预览',0)")
+        }
+        val db = open()
+        for (id in listOf(8L, 9L)) {
+            db.conversationDao().setMuted(id, true)
+            db.conversationDao().setBackground(id, "/bg/$id.jpg")
+        }
+        db.conversationDao().clearHistory(8)
+        db.conversationDao().reset(9)
+        db.conversationDao().get(8)!!.let { assertTrue(it.muted); assertEquals("/bg/8.jpg", it.backgroundPath) }
+        db.conversationDao().get(9)!!.let { assertTrue(it.muted); assertNull(it.backgroundPath); assertFalse(it.pinned) }
+        db.conversationDao().setBackground(9, "/bg/9.jpg")
+        db.conversationDao().resetAll()
+        assertEquals(listOf("/bg/8.jpg", "/bg/9.jpg"), db.conversationDao().backgroundPaths().sorted())
+        assertTrue(db.conversationDao().listAll().all { it.muted })
     }
 
     private companion object {

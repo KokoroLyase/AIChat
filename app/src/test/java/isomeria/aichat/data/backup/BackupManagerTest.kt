@@ -62,7 +62,7 @@ class BackupManagerTest {
 
     @Before
     fun setUp() {
-        listOf("avatars", "images", "backups").forEach { File(context.filesDir, it).deleteRecursively() }
+        listOf("avatars", "images", "background", "backups").forEach { File(context.filesDir, it).deleteRecursively() }
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .addCallback(AppDatabase.seedCallback)
             .build()
@@ -115,6 +115,7 @@ class BackupManagerTest {
             assertEquals(BackupFormat.DATA, names[1])
             assertEquals(2, names.count { it.startsWith(BackupFormat.AVATARS_DIR) })
             assertEquals(1, names.count { it.startsWith(BackupFormat.IMAGES_DIR) })
+            assertEquals(1, names.count { it.startsWith(BackupFormat.BACKGROUNDS_DIR) })
             val data = z.getInputStream(z.getEntry(BackupFormat.DATA)).readBytes().toString(Charsets.UTF_8)
             assertFalse("默认不导出 API Key", data.contains("sk-real-key"))
             assertFalse("Keystore 密文也不导出", data.contains(cipher.encrypt("sk-real-key")))
@@ -182,7 +183,7 @@ class BackupManagerTest {
         db.contactDao().update(db.contactDao().get(2)!!.copy(memoryModel = "local", memoryThinkingOption = "native", thinkingOption = "on"))
         val before = dump()
         val zip = export(password = "pw123456")
-        assertEquals(3, backup.inspect(zip).manifest.formatVersion)
+        assertEquals(4, backup.inspect(zip).manifest.formatVersion)
         scramble()
         backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(before, dump())
@@ -424,6 +425,122 @@ class BackupManagerTest {
         assertEquals(8L, db.usageDao().listAll().single().promptTokens)
     }
 
+    @Test
+    fun v3Backup_restoresWithDefaultMuteAndBackground() = runBlocking {
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.4.1","appVersionCode":401,"formatVersion":3,"exportedAt":1}""",
+            BackupFormat.DATA to """
+                {"contacts":[{"id":1,"name":"小雨","avatarColor":0,"providerId":1,"model":"deepseek-flash","temperature":1.3,
+                              "createdAt":1,"updatedAt":1}],
+                 "conversations":[{"contactId":1,"pinned":true,"draft":"草稿"}],
+                 "providers":[{"id":1,"kind":"LLM","provider":"openai","baseUrl":"https://api.deepseek.com","defaultModel":"",
+                               "compatibility":"DEEPSEEK","presetId":"deepseek"}]}
+            """.trimIndent(),
+        )
+        val preview = backup.inspect(zip)
+        assertEquals(3, preview.manifest.formatVersion)
+        backup.restore(preview, RestoreMode.OVERWRITE, null)
+        val conversation = db.conversationDao().get(1)!!
+        assertFalse(conversation.muted)
+        assertEquals(null, conversation.backgroundPath)
+        assertTrue(conversation.pinned)
+        assertEquals("草稿", conversation.draft)
+    }
+
+    @Test
+    fun background_overwriteRemapsPath_andRemovesReplacedLocalBackground() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        val exported = db.conversationDao().get(1)!!.backgroundPath!!
+        // 导出后本机换了背景：旧文件已删，新文件只被本机引用
+        val replaced = files.newMediaFile(MediaKind.BACKGROUND).apply { writeBytes(byteArrayOf(1)) }
+        File(exported).delete()
+        db.conversationDao().setBackground(1, replaced.absolutePath)
+
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+
+        val restored = db.conversationDao().get(1)!!
+        assertTrue(restored.muted)
+        val path = restored.backgroundPath!!
+        assertNotEquals(exported, path)
+        assertTrue(File(path).canonicalPath.startsWith(File(context.filesDir, "background").canonicalPath))
+        assertEquals(listOf<Byte>(7, 7, 7), File(path).readBytes().toList())
+        assertFalse("恢复后不再引用的本机背景会被清理", replaced.exists())
+        assertEquals(referencedFiles(), mediaFiles())
+    }
+
+    @Test
+    fun background_mergeKeepsLocalConversation_andMapsBackgroundForNewContact() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        // 本机：联系人 1 关掉免打扰、去掉背景；删掉后重建一个同 id 的另一个人，备份里的联系人 1 会换新 id
+        db.conversationDao().setMuted(1, false)
+        val old = db.conversationDao().get(1)!!.backgroundPath!!
+        db.conversationDao().setBackground(1, null)
+        File(old).delete()
+        db.messageDao().deleteByContact(1)
+        db.contactDao().delete(1)
+        db.contactDao().insert(contact(id = 1, name = "另一个人", createdAt = 99_999))
+        db.conversationDao().upsert(Conversation(contactId = 1))
+
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+
+        val local = db.conversationDao().get(1)!!
+        assertFalse(local.muted)
+        assertEquals(null, local.backgroundPath)
+        val readded = db.contactDao().listAll().first { it.name == "小雨" }
+        val conversation = db.conversationDao().get(readded.id)!!
+        assertTrue(conversation.muted)
+        assertEquals(listOf<Byte>(7, 7, 7), File(conversation.backgroundPath!!).readBytes().toList())
+        assertEquals(referencedFiles(), mediaFiles())
+    }
+
+    @Test
+    fun background_mergeIntoExistingConversation_keepsLocalBackground_andDropsUnusedFile() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        val local = files.newMediaFile(MediaKind.BACKGROUND).apply { writeBytes(byteArrayOf(5)) }
+        val exported = db.conversationDao().get(1)!!.backgroundPath!!
+        db.conversationDao().setBackground(1, local.absolutePath)
+        File(exported).delete()
+
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+
+        assertEquals(local.absolutePath, db.conversationDao().get(1)!!.backgroundPath)
+        assertTrue(local.exists())
+        assertEquals("备份里多出来的背景没人用，恢复后清掉", referencedFiles(), mediaFiles())
+    }
+
+    @Test
+    fun background_nameOutsideBackgroundDir_isIgnored() = runBlocking {
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.4.2","appVersionCode":402,"formatVersion":4,"exportedAt":1}""",
+            BackupFormat.DATA to """
+                {"contacts":[{"id":1,"name":"小雨","avatarColor":0,"providerId":1,"model":"m","temperature":1.3,"createdAt":1,"updatedAt":1}],
+                 "conversations":[{"contactId":1,"muted":true,"background":"images/x.jpg"}]}
+            """.trimIndent(),
+            "images/x.jpg" to "x",
+        )
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        val conversation = db.conversationDao().get(1)!!
+        assertTrue(conversation.muted)
+        assertEquals(null, conversation.backgroundPath)
+        assertTrue(mediaFiles().isEmpty())
+    }
+
+    @Test
+    fun background_missingFileInZip_restoresWithoutBackground() = runBlocking {
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.4.2","appVersionCode":402,"formatVersion":4,"exportedAt":1}""",
+            BackupFormat.DATA to """
+                {"contacts":[{"id":1,"name":"小雨","avatarColor":0,"providerId":1,"model":"m","temperature":1.3,"createdAt":1,"updatedAt":1}],
+                 "conversations":[{"contactId":1,"background":"background/gone.jpg"}]}
+            """.trimIndent(),
+        )
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(null, db.conversationDao().get(1)!!.backgroundPath)
+    }
+
     // ---------- 拒绝与回滚 ----------
 
     @Test
@@ -497,7 +614,7 @@ class BackupManagerTest {
         assertTrue(preview.decryptedTemporary)
         assertTrue(preview.file.canonicalPath.startsWith(files.restoreCacheDir.canonicalPath + File.separator))
         assertTrue(preview.file.isFile)
-        assertEquals(3, preview.manifest.formatVersion)
+        assertEquals(4, preview.manifest.formatVersion)
         val result = backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(expected, dump())
         assertFalse(result.cleanupPending)
@@ -586,6 +703,7 @@ class BackupManagerTest {
         val avatar = files.newMediaFile(MediaKind.AVATAR).apply { writeBytes(byteArrayOf(1, 2, 3)) }
         val myAvatar = files.newMediaFile(MediaKind.AVATAR).apply { writeBytes(byteArrayOf(9, 9)) }
         val image = files.newMediaFile(MediaKind.IMAGE).apply { writeBytes(ByteArray(2048) { it.toByte() }) }
+        val background = files.newMediaFile(MediaKind.BACKGROUND).apply { writeBytes(byteArrayOf(7, 7, 7)) }
 
         db.contactDao().insert(
             contact(id = 1, name = "小雨", createdAt = 1_000).copy(
@@ -603,6 +721,7 @@ class BackupManagerTest {
             Conversation(
                 contactId = 1, pinned = true, unreadCount = 2, draft = "还没发出去", lastMessageTime = 5_000,
                 lastMessagePreview = "[图片]", memoryCursor = 3_500, memoryStart = 2_000,
+                muted = true, backgroundPath = background.absolutePath,
             ),
         )
         db.conversationDao().upsert(Conversation(contactId = 2, markedUnread = true, lastMessageTime = 6_000, lastMessagePreview = "在吗"))
@@ -737,7 +856,7 @@ class BackupManagerTest {
         val providers = db.providerDao().llmList()
         return Dump(
             contacts = db.contactDao().listAll().map { it.copy(avatarPath = content(it.avatarPath)) },
-            conversations = db.conversationDao().listAll(),
+            conversations = db.conversationDao().listAll().map { it.copy(backgroundPath = content(it.backgroundPath)) },
             messages = db.messageDao().listAll().map { it.copy(imagePath = content(it.imagePath)) },
             providers = providers.map { it.copy(apiKeyEncrypted = it.apiKeyEncrypted?.let(cipher::decrypt)) },
             models = providers.flatMap { db.providerDao().models(it.id) },
@@ -750,10 +869,11 @@ class BackupManagerTest {
     private suspend fun referencedFiles(): Set<String> = buildSet {
         db.contactDao().listAll().mapNotNullTo(this) { it.avatarPath }
         addAll(db.messageDao().allImagePaths())
+        addAll(db.conversationDao().backgroundPaths())
         settings.value.avatarPath?.let(::add)
     }.map { File(it).canonicalPath }.toSet()
 
-    private fun mediaFiles(): Set<String> = listOf("avatars", "images")
+    private fun mediaFiles(): Set<String> = listOf("avatars", "images", "background")
         .flatMap { File(context.filesDir, it).listFiles().orEmpty().toList() }
         .map { it.canonicalPath }
         .toSet()

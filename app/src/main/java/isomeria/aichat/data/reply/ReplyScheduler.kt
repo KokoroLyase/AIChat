@@ -26,10 +26,10 @@ interface ReplyControl {
  * 新请求会带上所有还在等待回复的消息，联系人像真人一样看完再一起回。
  */
 @Singleton
-class ReplyScheduler @Inject constructor(@ApplicationContext private val context: Context) : ReplyControl {
+class ReplyScheduler @Inject constructor(@ApplicationContext private val context: Context) : ReplyQueue {
     private val workManager get() = WorkManager.getInstance(context)
 
-    fun enqueue(contactId: Long) {
+    override fun enqueue(contactId: Long) {
         val request = OneTimeWorkRequestBuilder<ReplyWorker>()
             .setInputData(workDataOf(ReplyWorker.KEY_CONTACT_ID to contactId))
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)

@@ -112,17 +112,26 @@ interface ConversationDao {
     )
     suspend fun setLastMessage(contactId: Long, time: Long, preview: String)
 
-    /** 删除聊天：只清会话状态，不删联系人 */
+    @Query("UPDATE conversation SET muted = :muted WHERE contactId = :contactId")
+    suspend fun setMuted(contactId: Long, muted: Boolean)
+
+    @Query("UPDATE conversation SET backgroundPath = :path WHERE contactId = :contactId")
+    suspend fun setBackground(contactId: Long, path: String?)
+
+    @Query("SELECT backgroundPath FROM conversation WHERE backgroundPath IS NOT NULL")
+    suspend fun backgroundPaths(): List<String>
+
+    /** 删除聊天：只清会话状态，不删联系人。聊天背景一起去掉（文件由调用方删除），免打扰保留 */
     @Query(
         """
         UPDATE conversation SET pinned = 0, unreadCount = 0, markedUnread = 0, draft = '',
-               lastMessageTime = 0, lastMessagePreview = ''
+               lastMessageTime = 0, lastMessagePreview = '', backgroundPath = NULL
         WHERE contactId = :contactId
         """,
     )
     suspend fun reset(contactId: Long)
 
-    /** 清空聊天记录：会话留在列表里（置顶和草稿保留），只清掉预览和未读 */
+    /** 清空聊天记录：会话留在列表里（置顶、草稿、免打扰和聊天背景保留），只清掉预览和未读 */
     @Query(
         """
         UPDATE conversation SET unreadCount = 0, markedUnread = 0, lastMessagePreview = ''
@@ -131,7 +140,7 @@ interface ConversationDao {
     )
     suspend fun clearHistory(contactId: Long)
 
-    /** 清空所有聊天记录：所有会话都像「删除该聊天」一样重置，联系人保留 */
+    /** 清空所有聊天记录：所有会话都像「删除该聊天」一样重置，联系人保留；免打扰和聊天背景属于聊天设置，保留 */
     @Query(
         """
         UPDATE conversation SET pinned = 0, unreadCount = 0, markedUnread = 0, draft = '',

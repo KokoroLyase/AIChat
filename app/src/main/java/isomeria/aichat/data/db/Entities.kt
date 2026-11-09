@@ -93,6 +93,10 @@ data class Conversation(
     val memoryCursor: Long? = 0,
     /** 早于这个时间的消息还没总结（只能在记忆页手动「总结更早的聊天」）；0 表示没有 */
     @ColumnInfo(defaultValue = "0") val memoryStart: Long = 0,
+    /** 消息免打扰：只不发回复到达通知；未读、预览、生成和记忆照常 */
+    @ColumnInfo(defaultValue = "0") val muted: Boolean = false,
+    /** 当前聊天背景：应用私有目录 files/background 里的图片；null 用默认背景。只在本机显示，不进模型请求 */
+    val backgroundPath: String? = null,
 )
 
 @Entity(

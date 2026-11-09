@@ -12,7 +12,7 @@ import isomeria.aichat.data.db.ConversationDao
 import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.MessageDao
 import isomeria.aichat.data.db.UsageDao
-import isomeria.aichat.data.reply.ReplyScheduler
+import isomeria.aichat.data.reply.ReplyControl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
@@ -30,7 +30,7 @@ class ContactRepository @Inject constructor(
     private val usageDao: UsageDao,
     private val files: FileStorage,
     private val pinyin: PinyinConverter,
-    private val replyScheduler: ReplyScheduler,
+    private val replyScheduler: ReplyControl,
 ) {
     fun observeContacts(): Flow<List<Contact>> = contactDao.observeAll()
 
@@ -64,11 +64,12 @@ class ContactRepository @Inject constructor(
         if (old?.avatarPath != null && old.avatarPath != contact.avatarPath) files.delete(old.avatarPath)
     }
 
-    /** 删除联系人，同时删除聊天记录、记忆、头像和聊天图片；用量并到「已删除的联系人」，总量不变 */
+    /** 删除联系人，同时删除聊天记录、记忆、头像、聊天图片和聊天背景；用量并到「已删除的联系人」，总量不变 */
     suspend fun delete(id: Long) {
         replyScheduler.cancel(id)
         val contact = contactDao.get(id) ?: return
         val images = messageDao.imagePaths(id)
+        val background = conversationDao.get(id)?.backgroundPath
         db.withTransaction {
             // 外键也会级联删除，这里显式删一遍，不依赖 PRAGMA foreign_keys
             messageDao.deleteByContact(id)
@@ -79,6 +80,7 @@ class ContactRepository @Inject constructor(
             contactDao.delete(id)
         }
         files.delete(contact.avatarPath)
+        files.delete(background)
         images.forEach(files::delete)
     }
 }

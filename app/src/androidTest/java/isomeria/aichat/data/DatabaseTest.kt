@@ -11,6 +11,7 @@ import isomeria.aichat.data.db.Conversation
 import isomeria.aichat.data.db.DeepSeekDefaults
 import isomeria.aichat.data.db.MIGRATION_1_2
 import isomeria.aichat.data.db.MIGRATION_2_3
+import isomeria.aichat.data.db.MIGRATION_3_4
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -87,6 +88,27 @@ class DatabaseTest {
                 assertEquals(0.7, c.getDouble(1), 0.001)
                 assertTrue(c.isNull(2))
                 assertEquals("off", c.getString(3))
+            }
+        }
+    }
+
+    @Test
+    fun migrate3To4_conversationDefaultsNotMutedAndNoBackground() {
+        helper.createDatabase("migration-v3-test", 3).use { db ->
+            db.execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK')")
+            db.execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption) VALUES(7,'旧联系人',0,1,'m','OFF',1.3,'',4000,1,1,1,1,'off')")
+            db.execSQL("INSERT INTO conversation(contactId,pinned,unreadCount,markedUnread,draft,lastMessageTime,lastMessagePreview,memoryCursor,memoryStart) VALUES(7,1,3,0,'草稿',9,'预览',5,2)")
+        }
+        helper.runMigrationsAndValidate("migration-v3-test", 4, true, MIGRATION_3_4).use { db ->
+            db.query("SELECT muted, backgroundPath, pinned, unreadCount, draft, lastMessagePreview, memoryCursor FROM conversation WHERE contactId=7").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(0, c.getInt(0))
+                assertTrue(c.isNull(1))
+                assertEquals(1, c.getInt(2))
+                assertEquals(3, c.getInt(3))
+                assertEquals("草稿", c.getString(4))
+                assertEquals("预览", c.getString(5))
+                assertEquals(5, c.getLong(6))
             }
         }
     }

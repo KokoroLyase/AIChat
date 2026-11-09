@@ -22,7 +22,10 @@ import kotlin.math.roundToInt
 
 data class StoredImage(val path: String, val width: Int, val height: Int)
 
-enum class MediaKind { AVATAR, IMAGE }
+enum class MediaKind { AVATAR, IMAGE, BACKGROUND }
+
+/** 聊天背景文件；没设置或文件已丢失时返回 null，界面回退到默认背景。 */
+fun chatBackgroundFile(path: String?): File? = path?.let(::File)?.takeIf { it.isFile }
 
 /**
  * 应用私有目录里的头像和聊天图片。卸载即清除。
@@ -34,6 +37,7 @@ enum class MediaKind { AVATAR, IMAGE }
 class FileStorage @Inject constructor(@ApplicationContext private val context: Context) {
     private val imagesDir get() = File(context.filesDir, "images").apply { mkdirs() }
     private val avatarsDir get() = File(context.filesDir, "avatars").apply { mkdirs() }
+    private val backgroundsDir get() = File(context.filesDir, BACKGROUND_DIR).apply { mkdirs() }
     private val cameraDir get() = File(context.cacheDir, "camera").apply { mkdirs() }
 
     /** 恢复数据前自动备份当前数据的位置（应用私有目录） */
@@ -49,6 +53,28 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         val result = StoredImage(file.absolutePath, bitmap.width, bitmap.height)
         bitmap.recycle()
         result
+    }
+
+    /**
+     * 聊天背景：和聊天图片同一套压缩（长边 2048、JPEG 85%、不写 EXIF），存到 files/background。
+     * 写库前先固定，免得清理孤立文件时被当成没人用的文件删掉；写库后调用 [commitAvatar] 解除。
+     */
+    suspend fun importBackground(uri: Uri): StoredImage = withContext(Dispatchers.IO) { saveBackground(decode(uri, MAX_IMAGE_SIDE)) }
+
+    /** 解码后的背景写成 JPEG；单元测试里系统解码器不可用，直接从这里进 */
+    internal fun saveBackground(bitmap: Bitmap): StoredImage {
+        val file = File(backgroundsDir, "${UUID.randomUUID()}.jpg")
+        StorageOperations.pin(file)
+        try {
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
+        } catch (e: Throwable) {
+            file.delete()
+            StorageOperations.unpin(file)
+            throw e
+        }
+        val result = StoredImage(file.absolutePath, bitmap.width, bitmap.height)
+        bitmap.recycle()
+        return result
     }
 
     /** 读取用户选的图片，用于头像裁剪 */
@@ -80,14 +106,15 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         val dir = when (kind) {
             MediaKind.AVATAR -> avatarsDir
             MediaKind.IMAGE -> imagesDir
+            MediaKind.BACKGROUND -> backgroundsDir
         }
         return File(dir, "${UUID.randomUUID()}.jpg")
     }
 
-    /** 删除头像和图片目录里已经没有任何记录引用的文件（恢复数据后清理） */
+    /** 删除头像、图片和聊天背景目录里已经没有任何记录引用的文件（恢复数据后清理） */
     fun unreferenced(referenced: Set<String>): List<File> {
         val keep = referenced.mapNotNull { runCatching { File(it).canonicalPath }.getOrNull() }.toSet() + StorageOperations.pinnedPaths()
-        return listOf(avatarsDir, imagesDir).flatMap { dir ->
+        return listOf(avatarsDir, imagesDir, backgroundsDir).flatMap { dir ->
             check(dir.isDirectory && !java.nio.file.Files.isSymbolicLink(dir.toPath()))
             (dir.listFiles() ?: throw java.io.IOException("MediaDirectoryUnavailable"))
                 .filter { it.isFile && !java.nio.file.Files.isSymbolicLink(it.toPath()) && isPrivate(it) && it.canonicalPath !in keep }
@@ -197,6 +224,7 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
             val root = File(context.cacheDir, "restore")
             root.listFiles().orEmpty().filter { it.isFile }.forEach { it.delete() }
         }
+        const val BACKGROUND_DIR = "background"
         private const val MAX_IMAGE_SIDE = 2048
         private const val MAX_CROP_SOURCE_SIDE = 2048
         private const val JPEG_QUALITY = 85

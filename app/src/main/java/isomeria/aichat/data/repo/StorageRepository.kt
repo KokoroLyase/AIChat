@@ -29,6 +29,7 @@ class StorageRepository @Inject constructor(
             size(File(context.filesDir, "images")), size(File(context.filesDir, "avatars")),
             size(File(context.filesDir, "logs")), cacheContentBytes(context.cacheDir, diskCache?.directory?.toFile(), diskCache?.size ?: 0L),
             size(requireNotNull(context.getDatabasePath(AppDatabase.NAME).parentFile)),
+            backgrounds = size(File(context.filesDir, FileStorage.BACKGROUND_DIR)),
         )
     }
 
@@ -38,6 +39,7 @@ class StorageRepository @Inject constructor(
 
     private suspend fun references(): Set<String> = mediaReferences(
         db.contactDao().avatarPaths(), db.messageDao().allImagePaths(), settings.avatarPath.value,
+        db.conversationDao().backgroundPaths(),
     )
 
     suspend fun previewOrphans(): OrphanPreview = withContext(Dispatchers.IO) {

@@ -18,6 +18,7 @@ import kotlinx.serialization.json.Json
  *   data.json       联系人、会话、消息、服务商配置（每个服务商各自的模型和可选的 Key）、记忆、用量和设置
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
+ *   background/…    聊天背景（v4 起）
  *
  * data.json 里的头像和图片写成 zip 内的相对路径（如 images/xxx.jpg），恢复时换成本机路径。
  * 格式和数据库表分开定义：以后改表不影响已经导出的文件，改格式时 [BackupFormat.VERSION] +1，
@@ -26,7 +27,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 3
+    const val VERSION = 4
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -35,9 +36,10 @@ object BackupFormat {
     const val DATA = "data.json"
     const val AVATARS_DIR = "avatars/"
     const val IMAGES_DIR = "images/"
+    const val BACKGROUNDS_DIR = "background/"
 
     /** zip 内文件名只允许这些字符（不能以点开头），防止「../」之类的路径 */
-    val mediaNamePattern = Regex("""^(avatars|images)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
+    val mediaNamePattern = Regex("""^(avatars|images|background)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
 
     val json = Json {
         ignoreUnknownKeys = true
@@ -104,6 +106,10 @@ data class ConversationDto(
     /** 自动记忆处理到的消息时间；null 表示恢复后再确定起点 */
     val memoryCursor: Long? = null,
     val memoryStart: Long = 0,
+    /** 消息免打扰（v4 起） */
+    val muted: Boolean = false,
+    /** 聊天背景的 zip 内相对路径，如 background/xxx.jpg（v4 起） */
+    val background: String? = null,
 )
 
 @Serializable
