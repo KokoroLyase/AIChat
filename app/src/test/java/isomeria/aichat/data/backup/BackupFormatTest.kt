@@ -3,9 +3,12 @@ package isomeria.aichat.data.backup
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -165,6 +168,28 @@ class BackupFormatTest {
         assertEquals(5L, conversation.memoryStart)
         // 没有会话的旧备份也能迁移
         assertEquals(JsonObject(emptyMap()), BackupMigrations.v3ToV4(JsonObject(emptyMap())))
+    }
+
+    @Test
+    fun v4ToV5_contactsDefaultToNewSwitches_andKeepSplitReplies() {
+        val v4 = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"contacts": [{"id": 1, "name": "a", "avatarColor": 0, "providerId": 1, "model": "m", "temperature": 1.3, "splitReplies": false, "createdAt": 1, "updatedAt": 1},
+                            {"id": 2, "name": "b", "avatarColor": 0, "providerId": 1, "model": "m", "temperature": 1.3, "createdAt": 1, "updatedAt": 1}]}""",
+        ) as JsonObject
+        val migrated = BackupMigrations().migrate(v4, from = 4)
+        val contacts = BackupFormat.json.decodeFromJsonElement(BackupData.serializer(), migrated).contacts
+        assertEquals(listOf(false, true), contacts.map { it.splitReplies })
+        assertTrue(contacts.all { it.useGlobalMemory && it.useReplyPreferences })
+        // 迁移步骤显式写入了这两个字段，不依赖反序列化的默认值
+        assertEquals("true", migrated["contacts"]!!.jsonArray[0].jsonObject["useGlobalMemory"]!!.jsonPrimitive.content)
+        assertEquals(JsonObject(emptyMap()), BackupMigrations.v4ToV5(JsonObject(emptyMap())))
+        // 从 v1 一路迁移上来也一样
+        val v1 = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"contacts": [{"id": 1, "name": "a", "avatarColor": 0, "providerId": 1, "model": "m", "temperature": 1.3, "contextCount": 20, "splitReplies": false, "createdAt": 1, "updatedAt": 1}]}""",
+        ) as JsonObject
+        val fromV1 = BackupFormat.json.decodeFromJsonElement(BackupData.serializer(), BackupMigrations().migrate(v1, from = 1)).contacts.single()
+        assertTrue(fromV1.useGlobalMemory && fromV1.useReplyPreferences)
+        assertFalse(fromV1.splitReplies)
     }
 
     @Test

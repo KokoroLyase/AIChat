@@ -1,5 +1,6 @@
 package isomeria.aichat.data.backup
 
+import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.data.settings.FontSize
 import isomeria.aichat.data.settings.SettingsStore
 import isomeria.aichat.data.settings.ThemeMode
@@ -15,6 +16,8 @@ data class AppSettingsSnapshot(
     val notifyEnabled: Boolean,
     val notifyPreview: Boolean,
     val autoCheckUpdate: Boolean,
+    /** 回复偏好（0.5.0） */
+    val replyPreferences: ReplyPreferences = ReplyPreferences(),
 )
 
 /** 导出和恢复读写设置的入口；单元测试里换成内存实现（MMKV 需要原生库）。 */
@@ -32,6 +35,7 @@ class SettingsStoreBackupAccess @Inject constructor(private val store: SettingsS
         notifyEnabled = store.notifyEnabled.value,
         notifyPreview = store.notifyPreview.value,
         autoCheckUpdate = store.autoCheckUpdate,
+        replyPreferences = store.replyPreferences.value,
     )
 
     override fun write(snapshot: AppSettingsSnapshot) {
@@ -42,5 +46,6 @@ class SettingsStoreBackupAccess @Inject constructor(private val store: SettingsS
         store.setNotifyEnabled(snapshot.notifyEnabled)
         store.setNotifyPreview(snapshot.notifyPreview)
         store.setAutoCheckUpdate(snapshot.autoCheckUpdate)
+        store.setReplyPreferences(snapshot.replyPreferences)
     }
 }

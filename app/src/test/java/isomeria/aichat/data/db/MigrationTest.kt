@@ -72,7 +72,7 @@ class MigrationTest {
     private fun JsonObject.sql(key: String) = this[key]!!.jsonPrimitive.content
 
     private fun open(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
         .allowMainThreadQueries()
         .build()
         .also { room = it }
@@ -269,6 +269,41 @@ class MigrationTest {
         db.conversationDao().setBackground(8, "/x/background/a.jpg")
         assertEquals(listOf("/x/background/a.jpg"), db.conversationDao().backgroundPaths())
         assertTrue(db.conversationDao().get(8)!!.muted)
+    }
+
+    @Test
+    fun v4ToV5_oldContactsUseGlobalMemoryAndReplyPreferences_splitRepliesAndRequestFieldsKept() = runBlocking {
+        createV1(version = 4) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com','encrypted','',1,'deepseek','DEEPSEEK')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,thinkingOption,memoryModel,memoryThinkingOption) VALUES(8,'分条',1,1,'m','OFF',0.4,'人设',6000,1,1,10,20,'high',NULL,'off'),(9,'不分条',1,1,'m','OFF',1.3,'',4000,0,0,11,21,NULL,'mm','high')")
+            execSQL("INSERT INTO conversation(contactId,pinned,unreadCount,markedUnread,draft,lastMessageTime,lastMessagePreview,memoryCursor,memoryStart,muted,backgroundPath) VALUES(8,1,4,1,'草稿',99,'预览',50,7,1,'/bg/8.jpg')")
+        }
+        val db = open()
+        val old = db.contactDao().get(8)!!
+        assertTrue(old.useGlobalMemory)
+        assertTrue(old.useReplyPreferences)
+        assertTrue(old.splitReplies)
+        assertEquals(0.4f, old.temperature)
+        assertEquals("high", old.thinkingOption)
+        assertEquals("人设", old.systemPrompt)
+        val other = db.contactDao().get(9)!!
+        assertTrue(other.useGlobalMemory && other.useReplyPreferences)
+        assertFalse("原先关闭的分条显示保留", other.splitReplies)
+        assertFalse(other.autoMemory)
+        assertEquals("mm", other.memoryModel)
+        // 0.4.2 的会话字段原样保留
+        db.conversationDao().get(8)!!.let { assertTrue(it.muted); assertEquals("/bg/8.jpg", it.backgroundPath) }
+        // 新表可读写，删除类别时主题和条目一起删
+        val dao = db.globalMemoryDao()
+        assertTrue(dao.categories().isEmpty())
+        val category = dao.insertCategory(GlobalMemoryCategory(name = "个人信息", createdAt = 1, updatedAt = 1))
+        val topic = dao.insertTopic(GlobalMemoryTopic(categoryId = category, name = "基本情况", createdAt = 1, updatedAt = 1))
+        dao.insertItem(GlobalMemoryItem(topicId = topic, content = "住在杭州", createdAt = 1, updatedAt = 1))
+        dao.deleteCategory(category)
+        assertTrue(dao.topics().isEmpty() && dao.items().isEmpty())
+        // 新建的联系人同样默认开启
+        val id = db.contactDao().insert(Contact(name = "新", avatarColor = 0, providerId = 1, model = "m", createdAt = 1, updatedAt = 1))
+        db.contactDao().get(id)!!.let { assertTrue(it.useGlobalMemory && it.useReplyPreferences) }
     }
 
     @Test

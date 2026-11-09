@@ -1,5 +1,6 @@
 package isomeria.aichat.data.backup
 
+import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.data.db.Capability
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.MessageStatus
@@ -15,7 +16,8 @@ import kotlinx.serialization.json.Json
  * 导出文件的格式（zip）：
  *
  *   manifest.json   App 版本、数据格式版本、导出时间
- *   data.json       联系人、会话、消息、服务商配置（每个服务商各自的模型和可选的 Key）、记忆、用量和设置
+ *   data.json       联系人、会话、消息、服务商配置（每个服务商各自的模型和可选的 Key）、记忆、用量、
+ *                   全局记忆（v5 起）和设置
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
  *   background/…    聊天背景（v4 起）
@@ -27,7 +29,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 4
+    const val VERSION = 5
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -70,6 +72,10 @@ data class BackupData(
     val memories: List<MemoryDto> = emptyList(),
     val usage: List<UsageDto> = emptyList(),
     val settings: SettingsDto = SettingsDto(),
+    /** 全局记忆的类别、主题、条目（v5 起） */
+    val globalCategories: List<GlobalCategoryDto> = emptyList(),
+    val globalTopics: List<GlobalTopicDto> = emptyList(),
+    val globalItems: List<GlobalItemDto> = emptyList(),
 )
 
 @Serializable
@@ -92,6 +98,9 @@ data class ContactDto(
     val thinkingOption: String? = null,
     val memoryModel: String? = null,
     val memoryThinkingOption: String = "off",
+    /** 使用全局记忆、使用回复偏好（v5 起；旧备份迁移后默认开启） */
+    val useGlobalMemory: Boolean = true,
+    val useReplyPreferences: Boolean = true,
 )
 
 @Serializable
@@ -179,6 +188,48 @@ data class MemoryDto(
     val updatedAt: Long,
 )
 
+@Serializable
+data class GlobalCategoryDto(
+    val id: Long,
+    val name: String,
+    val sortOrder: Int = 0,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Serializable
+data class GlobalTopicDto(
+    val id: Long,
+    val categoryId: Long,
+    val name: String,
+    val sortOrder: Int = 0,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Serializable
+data class GlobalItemDto(
+    val id: Long,
+    val topicId: Long,
+    val content: String,
+    val enabled: Boolean = true,
+    val sortOrder: Int = 0,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+/** 回复偏好（v5 起）。缺字段时用默认值 */
+@Serializable
+data class ReplyPreferencesDto(
+    val waitSeconds: Int = ReplyPreferences.DEFAULT_WAIT_SECONDS,
+    val targetLength: Int = ReplyPreferences.DEFAULT_TARGET_LENGTH,
+    val minCount: Int = ReplyPreferences.DEFAULT_MIN_COUNT,
+    val maxCount: Int = ReplyPreferences.DEFAULT_MAX_COUNT,
+    val stripPunctuation: Boolean = true,
+    val minIntervalSeconds: Int = ReplyPreferences.DEFAULT_MIN_INTERVAL,
+    val maxIntervalSeconds: Int = ReplyPreferences.DEFAULT_MAX_INTERVAL,
+)
+
 /** 一天、一个联系人的用量。contactId 为 0 时是已删除联系人的合计 */
 @Serializable
 data class UsageDto(
@@ -221,4 +272,6 @@ data class SettingsDto(
     val notifyEnabled: Boolean? = null,
     val notifyPreview: Boolean? = null,
     val autoCheckUpdate: Boolean? = null,
+    /** 回复偏好（v5 起）；没有时恢复保留本机的 */
+    val replyPreferences: ReplyPreferencesDto? = null,
 )

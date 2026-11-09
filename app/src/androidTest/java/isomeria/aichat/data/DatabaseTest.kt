@@ -12,6 +12,7 @@ import isomeria.aichat.data.db.DeepSeekDefaults
 import isomeria.aichat.data.db.MIGRATION_1_2
 import isomeria.aichat.data.db.MIGRATION_2_3
 import isomeria.aichat.data.db.MIGRATION_3_4
+import isomeria.aichat.data.db.MIGRATION_4_5
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -109,6 +110,40 @@ class DatabaseTest {
                 assertEquals("草稿", c.getString(4))
                 assertEquals("预览", c.getString(5))
                 assertEquals(5, c.getLong(6))
+            }
+        }
+    }
+
+    @Test
+    fun migrate4To5_contactsDefaultToNewSwitches_splitRepliesKept_globalTablesCascade() {
+        helper.createDatabase("migration-v4-test", 4).use { db ->
+            db.execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK')")
+            db.execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption) VALUES(7,'分条',0,1,'m','OFF',1.3,'人设',4000,1,1,1,1,'off'),(8,'不分条',0,1,'m','OFF',0.5,'',6000,0,0,2,2,'off')")
+            db.execSQL("INSERT INTO conversation(contactId,pinned,unreadCount,markedUnread,draft,lastMessageTime,lastMessagePreview,memoryCursor,memoryStart,muted,backgroundPath) VALUES(7,1,3,0,'草稿',9,'预览',5,2,1,'/bg/7.jpg')")
+        }
+        helper.runMigrationsAndValidate("migration-v4-test", 5, true, MIGRATION_4_5).use { db ->
+            db.query("SELECT id, useGlobalMemory, useReplyPreferences, splitReplies, systemPrompt, temperature FROM contact ORDER BY id").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(listOf(7L, 1L, 1L, 1L), listOf(c.getLong(0), c.getLong(1), c.getLong(2), c.getLong(3)))
+                assertEquals("人设", c.getString(4))
+                assertTrue(c.moveToNext())
+                assertEquals(listOf(8L, 1L, 1L, 0L), listOf(c.getLong(0), c.getLong(1), c.getLong(2), c.getLong(3)))
+                assertEquals(0.5, c.getDouble(5), 0.0001)
+            }
+            db.query("SELECT muted, backgroundPath, draft FROM conversation WHERE contactId=7").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(1, c.getInt(0))
+                assertEquals("/bg/7.jpg", c.getString(1))
+                assertEquals("草稿", c.getString(2))
+            }
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL("INSERT INTO global_memory_category(id,name,sortOrder,createdAt,updatedAt) VALUES(1,'个人信息',0,1,1)")
+            db.execSQL("INSERT INTO global_memory_topic(id,categoryId,name,sortOrder,createdAt,updatedAt) VALUES(1,1,'基本情况',0,1,1)")
+            db.execSQL("INSERT INTO global_memory_item(id,topicId,content,enabled,sortOrder,createdAt,updatedAt) VALUES(1,1,'住在杭州',1,0,1,1)")
+            db.execSQL("DELETE FROM global_memory_category WHERE id=1")
+            db.query("SELECT (SELECT COUNT(*) FROM global_memory_topic) + (SELECT COUNT(*) FROM global_memory_item)").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(0, c.getInt(0))
             }
         }
     }

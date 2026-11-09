@@ -3,6 +3,57 @@ package isomeria.aichat.data.db
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+/**
+ * v4 → v5（0.5.0）：联系人加「使用全局记忆」「使用回复偏好」，旧联系人也默认开启（用户决定）；
+ * 新建全局记忆的类别、主题、条目三张表。分条显示 splitReplies 原样保留。
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE contact ADD COLUMN useGlobalMemory INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE contact ADD COLUMN useReplyPreferences INTEGER NOT NULL DEFAULT 1")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS global_memory_category (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                name TEXT NOT NULL,
+                sortOrder INTEGER NOT NULL,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS global_memory_topic (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                categoryId INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                sortOrder INTEGER NOT NULL,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                FOREIGN KEY (categoryId) REFERENCES global_memory_category (id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_global_memory_topic_categoryId ON global_memory_topic (categoryId)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS global_memory_item (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                topicId INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                enabled INTEGER NOT NULL,
+                sortOrder INTEGER NOT NULL,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                FOREIGN KEY (topicId) REFERENCES global_memory_topic (id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_global_memory_item_topicId ON global_memory_item (topicId)")
+    }
+}
+
 /** v3 → v4（0.4.2）：会话加免打扰和聊天背景，旧会话默认不静音、无背景。 */
 val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {

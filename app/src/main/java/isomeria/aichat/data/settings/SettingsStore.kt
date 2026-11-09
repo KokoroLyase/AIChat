@@ -6,6 +6,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import isomeria.aichat.core.ReplyPreferences
+import isomeria.aichat.core.ReplyPreferencesSource
 import isomeria.aichat.data.memory.NicknameSource
 import isomeria.aichat.update.UpdatePrefs
 import javax.inject.Inject
@@ -25,7 +27,7 @@ enum class FontSize(val scale: Float) {
  * 设置项，存在 MMKV（腾讯开源的键值存储）。每项都以 StateFlow 暴露，界面直接订阅。
  */
 @Singleton
-class SettingsStore @Inject constructor(@ApplicationContext context: Context) : UpdatePrefs, NicknameSource {
+class SettingsStore @Inject constructor(@ApplicationContext context: Context) : UpdatePrefs, NicknameSource, ReplyPreferencesSource {
     private val mmkv: MMKV
 
     init {
@@ -57,6 +59,34 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) : 
 
     private val _notifyPreview = MutableStateFlow(mmkv.decodeBool(KEY_NOTIFY_PREVIEW, true))
     val notifyPreview: StateFlow<Boolean> = _notifyPreview.asStateFlow()
+
+    private val _replyPreferences = MutableStateFlow(
+        ReplyPreferences(
+            waitSeconds = mmkv.decodeInt(KEY_REPLY_WAIT, ReplyPreferences.DEFAULT_WAIT_SECONDS),
+            targetLength = mmkv.decodeInt(KEY_REPLY_LENGTH, ReplyPreferences.DEFAULT_TARGET_LENGTH),
+            minCount = mmkv.decodeInt(KEY_REPLY_MIN_COUNT, ReplyPreferences.DEFAULT_MIN_COUNT),
+            maxCount = mmkv.decodeInt(KEY_REPLY_MAX_COUNT, ReplyPreferences.DEFAULT_MAX_COUNT),
+            stripPunctuation = mmkv.decodeBool(KEY_REPLY_STRIP, true),
+            minIntervalSeconds = mmkv.decodeInt(KEY_REPLY_MIN_INTERVAL, ReplyPreferences.DEFAULT_MIN_INTERVAL),
+            maxIntervalSeconds = mmkv.decodeInt(KEY_REPLY_MAX_INTERVAL, ReplyPreferences.DEFAULT_MAX_INTERVAL),
+        ).normalized(),
+    )
+    /** 回复偏好（0.5.0）：开启「使用回复偏好」的联系人共用这一份 */
+    val replyPreferences: StateFlow<ReplyPreferences> = _replyPreferences.asStateFlow()
+
+    override fun replyPreferences(): ReplyPreferences = _replyPreferences.value
+
+    fun setReplyPreferences(value: ReplyPreferences) {
+        val next = value.normalized()
+        mmkv.encode(KEY_REPLY_WAIT, next.waitSeconds)
+        mmkv.encode(KEY_REPLY_LENGTH, next.targetLength)
+        mmkv.encode(KEY_REPLY_MIN_COUNT, next.minCount)
+        mmkv.encode(KEY_REPLY_MAX_COUNT, next.maxCount)
+        mmkv.encode(KEY_REPLY_STRIP, next.stripPunctuation)
+        mmkv.encode(KEY_REPLY_MIN_INTERVAL, next.minIntervalSeconds)
+        mmkv.encode(KEY_REPLY_MAX_INTERVAL, next.maxIntervalSeconds)
+        _replyPreferences.value = next
+    }
 
     /** 是否已经申请过通知权限（第一次发送消息时申请一次） */
     var notificationPermissionAsked: Boolean
@@ -147,5 +177,12 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) : 
         const val KEY_RECENT_EMOJI = "recent_emoji"
         const val KEY_KEYBOARD_HEIGHT = "keyboard_height_px"
         const val EMOJI_SEPARATOR = " "
+        const val KEY_REPLY_WAIT = "reply_wait_seconds"
+        const val KEY_REPLY_LENGTH = "reply_target_length"
+        const val KEY_REPLY_MIN_COUNT = "reply_min_count"
+        const val KEY_REPLY_MAX_COUNT = "reply_max_count"
+        const val KEY_REPLY_STRIP = "reply_strip_punctuation"
+        const val KEY_REPLY_MIN_INTERVAL = "reply_min_interval"
+        const val KEY_REPLY_MAX_INTERVAL = "reply_max_interval"
     }
 }

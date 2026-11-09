@@ -52,6 +52,10 @@ data class Contact(
     /** null 跟随服务商默认，默认为空时回退聊天模型。 */
     val memoryModel: String? = null,
     @ColumnInfo(defaultValue = "'off'") val memoryThinkingOption: String = "off",
+    /** 使用全局记忆（0.5.0）：新旧联系人默认开启；关闭后请求里不带全局记忆 */
+    @ColumnInfo(defaultValue = "1") val useGlobalMemory: Boolean = true,
+    /** 使用回复偏好（0.5.0）：新旧联系人默认开启；关闭时回到 [splitReplies] 的旧行为 */
+    @ColumnInfo(defaultValue = "1") val useReplyPreferences: Boolean = true,
 ) {
     companion object {
         /** DeepSeek 官方对「通用对话」建议的温度 */

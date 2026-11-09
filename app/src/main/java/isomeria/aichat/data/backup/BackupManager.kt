@@ -8,8 +8,12 @@ import isomeria.aichat.R
 import isomeria.aichat.data.crypto.SecretCipher
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.core.MemoryPolicy
+import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Conversation
+import isomeria.aichat.data.db.GlobalMemoryCategory
+import isomeria.aichat.data.db.GlobalMemoryItem
+import isomeria.aichat.data.db.GlobalMemoryTopic
 import isomeria.aichat.data.db.Memory
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageKey
@@ -124,6 +128,7 @@ class BackupManager @Inject constructor(
     private val providerDao get() = db.providerDao()
     private val memoryDao get() = db.memoryDao()
     private val usageDao get() = db.usageDao()
+    private val globalDao get() = db.globalMemoryDao()
 
     /** 恢复前自动备份的位置 */
     val snapshotFile: File get() = File(files.backupsDir, SNAPSHOT_NAME)
@@ -215,6 +220,9 @@ class BackupManager @Inject constructor(
         val models: Map<Long, List<ProviderModel>>,
         val memories: List<Memory>,
         val usage: List<UsageDaily>,
+        val globalCategories: List<GlobalMemoryCategory>,
+        val globalTopics: List<GlobalMemoryTopic>,
+        val globalItems: List<GlobalMemoryItem>,
     )
 
     private sealed interface KeyExport {
@@ -235,6 +243,9 @@ class BackupManager @Inject constructor(
                 configs.associate { it.id to providerDao.models(it.id) },
                 memoryDao.listAll(),
                 usageDao.listAll(),
+                globalDao.categories(),
+                globalDao.topics(),
+                globalDao.items(),
             )
         }
         val (contacts, conversations, messages, configs, models) = tables
@@ -260,6 +271,9 @@ class BackupManager @Inject constructor(
             memories = tables.memories.map { it.toDto() },
             usage = tables.usage.map { it.toDto() },
             settings = appSettings.toDto(media.add(appSettings.avatarPath, BackupFormat.AVATARS_DIR)),
+            globalCategories = tables.globalCategories.map { it.toDto() },
+            globalTopics = tables.globalTopics.map { it.toDto() },
+            globalItems = tables.globalItems.map { it.toDto() },
         )
         val summary = ExportSummary(
             contacts = contacts.size,
@@ -387,7 +401,17 @@ class BackupManager @Inject constructor(
         val contacts = data.contacts.distinctBy { it.id }
             .map { it.copy(avatar = it.avatar?.takeIf(BackupFormat.mediaNamePattern::matches)) }
         val ids = contacts.mapTo(HashSet()) { it.id }
+        val categories = data.globalCategories.distinctBy { it.id }
+            .map { it.copy(name = it.name.take(GlobalMemoryCategory.NAME_MAX_LENGTH)) }
+        val categoryIds = categories.mapTo(HashSet()) { it.id }
+        val topics = data.globalTopics.filter { it.categoryId in categoryIds }.distinctBy { it.id }
+            .map { it.copy(name = it.name.take(GlobalMemoryCategory.NAME_MAX_LENGTH)) }
+        val topicIds = topics.mapTo(HashSet()) { it.id }
         return data.copy(
+            globalCategories = categories,
+            globalTopics = topics,
+            globalItems = data.globalItems.filter { it.topicId in topicIds && it.content.isNotBlank() }.distinctBy { it.id }
+                .map { it.copy(content = it.content.take(GlobalMemoryItem.CONTENT_MAX_LENGTH)) },
             providers = data.providers.distinctBy { it.id },
             memories = data.memories.filter { it.contactId in ids && it.content.isNotBlank() }.distinctBy { it.id }
                 .map { it.copy(content = it.content.take(MemoryPolicy.CONTENT_MAX_LENGTH)) },
@@ -527,6 +551,12 @@ class BackupManager @Inject constructor(
         usageDao.deleteAll()
         conversationDao.deleteAll()
         contactDao.deleteAll()
+        globalDao.deleteAllItems()
+        globalDao.deleteAllTopics()
+        globalDao.deleteAllCategories()
+        globalDao.insertCategories(data.globalCategories.map { it.toEntity() })
+        globalDao.insertTopics(data.globalTopics.map { it.toEntity(it.categoryId) })
+        globalDao.insertItems(data.globalItems.map { it.toEntity(it.topicId) })
 
         val providerIds = overwriteProviders(sources, apiKeys, exactKey)
         val fallback = providerDao.llmList().firstOrNull()?.id ?: error("缺少服务商配置")
@@ -681,7 +711,40 @@ class BackupManager @Inject constructor(
                 target?.let { row.toEntity(it) }
             },
         )
+        mergeGlobalMemory(data)
         return RestoreSummary(contactsAdded, newMessages.size, keyRestored)
+    }
+
+    /**
+     * 合并全局记忆：类别、主题按创建时间认「同一个」（两台手机的 id 都从 1 开始，只比 id 会混在一起；
+     * 同一台手机导出的备份再合并时创建时间相同，不会重复），同一个保留本机的名称和顺序；
+     * 条目在同一个主题下按内容去重。本机没有的加在后面。
+     */
+    private suspend fun mergeGlobalMemory(data: BackupData) {
+        val localCategories = globalDao.categories()
+        val categoryIds = HashMap<Long, Long>()
+        var categoryOrder = globalDao.maxCategoryOrder()
+        for (category in data.globalCategories) {
+            val same = localCategories.firstOrNull { it.createdAt == category.createdAt && it.id == category.id }
+                ?: localCategories.firstOrNull { it.createdAt == category.createdAt }
+            categoryIds[category.id] = same?.id
+                ?: globalDao.insertCategory(category.toEntity().copy(id = 0, sortOrder = ++categoryOrder))
+        }
+        val localTopics = globalDao.topics()
+        val topicIds = HashMap<Long, Long>()
+        for (topic in data.globalTopics) {
+            val target = categoryIds[topic.categoryId] ?: continue
+            val same = localTopics.firstOrNull { it.categoryId == target && it.createdAt == topic.createdAt }
+            topicIds[topic.id] = same?.id ?: globalDao.insertTopic(
+                topic.toEntity(target).copy(id = 0, sortOrder = globalDao.maxTopicOrder(target) + 1),
+            )
+        }
+        val existing = globalDao.items().mapTo(HashSet()) { it.topicId to it.content }
+        for (item in data.globalItems) {
+            val target = topicIds[item.topicId] ?: continue
+            if (!existing.add(target to item.content)) continue
+            globalDao.insertItem(item.toEntity(target).copy(id = 0, sortOrder = globalDao.maxItemOrder(target) + 1))
+        }
     }
 
     private suspend fun refreshLastMessage(contactId: Long) {
@@ -704,6 +767,7 @@ class BackupManager @Inject constructor(
                 notifyEnabled = dto.notifyEnabled ?: current.notifyEnabled,
                 notifyPreview = dto.notifyPreview ?: current.notifyPreview,
                 autoCheckUpdate = dto.autoCheckUpdate ?: current.autoCheckUpdate,
+                replyPreferences = dto.replyPreferences?.toModel() ?: current.replyPreferences,
             )
             RestoreMode.MERGE -> current.copy(
                 nickname = current.nickname.ifBlank { dto.nickname.orEmpty() },
@@ -729,6 +793,7 @@ class BackupManager @Inject constructor(
         thinking = thinking, temperature = temperature, systemPrompt = systemPrompt, contextTokens = contextTokens,
         splitReplies = splitReplies, autoMemory = autoMemory, createdAt = createdAt, updatedAt = updatedAt,
         thinkingOption = thinkingOption, memoryModel = memoryModel, memoryThinkingOption = memoryThinkingOption,
+        useGlobalMemory = useGlobalMemory, useReplyPreferences = useReplyPreferences,
     )
 
     private fun ContactDto.toEntity(providerId: Long, avatarPath: String?) = Contact(
@@ -737,6 +802,7 @@ class BackupManager @Inject constructor(
         contextTokens = contextTokens.coerceIn(Contact.MIN_CONTEXT_TOKENS, Contact.MAX_CONTEXT_TOKENS),
         splitReplies = splitReplies, autoMemory = autoMemory, createdAt = createdAt, updatedAt = updatedAt,
         thinkingOption = thinkingOption, memoryModel = memoryModel, memoryThinkingOption = memoryThinkingOption,
+        useGlobalMemory = useGlobalMemory, useReplyPreferences = useReplyPreferences,
     )
 
     private fun Conversation.toDto(background: String?) = ConversationDto(
@@ -760,6 +826,26 @@ class BackupManager @Inject constructor(
         id = id, contactId = contactId, content = content, fromTime = fromTime, toTime = toTime,
         edited = edited, createdAt = createdAt, updatedAt = updatedAt,
     )
+
+    private fun GlobalMemoryCategory.toDto() = GlobalCategoryDto(id, name, sortOrder, createdAt, updatedAt)
+
+    private fun GlobalCategoryDto.toEntity() = GlobalMemoryCategory(id, name, sortOrder, createdAt, updatedAt)
+
+    private fun GlobalMemoryTopic.toDto() = GlobalTopicDto(id, categoryId, name, sortOrder, createdAt, updatedAt)
+
+    private fun GlobalTopicDto.toEntity(categoryId: Long) = GlobalMemoryTopic(id, categoryId, name, sortOrder, createdAt, updatedAt)
+
+    private fun GlobalMemoryItem.toDto() = GlobalItemDto(id, topicId, content, enabled, sortOrder, createdAt, updatedAt)
+
+    private fun GlobalItemDto.toEntity(topicId: Long) = GlobalMemoryItem(id, topicId, content, enabled, sortOrder, createdAt, updatedAt)
+
+    private fun ReplyPreferences.toDto() = ReplyPreferencesDto(
+        waitSeconds, targetLength, minCount, maxCount, stripPunctuation, minIntervalSeconds, maxIntervalSeconds,
+    )
+
+    private fun ReplyPreferencesDto.toModel() = ReplyPreferences(
+        waitSeconds, targetLength, minCount, maxCount, stripPunctuation, minIntervalSeconds, maxIntervalSeconds,
+    ).normalized()
 
     private fun UsageDaily.toDto() = UsageDto(
         day = day, contactId = contactId, purpose = purpose, promptTokens = promptTokens,
@@ -818,6 +904,7 @@ class BackupManager @Inject constructor(
     private fun AppSettingsSnapshot.toDto(avatar: String?) = SettingsDto(
         themeMode = themeMode.name, fontSize = fontSize.name, nickname = nickname, avatar = avatar,
         notifyEnabled = notifyEnabled, notifyPreview = notifyPreview, autoCheckUpdate = autoCheckUpdate,
+        replyPreferences = replyPreferences.toDto(),
     )
 
     /** 读取时限制大小，防止异常文件把内存或存储撑满 */

@@ -26,6 +26,8 @@ import isomeria.aichat.data.db.ConversationDao
 import isomeria.aichat.data.db.MIGRATION_1_2
 import isomeria.aichat.data.db.MIGRATION_2_3
 import isomeria.aichat.data.db.MIGRATION_3_4
+import isomeria.aichat.data.db.MIGRATION_4_5
+import isomeria.aichat.data.db.GlobalMemoryDao
 import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.MessageDao
 import isomeria.aichat.data.db.ProviderDao
@@ -59,7 +61,7 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .addCallback(AppDatabase.seedCallback)
             .build()
 
@@ -74,6 +76,8 @@ object AppModule {
     @Provides fun memoryDao(db: AppDatabase): MemoryDao = db.memoryDao()
 
     @Provides fun usageDao(db: AppDatabase): UsageDao = db.usageDao()
+
+    @Provides fun globalMemoryDao(db: AppDatabase): GlobalMemoryDao = db.globalMemoryDao()
 
     @Provides
     @Singleton
@@ -154,6 +158,8 @@ abstract class BindingsModule {
     @Binds @IntoSet abstract fun genericOpenAi(impl: GenericOpenAiProvider): LlmProvider
 
     @Binds abstract fun nicknameSource(impl: SettingsStore): NicknameSource
+
+    @Binds abstract fun replyPreferencesSource(impl: SettingsStore): isomeria.aichat.core.ReplyPreferencesSource
 
     @Binds abstract fun replyControl(impl: ReplyScheduler): ReplyControl
 

@@ -51,6 +51,7 @@ class BackupMigrations(
             1 to { data -> v1ToV2(data) },
             2 to { data -> v2ToV3(data) },
             3 to { data -> v3ToV4(data) },
+            4 to { data -> v4ToV5(data) },
         )
 
         /**
@@ -99,6 +100,19 @@ class BackupMigrations(
             return JsonObject(
                 data + ("conversations" to JsonArray(conversations.map {
                     JsonObject(it.jsonObject + ("muted" to JsonPrimitive(false)) + ("background" to JsonNull))
+                })),
+            )
+        }
+
+        /**
+         * 与 Room v4→v5 的默认值一致：旧联系人「使用全局记忆」「使用回复偏好」默认开启（用户决定），
+         * 分条显示 splitReplies 原样保留。旧备份里没有全局记忆和回复偏好，恢复时不写这两项。
+         */
+        fun v4ToV5(data: JsonObject): JsonObject {
+            val contacts = data.arrayOf("contacts") ?: return data
+            return JsonObject(
+                data + ("contacts" to JsonArray(contacts.map {
+                    JsonObject(it.jsonObject + ("useGlobalMemory" to JsonPrimitive(true)) + ("useReplyPreferences" to JsonPrimitive(true)))
                 })),
             )
         }

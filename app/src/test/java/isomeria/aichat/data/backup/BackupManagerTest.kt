@@ -5,8 +5,12 @@ import androidx.room.Room
 import isomeria.aichat.data.crypto.SecretCipher
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.llm.*
+import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Capability
+import isomeria.aichat.data.db.GlobalMemoryCategory
+import isomeria.aichat.data.db.GlobalMemoryItem
+import isomeria.aichat.data.db.GlobalMemoryTopic
 import isomeria.aichat.data.db.Conversation
 import isomeria.aichat.data.db.Memory
 import isomeria.aichat.data.db.Message
@@ -183,7 +187,7 @@ class BackupManagerTest {
         db.contactDao().update(db.contactDao().get(2)!!.copy(memoryModel = "local", memoryThinkingOption = "native", thinkingOption = "on"))
         val before = dump()
         val zip = export(password = "pw123456")
-        assertEquals(4, backup.inspect(zip).manifest.formatVersion)
+        assertEquals(5, backup.inspect(zip).manifest.formatVersion)
         scramble()
         backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(before, dump())
@@ -254,6 +258,136 @@ class BackupManagerTest {
         assertEquals(0, summary.contactsAdded)
         assertEquals(0, summary.messagesAdded)
         assertEquals(before, dump())
+    }
+
+    // ---------- 0.5.0 全局记忆、联系人新开关、回复偏好 ----------
+
+    @Test
+    fun export_includesGlobalMemorySwitchesAndReplyPreferences() = runBlocking {
+        seed()
+        val data = backup.inspect(export(password = null)).data
+        assertEquals(listOf("个人信息", "工作"), data.globalCategories.map { it.name })
+        assertEquals(3, data.globalTopics.size)
+        assertEquals(mapOf("住在杭州" to true, "生日 3 月 5 日" to false, "不吃香菜" to true, "做后端开发" to true), data.globalItems.associate { it.content to it.enabled })
+        assertEquals(listOf(true to true, false to false), data.contacts.map { it.useGlobalMemory to it.useReplyPreferences })
+        assertEquals(ReplyPreferencesDto(5, 20, 2, 4, false, 2, 6), data.settings.replyPreferences)
+    }
+
+    @Test
+    fun merge_globalMemory_addsMissing_keepsLocal_andKeepsLocalReplyPreferences() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        val dao = db.globalMemoryDao()
+        // 本机：改了类别名、删了一条、在同一个主题下加了一条、又新建了一个类别；回复偏好也改过
+        val personal = dao.categories().first { it.name == "个人信息" }
+        dao.updateCategories(listOf(personal.copy(name = "关于我")))
+        val basics = dao.topics().first { it.name == "基本情况" }
+        dao.deleteItem(dao.items().first { it.content == "住在杭州" }.id)
+        dao.insertItem(GlobalMemoryItem(topicId = basics.id, content = "本机新加的", sortOrder = 5, createdAt = 500, updatedAt = 500))
+        dao.insertCategory(GlobalMemoryCategory(name = "本机类别", sortOrder = 2, createdAt = 600, updatedAt = 600))
+        val localPrefs = ReplyPreferences(waitSeconds = 1)
+        settings.value = settings.value.copy(replyPreferences = localPrefs)
+
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+
+        // 同一个类别（创建时间相同）保留本机的名字，不重复
+        assertEquals(listOf("关于我", "工作", "本机类别"), dao.categories().map { it.name })
+        assertEquals(3, dao.topics().size)
+        // 本机删掉的那条从备份补回来，接在本机条目后面；其他条目不重复
+        assertEquals(listOf("生日 3 月 5 日", "本机新加的", "住在杭州"), dao.itemsOf(basics.id).map { it.content })
+        assertEquals(5, dao.items().size)
+        assertEquals(localPrefs, settings.value.replyPreferences)
+
+        // 再合并一次不会变
+        val again = dao.items()
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+        assertEquals(again, dao.items())
+        assertEquals(3, dao.categories().size)
+    }
+
+    @Test
+    fun merge_fromAnotherPhone_addsSameNamedCategoryAsNew_andRemapsTopicsAndItems() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        // 「另一台手机」：清空全局记忆后自己建了同名类别（创建时间不同），id 正好和备份撞上
+        val dao = db.globalMemoryDao()
+        dao.deleteAllItems(); dao.deleteAllTopics(); dao.deleteAllCategories()
+        val mine = dao.insertCategory(GlobalMemoryCategory(id = 1, name = "个人信息", createdAt = 7_777, updatedAt = 7_777))
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+        val categories = dao.categories()
+        assertEquals(listOf("个人信息", "个人信息", "工作"), categories.map { it.name })
+        assertEquals(mine, categories.first().id)
+        assertTrue(dao.topicsOf(mine).isEmpty())
+        // 备份的主题挂到新建的类别下，条目挂到新主题下
+        val restored = categories[1]
+        assertEquals(listOf("基本情况", "饮食"), dao.topicsOf(restored.id).map { it.name })
+        assertEquals(4, dao.items().size)
+        assertTrue(dao.items().all { item -> dao.topic(item.topicId) != null })
+    }
+
+    @Test
+    fun overwrite_replacesGlobalMemory_andOldBackupWithoutItClearsLocal() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        db.globalMemoryDao().insertCategory(GlobalMemoryCategory(name = "后来加的", createdAt = 8_000, updatedAt = 8_000))
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(listOf("个人信息", "工作"), db.globalMemoryDao().categories().map { it.name })
+
+        // v4 备份没有全局记忆和回复偏好：覆盖时本机全局记忆随其他数据一起清掉，回复偏好保留本机的
+        val prefs = settings.value.replyPreferences
+        val v4 = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.4.2","appVersionCode":402,"formatVersion":4,"exportedAt":1}""",
+            BackupFormat.DATA to """{"contacts":[{"id":1,"name":"小雨","avatarColor":0,"providerId":1,"model":"m","temperature":1.3,"createdAt":1,"updatedAt":1}]}""",
+        )
+        backup.restore(backup.inspect(v4), RestoreMode.OVERWRITE, null)
+        assertTrue(db.globalMemoryDao().categories().isEmpty())
+        assertEquals(prefs, settings.value.replyPreferences)
+    }
+
+    @Test
+    fun v4Backup_contactsDefaultToUsingGlobalMemoryAndReplyPreferences_splitRepliesKept() = runBlocking {
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.4.2","appVersionCode":402,"formatVersion":4,"exportedAt":1}""",
+            BackupFormat.DATA to """
+                {"contacts":[{"id":1,"name":"分条","avatarColor":0,"providerId":1,"model":"m","temperature":1.3,"splitReplies":true,"createdAt":1,"updatedAt":1},
+                             {"id":2,"name":"不分条","avatarColor":0,"providerId":1,"model":"m","temperature":1.3,"splitReplies":false,"createdAt":2,"updatedAt":2}],
+                 "conversations":[{"contactId":1,"muted":true}]}
+            """.trimIndent(),
+        )
+        for (mode in RestoreMode.entries) {
+            db.contactDao().deleteAll()
+            backup.restore(backup.inspect(zip), mode, null)
+            val contacts = db.contactDao().listAll()
+            assertEquals(mode.name, listOf(true, false), contacts.map { it.splitReplies })
+            assertTrue(mode.name, contacts.all { it.useGlobalMemory && it.useReplyPreferences })
+            assertTrue(mode.name, db.conversationDao().get(1)!!.muted)
+        }
+    }
+
+    @Test
+    fun crafted_globalMemory_orphansAndOverlongValuesAreCleaned() = runBlocking {
+        val long = "长".repeat(GlobalMemoryItem.CONTENT_MAX_LENGTH + 10)
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.5.0","appVersionCode":500,"formatVersion":5,"exportedAt":1}""",
+            BackupFormat.DATA to """
+                {"globalCategories":[{"id":1,"name":"${"类".repeat(30)}","createdAt":1,"updatedAt":1}],
+                 "globalTopics":[{"id":1,"categoryId":1,"name":"主题","createdAt":1,"updatedAt":1},
+                                 {"id":2,"categoryId":99,"name":"孤立主题","createdAt":1,"updatedAt":1}],
+                 "globalItems":[{"id":1,"topicId":1,"content":"$long","createdAt":1,"updatedAt":1},
+                                {"id":2,"topicId":2,"content":"挂在孤立主题下","createdAt":1,"updatedAt":1},
+                                {"id":3,"topicId":1,"content":"   ","createdAt":1,"updatedAt":1}],
+                 "settings":{"replyPreferences":{"minCount":8,"maxCount":2,"waitSeconds":-5}}}
+            """.trimIndent(),
+        )
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        val dao = db.globalMemoryDao()
+        assertEquals(GlobalMemoryCategory.NAME_MAX_LENGTH, dao.categories().single().name.length)
+        assertEquals(listOf("主题"), dao.topics().map { it.name })
+        assertEquals(GlobalMemoryItem.CONTENT_MAX_LENGTH, dao.items().single().content.length)
+        val prefs = settings.value.replyPreferences
+        assertEquals(0, prefs.waitSeconds)
+        assertEquals(8, prefs.minCount)
+        assertEquals("最多不少于最少", 8, prefs.maxCount)
     }
 
     // ---------- 多服务商、记忆、用量 ----------
@@ -614,7 +748,7 @@ class BackupManagerTest {
         assertTrue(preview.decryptedTemporary)
         assertTrue(preview.file.canonicalPath.startsWith(files.restoreCacheDir.canonicalPath + File.separator))
         assertTrue(preview.file.isFile)
-        assertEquals(4, preview.manifest.formatVersion)
+        assertEquals(5, preview.manifest.formatVersion)
         val result = backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(expected, dump())
         assertFalse(result.cleanupPending)
@@ -716,7 +850,8 @@ class BackupManagerTest {
                 autoMemory = false,
             ),
         )
-        db.contactDao().insert(contact(id = 2, name = "阿哲", createdAt = 2_000))
+        db.contactDao().insert(contact(id = 2, name = "阿哲", createdAt = 2_000).copy(useGlobalMemory = false, useReplyPreferences = false))
+        seedGlobalMemory()
         db.conversationDao().upsert(
             Conversation(
                 contactId = 1, pinned = true, unreadCount = 2, draft = "还没发出去", lastMessageTime = 5_000,
@@ -781,6 +916,25 @@ class BackupManagerTest {
             notifyEnabled = true,
             notifyPreview = false,
             autoCheckUpdate = false,
+            replyPreferences = ReplyPreferences(waitSeconds = 5, targetLength = 20, minCount = 2, maxCount = 4, stripPunctuation = false, minIntervalSeconds = 2, maxIntervalSeconds = 6),
+        )
+    }
+
+    /** 两个类别；第一个有两个主题，其中一条记忆关闭 */
+    private suspend fun seedGlobalMemory() {
+        val dao = db.globalMemoryDao()
+        val personal = dao.insertCategory(GlobalMemoryCategory(name = "个人信息", sortOrder = 0, createdAt = 100, updatedAt = 101))
+        val work = dao.insertCategory(GlobalMemoryCategory(name = "工作", sortOrder = 1, createdAt = 200, updatedAt = 201))
+        val basics = dao.insertTopic(GlobalMemoryTopic(categoryId = personal, name = "基本情况", sortOrder = 0, createdAt = 110, updatedAt = 111))
+        val food = dao.insertTopic(GlobalMemoryTopic(categoryId = personal, name = "饮食", sortOrder = 1, createdAt = 120, updatedAt = 121))
+        val job = dao.insertTopic(GlobalMemoryTopic(categoryId = work, name = "职业", sortOrder = 0, createdAt = 210, updatedAt = 211))
+        dao.insertItems(
+            listOf(
+                GlobalMemoryItem(topicId = basics, content = "住在杭州", sortOrder = 0, createdAt = 130, updatedAt = 131),
+                GlobalMemoryItem(topicId = basics, content = "生日 3 月 5 日", enabled = false, sortOrder = 1, createdAt = 132, updatedAt = 133),
+                GlobalMemoryItem(topicId = food, content = "不吃香菜", sortOrder = 0, createdAt = 140, updatedAt = 141),
+                GlobalMemoryItem(topicId = job, content = "做后端开发", sortOrder = 0, createdAt = 220, updatedAt = 221),
+            ),
         )
     }
 
@@ -800,7 +954,10 @@ class BackupManagerTest {
         db.memoryDao().insert(Memory(contactId = 1, content = "本机后来的记忆", fromTime = 7_000, toTime = 7_000, createdAt = 7_000, updatedAt = 7_000))
         db.usageDao().deleteAll()
         db.usageDao().add(30_000, 1, UsagePurpose.CHAT, 1, 1)
-        settings.value = settings.value.copy(themeMode = ThemeMode.LIGHT, nickname = "别人", avatarPath = null)
+        db.globalMemoryDao().deleteCategory(db.globalMemoryDao().categories().first().id)
+        db.globalMemoryDao().insertCategory(GlobalMemoryCategory(name = "本机后来的类别", createdAt = 9_000, updatedAt = 9_000))
+        db.contactDao().update(db.contactDao().get(1)!!.copy(useGlobalMemory = false))
+        settings.value = settings.value.copy(themeMode = ThemeMode.LIGHT, nickname = "别人", avatarPath = null, replyPreferences = ReplyPreferences())
     }
 
     private fun contact(id: Long, name: String, createdAt: Long) = Contact(
@@ -845,6 +1002,9 @@ class BackupManagerTest {
         val memories: List<Memory>,
         val usage: List<UsageDaily>,
         val settings: AppSettingsSnapshot,
+        val globalCategories: List<GlobalMemoryCategory>,
+        val globalTopics: List<GlobalMemoryTopic>,
+        val globalItems: List<GlobalMemoryItem>,
     )
 
     private var secondProviderId = 0L
@@ -863,6 +1023,9 @@ class BackupManagerTest {
             memories = db.memoryDao().listAll(),
             usage = db.usageDao().listAll(),
             settings = settings.value.copy(avatarPath = content(settings.value.avatarPath)),
+            globalCategories = db.globalMemoryDao().categories(),
+            globalTopics = db.globalMemoryDao().topics(),
+            globalItems = db.globalMemoryDao().items(),
         )
     }
 
