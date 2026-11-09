@@ -57,7 +57,7 @@ open class OpenAiCompatibleProvider(
     override suspend fun listModels(endpoint: LlmEndpoint): List<RemoteModel> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(endpoint.url("models"))
-            .header("Authorization", "Bearer ${endpoint.apiKey}")
+            .header("Authorization", endpoint.authorization())
             .header("Accept", "application/json")
             .get()
             .build()
@@ -91,11 +91,12 @@ open class OpenAiCompatibleProvider(
     }
 
     override fun streamChat(endpoint: LlmEndpoint, request: ChatRequest): Flow<ChatEvent> = callbackFlow {
+        val authorization = endpoint.authorization()
         val body = buildBody(request).toString()
         val call = client.newCall(
             Request.Builder()
                 .url(endpoint.url("chat/completions"))
-                .header("Authorization", "Bearer ${endpoint.apiKey}")
+                .header("Authorization", authorization)
                 .header("Accept", "text/event-stream")
                 .post(body.toRequestBody(JSON_MEDIA_TYPE))
                 .build(),

@@ -160,6 +160,13 @@ class ReplyEngine @Inject constructor(
             debugLog("reply failed: ${e.error} http=${e.httpCode}")
             fail(waiting, FailReason.of(e))
             return
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 意外的异常也要把等待中的消息标为失败，不能一直停在「对方正在输入…」；不记录异常内容
+            debugLog("reply failed unexpectedly: ${e.javaClass.simpleName}")
+            fail(waiting, FailReason.UNKNOWN)
+            return
         }
 
         val text = content.toString().trim()
@@ -217,6 +224,11 @@ class ReplyEngine @Inject constructor(
     /** 任务被系统中断后重新调度：不再自动重试，标记失败 */
     suspend fun failInterrupted(contactId: Long) {
         messageDao.failSending(contactId, FailReason.INTERRUPTED.code)
+    }
+
+    /** 回复任务里出了意外的异常：等待中的消息标为失败，可以点击重试 */
+    suspend fun failUnexpected(contactId: Long) {
+        messageDao.failSending(contactId, FailReason.UNKNOWN.code)
     }
 
     private suspend fun fail(ids: List<Long>, reason: FailReason) {

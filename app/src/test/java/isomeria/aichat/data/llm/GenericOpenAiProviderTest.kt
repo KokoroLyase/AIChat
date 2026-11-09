@@ -13,6 +13,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
@@ -110,6 +111,31 @@ class GenericOpenAiProviderTest {
         assertNull(plain.name)
         assertNull("接口没说就是未知，由用户标记", plain.supportsImage)
         assertNull(plain.supportsThinking)
+    }
+
+    /** Key 里混进全角「－」、中文或空格：不发请求，按「Key 无效」处理，不会抛 OkHttp 的 IllegalArgumentException */
+    @Test
+    fun nonAsciiKey_failsAsInvalidKey_withoutSendingAnything() = runBlocking {
+        for (key in listOf("sk－abc", "sk-中文", "sk-a b", "sk-\u00e9")) {
+            val bad = LlmEndpoint(server.url("/v1").toString(), key)
+            try {
+                provider.listModels(bad)
+                fail("$key 应该失败")
+            } catch (e: LlmException) {
+                assertEquals(LlmError.AUTH, e.error)
+                assertEquals(LlmException.INVALID_KEY, e.httpCode)
+                assertFalse("不是「没有 Key」", e.isMissingKey)
+            }
+            try {
+                provider.streamChat(bad, request(ThinkingLevel.OFF)).toList()
+                fail("$key 应该失败")
+            } catch (e: LlmException) {
+                assertEquals(LlmError.AUTH, e.error)
+            }
+        }
+        assertEquals(0, server.requestCount)
+        assertTrue(LlmEndpoint.isUsableKey("sk-or-v1_ABC.def~123"))
+        assertFalse(LlmEndpoint.isUsableKey(""))
     }
 
     @Test

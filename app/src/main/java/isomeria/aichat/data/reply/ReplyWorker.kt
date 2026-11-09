@@ -39,7 +39,14 @@ class ReplyWorker @AssistedInject constructor(
             // App 已在后台时系统不允许启动前台服务，继续以普通任务执行
         }
 
-        engine.run(contactId)
+        try {
+            engine.run(contactId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // 兜底：无论哪一步出错，都不让消息一直停在「对方正在输入…」
+            engine.failUnexpected(contactId)
+        }
         return Result.success()
     }
 

@@ -321,6 +321,8 @@ internal class RecordingProvider {
         override val id = protocol
         override suspend fun listModels(endpoint: LlmEndpoint) = emptyList<RemoteModel>()
         override fun streamChat(endpoint: LlmEndpoint, request: ChatRequest): Flow<ChatEvent> = flow {
+            // 和真实服务商一样先拼请求头：Key 有问题时在这里失败
+            endpoint.authorization()
             requests += request
             lastProtocol = protocol
             beforeReply?.invoke()

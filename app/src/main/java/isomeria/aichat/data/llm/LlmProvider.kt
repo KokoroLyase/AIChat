@@ -22,6 +22,21 @@ interface LlmProvider {
 
 data class LlmEndpoint(val baseUrl: String, val apiKey: String) {
     override fun toString(): String = "LlmEndpoint(baseUrl=$baseUrl, apiKey=***)"
+
+    /**
+     * Authorization 请求头的值。Key 里有请求头放不下的字符（中文、全角符号、空格等）时，
+     * OkHttp 会直接抛 IllegalArgumentException；这里先查，换成「Key 无效」的 [LlmException]，
+     * 聊天、获取模型列表和记忆都按 Key 无效处理，不会卡住
+     */
+    fun authorization(): String {
+        if (!isUsableKey(apiKey)) throw LlmException(LlmError.AUTH, httpCode = LlmException.INVALID_KEY, message = "API key has characters a request header cannot carry")
+        return "Bearer $apiKey"
+    }
+
+    companion object {
+        /** 只允许可见的 ASCII 字符（0x21～0x7E）：各家 Key 都在这个范围里，请求头也只认这些 */
+        fun isUsableKey(key: String): Boolean = key.isNotEmpty() && key.all { it in '\u0021'..'\u007e' }
+    }
 }
 
 data class RemoteModel(
@@ -95,6 +110,9 @@ class LlmException(val error: LlmError, val httpCode: Int = 0, message: String? 
     val isMissingKey: Boolean get() = error == LlmError.AUTH && httpCode == 0
 
     companion object {
+        /** 没发出请求：本机保存的 Key 有请求头放不下的字符。不是 0，所以不会被当成「没有 Key」 */
+        const val INVALID_KEY = -1
+
         fun fromHttp(code: Int): LlmException {
             val error = when (code) {
                 401, 403 -> LlmError.AUTH

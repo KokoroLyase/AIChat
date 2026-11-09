@@ -226,6 +226,13 @@ class ProviderEditViewModel @Inject constructor(
         if (url == null) {
             error(R.string.llm_base_url_invalid)
             _state.update { it.copy(validationAttempt = it.validationAttempt + 1) }
+            return null
+        }
+        // Key 里混进中文、全角符号或空格时发不出去：不保存，提示检查
+        if (s.keyInput.isNotEmpty() && !isomeria.aichat.data.llm.LlmEndpoint.isUsableKey(s.keyInput)) {
+            error(R.string.llm_api_key_invalid_chars)
+            _state.update { it.copy(validationAttempt = it.validationAttempt + 1) }
+            return null
         }
         return url
     }

@@ -2,6 +2,7 @@ package isomeria.aichat.feature.settings
 
 import android.app.Application
 import android.os.Looper
+import isomeria.aichat.R
 import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
 import isomeria.aichat.data.crypto.SecretCipher
@@ -111,6 +112,24 @@ class ProviderEditViewModelTest {
         assertEquals("", saved.defaultModel)
         assertEquals("默认模型之外不写入", "原名称", saved.name)
         assertEquals("https://saved.example/v1", saved.baseUrl)
+    }
+
+    /** 0.4.2 里用 adb 输入时混进过全角「－」：这样的 Key 不保存，提示检查 */
+    @Test
+    fun keyWithNonAsciiCharacters_isNotSaved_andExplains() = runBlocking {
+        val vm = viewModel()
+        val before = repo.config(id)!!.apiKeyEncrypted
+        vm.setKey("sk－123")
+        vm.save()
+        await { vm.state.value.messageRes != null }
+        assertEquals(R.string.llm_api_key_invalid_chars, vm.state.value.messageRes)
+        assertTrue(vm.state.value.messageIsError)
+        Thread.sleep(200)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("没有保存", before, repo.config(id)!!.apiKeyEncrypted)
+        vm.setKey("sk-123")
+        vm.save()
+        await { runBlocking { repo.config(id)!!.apiKeyEncrypted } != before }
     }
 
     @Test

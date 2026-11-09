@@ -244,6 +244,26 @@ class DeliveryTest {
         assertEquals(4, h.queue.deliveryCancelled.size)
     }
 
+    // ---------- Key 含非 ASCII 字符（0.4.1 起的缺陷，0.5.0 顺带修复） ----------
+
+    @Test
+    fun nonAsciiKey_marksMessageFailed_insteadOfTypingForever() = runBlocking {
+        db.providerDao().update(db.providerDao().get(1)!!.copy(apiKeyEncrypted = "enc:sk－123"))
+        h.engine.run(id)
+        val message = db.messageDao().listByContact(id).single()
+        assertEquals(MessageStatus.FAILED, message.status)
+        assertEquals(FailReason.AUTH.code, message.errorCode)
+        assertFalse(db.messageDao().hasSending(id))
+    }
+
+    @Test
+    fun unexpectedException_marksMessageFailed() = runBlocking {
+        h.provider.beforeReply = { throw IllegalStateException("意外") }
+        h.engine.run(id)
+        assertEquals(MessageStatus.FAILED, db.messageDao().listByContact(id).single().status)
+        assertEquals(FailReason.UNKNOWN.code, db.messageDao().listByContact(id).single().errorCode)
+    }
+
     // ---------- 读消息的地方 ----------
 
     @Test

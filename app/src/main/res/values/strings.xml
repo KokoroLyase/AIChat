@@ -338,6 +338,7 @@
     <string name="llm_api_key_missing">未填写 Key</string>
     <string name="llm_api_key_set">Key 已保存</string>
     <string name="llm_api_key_clear">清除已保存的 Key</string>
+    <string name="llm_api_key_invalid_chars">API Key 里有无法发送的字符（比如中文、全角符号或空格），请检查后重新填写。</string>
     <string name="llm_base_url">Base URL</string>
     <string name="llm_base_url_hint">https://…</string>
     <string name="llm_base_url_note">按服务商文档填写，很多服务商以 /v1 结尾。只支持 https。</string>
