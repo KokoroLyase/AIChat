@@ -311,8 +311,7 @@ class ProviderRepository @Inject constructor(
         val temperature = if (memory) 0.3f else contact.temperature
         val parameters = ModelRules.parameters(config, model, option, temperature)
         val legacyThinking = if (parameters == null) {
-            val level = ThinkingLevel.entries.firstOrNull { it.name.equals(option, true) } ?: throw LlmException(LlmError.CONFIGURATION)
-            if (memory || supportsThinking(config, modelId)) level else ThinkingLevel.OFF
+            ModelRules.legacyThinking(option, memory || ModelRules.legacySupportsThinking(config, model)) ?: throw LlmException(LlmError.CONFIGURATION)
         } else ThinkingLevel.OFF
         ModelSnapshot(contact, config, endpoint, modelId, model?.supportsImage ?: false, legacyThinking, temperature, parameters)
     }
@@ -330,7 +329,7 @@ class ProviderRepository @Inject constructor(
 
     /** 列表里没有这个模型时：DeepSeek 按支持算（接口默认开启思考），其他按不支持算 */
     suspend fun supportsThinking(config: ProviderConfig, modelId: String): Boolean =
-        dao.model(config.id, modelId)?.supportsThinking ?: (config.provider == ProviderProtocol.DEEPSEEK)
+        ModelRules.legacySupportsThinking(config, dao.model(config.id, modelId))
 }
 
 enum class ReferencePurpose { DEFAULT, CHAT, MEMORY }

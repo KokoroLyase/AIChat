@@ -19,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,16 +42,17 @@ import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.ThinkingLevel
 import isomeria.aichat.data.llm.ConfigurationIssue
 import isomeria.aichat.data.llm.ModelRules
+import isomeria.aichat.data.llm.RequestTemperature
 import isomeria.aichat.data.repo.ContactRepository
 import isomeria.aichat.data.repo.MemoryRepository
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.feature.settings.ConfigActionRow
 import isomeria.aichat.navigation.ContactDetailRoute
 import isomeria.aichat.ui.components.configurationIssueText
+import isomeria.aichat.ui.components.temperatureText
 import isomeria.aichat.ui.components.thinkingDisplayName
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.GroupSpacer
-import isomeria.aichat.ui.components.WeDivider
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.theme.AIChatTheme
@@ -74,6 +74,8 @@ data class ContactDetailState(
     val providerName: String = "",
     val memoryCount: Int = 0,
     val thinkingName: String? = null,
+    /** 聊天请求里实际的温度；null 时按保存的值显示 */
+    val temperature: RequestTemperature? = null,
     /** 聊天和记忆各自的配置问题；不等聊天失败才告诉用户 */
     val chatIssue: ConfigurationIssue? = null,
     val memoryIssue: ConfigurationIssue? = null,
@@ -98,6 +100,8 @@ class ContactDetailViewModel @Inject constructor(
                 providers.observeConfig(contact.providerId),
                 memories.observeCount(id),
             ) { models, config, memoryCount ->
+                val chatModel = models.firstOrNull { it.modelId == contact.model }
+                val chatOption = contact.thinkingOption ?: ModelRules.legacyOption(contact.thinking)
                 ContactDetailState(
                     loaded = true,
                     contact = contact,
@@ -107,9 +111,8 @@ class ContactDetailViewModel @Inject constructor(
                     thinkingName = contact.thinkingOption?.let { value ->
                         thinkingDisplayName(ModelRules.options(models.firstOrNull { it.modelId == contact.model }), value)
                     },
-                    chatIssue = config?.let {
-                        ModelRules.validate(it, models.firstOrNull { m -> m.modelId == contact.model }, contact.thinkingOption ?: ModelRules.legacyOption(contact.thinking), contact.temperature)
-                    },
+                    temperature = config?.let { ModelRules.requestTemperature(it, chatModel, chatOption, contact.temperature) },
+                    chatIssue = config?.let { ModelRules.validate(it, chatModel, chatOption, contact.temperature) },
                     memoryIssue = config?.let {
                         val memoryModel = providers.memoryModel(contact, it)
                         ModelRules.validate(it, models.firstOrNull { m -> m.modelId == memoryModel }, contact.memoryThinkingOption, 0.3f)
@@ -120,7 +123,7 @@ class ContactDetailViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContactDetailState())
 }
 
-/** 联系人详情：仿好友资料页，大头像、名称、当前模型；按钮「发消息」「编辑」。 */
+/** 联系人详情：仿好友资料页，大头像、名称、服务商、模型、思考强度、温度；「朋友资料」进入编辑，「记忆」，按钮「发消息」。 */
 @Composable
 fun ContactDetailScreen(
     onBack: () -> Unit,
@@ -208,6 +211,11 @@ fun ContactDetailContent(
                     style = WeTheme.typography.small,
                     color = colors.textTertiary,
                 )
+                Text(
+                    stringResource(R.string.contact_temperature_line, temperatureLabel(state.temperature ?: RequestTemperature.Blocked(contact.temperature))),
+                    style = WeTheme.typography.small,
+                    color = colors.textTertiary,
+                )
             }
         }
         if (state.chatIssue != null || state.memoryIssue != null) GroupSpacer()
@@ -220,6 +228,13 @@ fun ContactDetailContent(
             ConfigActionRow(stringResource(R.string.contact_memory_issue), stringResource(configurationIssueText(issue, memory = true)), titleColor = colors.dangerText, onClick = onOpenMemory)
         }
         GroupSpacer()
+        ConfigActionRow(
+            title = stringResource(R.string.contact_profile),
+            value = "",
+            detail = contactProfileHint(),
+            showDivider = true,
+            onClick = onEdit,
+        )
         WeListRow(
             title = stringResource(R.string.memory_title),
             value = if (state.memoryCount > 0) stringResource(R.string.memory_count, state.memoryCount) else null,
@@ -227,10 +242,17 @@ fun ContactDetailContent(
         )
         GroupSpacer()
         ActionRow(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.contact_send_message), onSendMessage)
-        WeDivider()
-        ActionRow(Icons.Outlined.Edit, stringResource(R.string.contact_edit), onEdit)
         }
     }
+}
+
+/** 温度一行的值：实际发送的数值；模型固定时标「固定」；不发送时如实说不发送 */
+@Composable
+internal fun temperatureLabel(value: RequestTemperature): String = when (value) {
+    is RequestTemperature.Sent -> temperatureText(value.value)
+    is RequestTemperature.Fixed -> stringResource(R.string.temperature_value_fixed, temperatureText(value.value))
+    RequestTemperature.NotSent -> stringResource(R.string.rule_no_send)
+    is RequestTemperature.Blocked -> temperatureText(value.saved)
 }
 
 @Composable
@@ -258,6 +280,7 @@ internal val previewState = ContactDetailState(
     modelName = "DeepSeek V4.1 Flash",
     providerName = "DeepSeek",
     memoryCount = 3,
+    temperature = isomeria.aichat.data.llm.RequestTemperature.Sent(1.3f),
 )
 
 @Preview(name = "联系人详情 浅色", showBackground = true)

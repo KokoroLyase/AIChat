@@ -51,7 +51,7 @@ class ContactDetailStatusUiTest {
                 )
             }
         }
-        compose.onNodeWithText(app.getString(R.string.contact_edit)).performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText(app.getString(R.string.contact_profile)).performScrollTo().assertIsDisplayed().performClick()
         assertEquals(1, edits)
     }
 

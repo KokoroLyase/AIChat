@@ -626,5 +626,15 @@ class ScreenshotTest {
     @Test fun chatBackgroundDark() = shot("53-chat-background", true) { ChatPageSample(background = stripes) }
     @Test fun chatBackgroundLargeLight() = large("53-chat-background-large", false) { ChatPageSample(background = stripes) }
     @Test fun chatBackgroundLargeDark() = large("53-chat-background-large", true) { ChatPageSample(background = stripes) }
+    // ---------- 0.4.2 联系人详情：温度参数、思考强度、朋友资料 ----------
+
+    private val detailFixed = previewState.copy(temperature = RequestTemperature.Fixed(1f), thinkingName = "高")
+    private val detailNotSent = previewState.copy(temperature = RequestTemperature.NotSent, chatIssue = null)
+    @Test fun contactDetailFixedLight() = shot("54-contact-detail-fixed", false) { ContactDetailContent(detailFixed, {}, {}, {}, {}) }
+    @Test fun contactDetailNotSentDark() = shot("54-contact-detail-not-sent", true) { ContactDetailContent(detailNotSent, {}, {}, {}, {}) }
+    @Test fun contactDetailLargeLight() = large("54-contact-detail-large", false) { ContactDetailContent(detailFixed, {}, {}, {}, {}) }
+    @Test fun contactDetailLargeDark() = large("54-contact-detail-large", true) { ContactDetailContent(detailNotSent.copy(temperature = RequestTemperature.Blocked(2.5f), chatIssue = ConfigurationIssue.TEMPERATURE), {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contactDetailNarrow() = large("54-contact-detail-narrow", false) { ContactDetailContent(detailFixed, {}, {}, {}, {}) }
+
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun chatBackgroundNarrow() = large("53-chat-background-narrow", true) { ChatPageSample(background = stripes) }
 }

@@ -3,6 +3,7 @@ package isomeria.aichat.data.llm
 import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderModel
 import isomeria.aichat.data.db.ThinkingLevel
+import kotlin.math.roundToInt
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -147,6 +148,39 @@ object ModelRules {
     /** 原因在模型规则本身，要到模型配置页修正；其余原因在联系人或记忆的选择上。 */
     fun fixedInModel(issue: ConfigurationIssue): Boolean = issue == ConfigurationIssue.INCOMPLETE || issue == ConfigurationIssue.ENCODING
 
+    /** 旧请求语义下模型是否支持思考：没有模型记录时只认 DeepSeek 格式。 */
+    fun legacySupportsThinking(config: ProviderConfig, model: ProviderModel?): Boolean =
+        model?.supportsThinking ?: (config.provider == isomeria.aichat.data.db.ProviderProtocol.DEEPSEEK)
+
+    /** 旧请求语义的思考档位：模型不支持思考时按关闭发送；认不出的档位返回 null（请求会被拒绝）。 */
+    fun legacyThinking(option: String, supportsThinking: Boolean): ThinkingLevel? {
+        val level = ThinkingLevel.entries.firstOrNull { it.name.equals(option, true) } ?: return null
+        return if (supportsThinking) level else ThinkingLevel.OFF
+    }
+
+    /**
+     * 聊天请求里实际发送的温度，和 [parameters] 及各请求构造器的取舍一致：
+     * 新规则按模型的温度规则（可调、固定、不发送，思考档位可以有单独规则）；
+     * 旧请求语义只在思考关闭时发送，按 0.1 取整、限制在 0～2。
+     * 配置有问题时请求发不出去，返回 [RequestTemperature.Blocked]，界面显示保存的值并由问题行说明。
+     */
+    fun requestTemperature(config: ProviderConfig, model: ProviderModel?, option: String, temperature: Float): RequestTemperature {
+        if (validate(config, model, option, temperature) != null) return RequestTemperature.Blocked(temperature)
+        if (model == null || (model.legacy && config.compatibility == "LEGACY")) {
+            val level = legacyThinking(option, legacySupportsThinking(config, model)) ?: return RequestTemperature.Blocked(temperature)
+            return if (level == ThinkingLevel.OFF) RequestTemperature.Sent(legacyTemperature(temperature)) else RequestTemperature.NotSent
+        }
+        val spec = effective(model).temperature!!.forOption(option)
+        return when (spec.mode) {
+            TemperatureMode.ADJUSTABLE -> RequestTemperature.Sent(temperature)
+            TemperatureMode.FIXED -> RequestTemperature.Fixed(spec.fixed)
+            TemperatureMode.UNSUPPORTED -> RequestTemperature.NotSent
+        }
+    }
+
+    /** 旧请求构造器发送的温度：限制在 0～2，按 0.1 取整 */
+    fun legacyTemperature(value: Float): Float = (value.coerceIn(0f, 2f) * 10).roundToInt() / 10f
+
     fun parameters(config: ProviderConfig, model: ProviderModel?, option: String, temperature: Float): RequestParameters? {
         validate(config, model, option, temperature)?.let { throw LlmException(LlmError.CONFIGURATION) }
         if (model == null || (model.legacy && config.compatibility == "LEGACY")) return null
@@ -162,6 +196,17 @@ object ModelRules {
 }
 enum class ConfigurationIssue { MODEL, INCOMPLETE, THINKING, TEMPERATURE, ENCODING }
 enum class ModelGap { NOT_CHAT, CHAT, IMAGE, THINKING, TEMPERATURE, ENCODING }
+/** 联系人详情显示的温度：请求里实际怎么发。 */
+sealed interface RequestTemperature {
+    data class Sent(val value: Float) : RequestTemperature
+    /** 模型要求固定温度，发送模型规定的值 */
+    data class Fixed(val value: Float) : RequestTemperature
+    /** 模型或当前思考档位不发送温度 */
+    data object NotSent : RequestTemperature
+    /** 配置有问题，请求发不出去；显示保存的值 */
+    data class Blocked(val saved: Float) : RequestTemperature
+}
+
 data class RequestParameters(val encoding: EncodingRules, val hasThinking: Boolean, val option: String, val hasEfforts: Boolean, val temperature: Float?)
 
 object ConfiguredRequestBuilder {

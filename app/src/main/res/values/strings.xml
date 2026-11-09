@@ -122,8 +122,13 @@
     <!-- 联系人详情 -->
     <string name="contact_model_line">模型：%1$s</string>
     <string name="contact_send_message">发消息</string>
-    <string name="contact_edit">编辑</string>
-    <string name="contact_thinking_line">思考：%1$s</string>
+    <string name="contact_thinking_line">思考强度：%1$s</string>
+    <string name="contact_temperature_line">温度参数：%1$s</string>
+    <string name="contact_profile">朋友资料</string>
+    <string name="contact_profile_hint">编辑朋友的%1$s等</string>
+    <string name="contact_profile_item_context">上下文上限</string>
+    <string name="contact_profile_item_split">是否分条显示</string>
+    <string name="list_separator">、</string>
     <string name="contact_provider_line">服务商：%1$s</string>
 
     <!-- 联系人编辑 -->

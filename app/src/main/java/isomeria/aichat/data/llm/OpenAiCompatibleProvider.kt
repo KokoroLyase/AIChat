@@ -187,7 +187,7 @@ internal fun JsonObjectBuilder.putCommonFields(request: ChatRequest, streamOptio
 }
 
 internal fun JsonObjectBuilder.putTemperature(request: ChatRequest) {
-    put("temperature", (request.temperature.coerceIn(0f, 2f) * 10).roundToInt() / 10.0)
+    put("temperature", (request.temperature.coerceIn(0f, 2f) * 10).roundToInt() / 10.0) // 与 ModelRules.legacyTemperature 一致
 }
 
 private fun messageJson(message: ChatMessage): JsonObject = buildJsonObject {
