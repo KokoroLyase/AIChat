@@ -177,6 +177,10 @@ interface MessageDao {
     @Query("SELECT MIN(createdAt) FROM message WHERE contactId = :contactId AND status = 'PENDING'")
     suspend fun nextPendingAt(contactId: Long): Long?
 
+    /** 最后一条待投递消息的计划时间；比现在晚就说明还要等 */
+    @Query("SELECT MAX(createdAt) FROM message WHERE contactId = :contactId AND status = 'PENDING'")
+    suspend fun lastPendingAt(contactId: Long): Long?
+
     /** 到了计划时间、该送达的待投递回复，按时间正序 */
     @Query("SELECT * FROM message WHERE contactId = :contactId AND status = 'PENDING' AND createdAt <= :now ORDER BY createdAt, id")
     suspend fun duePending(contactId: Long, now: Long): List<Message>

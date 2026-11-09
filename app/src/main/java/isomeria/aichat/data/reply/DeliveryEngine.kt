@@ -70,6 +70,9 @@ class DeliveryEngine @Inject constructor(
         return true
     }
 
+    /** 还有没到点、要等的待投递消息 */
+    suspend fun hasWaiting(contactId: Long): Boolean = messages.lastPendingAt(contactId)?.let { it > clock.now() } ?: false
+
     /** 投递到这个联系人没有 PENDING 为止；送达过就排一次自动记忆检查 */
     suspend fun run(contactId: Long) {
         var delivered = false
@@ -110,7 +113,7 @@ class DeliveryEngine @Inject constructor(
  * 开始时和回复任务一样申请转为前台任务：条与条之间要等几秒，只靠普通任务时，部分系统（真机 HyperOS）
  * 会在 App 退到后台约 2 秒后冻结进程，后几条要等系统解冻（实测约 1 分钟）才送达。投递通常在回复任务
  * 还是前台任务时排上，这时允许；系统不允许时照常以普通任务执行。Android 12 起前台通知延迟约 10 秒显示，
- * 所以只有投递较久时才会看到「正在接收消息」。
+ * 所以只有投递较久时才会看到「正在接收消息」。全部已经到点（例如重新打开 App 时）不用等，就不申请。
  */
 @HiltWorker
 class DeliveryWorker @AssistedInject constructor(
@@ -122,12 +125,14 @@ class DeliveryWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val contactId = inputData.getLong(KEY_CONTACT_ID, -1L)
         if (contactId < 0) return Result.failure()
-        try {
-            setForeground(getForegroundInfo())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            // 系统不允许从后台启动前台服务，继续以普通任务执行
+        if (engine.hasWaiting(contactId)) {
+            try {
+                setForeground(getForegroundInfo())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 系统不允许从后台启动前台服务，继续以普通任务执行
+            }
         }
         engine.run(contactId)
         return Result.success()

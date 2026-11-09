@@ -113,6 +113,17 @@ class DeliveryWorkerTest {
         assertEquals(listOf("好的" to MessageStatus.SUCCESS, "马上来" to MessageStatus.SUCCESS), statuses())
     }
 
+    @Test
+    fun everythingAlreadyDue_noForeground_justDelivers() = runBlocking {
+        // 例如重新打开 App 时两条都已经到点：不用等，不申请前台（不会出现「正在接收消息」）
+        h.now = start + 10_000
+        val result = worker(allowForeground = true).startWork().get()
+
+        assertEquals(ListenableWorker.Result.success(), result)
+        assertEquals(emptyList<Int>(), foregroundRequests)
+        assertEquals(listOf("好的" to MessageStatus.SUCCESS, "马上来" to MessageStatus.SUCCESS), statuses())
+    }
+
     private companion object {
         const val RECEIVING = 42
     }
