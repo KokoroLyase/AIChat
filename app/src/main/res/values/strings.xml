@@ -88,7 +88,10 @@
 
     <!-- 聊天信息 -->
     <string name="chat_info_search">查找聊天记录</string>
+    <string name="chat_info_mute">消息免打扰</string>
     <string name="chat_info_pin">置顶聊天</string>
+    <string name="chat_info_background">设置当前聊天背景</string>
+    <string name="chat_info_background_reset">恢复默认背景</string>
     <string name="chat_info_clear">清空聊天记录</string>
     <string name="chat_info_clear_confirm">确定清空和「%1$s」的聊天记录吗？记忆会保留，要清除可以到联系人详情的「记忆」里操作。</string>
 

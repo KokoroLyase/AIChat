@@ -63,7 +63,49 @@ import kotlin.math.roundToInt
 @Composable
 fun TimeBarRow(text: String) {
     Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
-        Text(text, style = WeTheme.typography.small, color = WeTheme.colors.chatTimeText)
+        // 设了聊天背景时时间垫一层半透明底，图片花哨也看得清
+        val onImage = LocalChatHasBackground.current
+        Text(
+            text,
+            style = WeTheme.typography.small,
+            color = WeTheme.colors.chatTimeText,
+            modifier = if (onImage) {
+                Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(WeTheme.colors.pageBackground.copy(alpha = 0.85f))
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
+            } else {
+                Modifier
+            },
+        )
+    }
+}
+
+/** 当前聊天有没有设背景；时间条等直接画在背景上的文字据此加底 */
+val LocalChatHasBackground = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/**
+ * 当前聊天背景：铺满消息区、居中裁剪。深色模式压暗一些，不刺眼，也不抢气泡。
+ * 图片解码失败时什么也不画，露出默认背景。
+ */
+@Composable
+fun ChatBackground(file: java.io.File, modifier: Modifier = Modifier) {
+    ChatBackgroundFrame(modifier) {
+        AsyncImage(
+            model = file,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize(),
+        )
+    }
+}
+
+/** 背景图外层：图片铺满，深色模式加一层压暗。截图测试直接传位图进来 */
+@Composable
+internal fun ChatBackgroundFrame(modifier: Modifier = Modifier, image: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
+    Box(modifier) {
+        image()
+        if (WeTheme.colors.isDark) Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.35f)))
     }
 }
 

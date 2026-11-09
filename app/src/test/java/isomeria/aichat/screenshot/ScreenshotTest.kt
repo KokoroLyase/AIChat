@@ -65,6 +65,7 @@ import isomeria.aichat.ui.theme.WeTheme
 import isomeria.aichat.update.ReleaseInfo
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 import org.junit.Rule
 import org.junit.Test
@@ -208,7 +209,7 @@ class ScreenshotTest {
     @Test fun exportPlainCompletedLight() = backupDialogShot("43-export-completed-plain", false) { ExportSample(ExportUiState(result = ExportSummary(2, 1000, 2, false, encrypted = false))) }
     @Test fun exportLargeLight() = large("43-export-large", false) { ExportSample(ExportUiState(hasApiKey = true, includeKey = true, password = "123", confirm = "", errorRes = isomeria.aichat.R.string.export_password_mismatch)) }
     @Test fun exportLargeDark() = large("43-export-large", true) { ExportSample(ExportUiState()) }
-    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789))
+    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789, backgrounds = 860000))
     @Test fun storageLight() = shot("42-storage", false) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageDark() = shot("42-storage", true) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageLoading() = shot("42-storage-loading", false) { StorageContent(StorageState(), {}, {}, {}, {}, {}, {}) }
@@ -291,9 +292,9 @@ class ScreenshotTest {
         captureScreenRoboImage("screenshots/6-dialog-light.png")
     }
 
-    @Test fun chatInfoLight() = shot("7-chat-info", false) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}) }
+    @Test fun chatInfoLight() = shot("7-chat-info", false) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}, {}, {}) }
 
-    @Test fun chatInfoDark() = shot("7-chat-info", true) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}) }
+    @Test fun chatInfoDark() = shot("7-chat-info", true) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}, {}, {}) }
 
     private val emojiGroups = File("src/main/assets/emoji.txt").bufferedReader().useLines { EmojiCatalog.parse(it) { true } }
 
@@ -584,4 +585,46 @@ class ScreenshotTest {
         compose.onRoot().captureRoboImage("screenshots/49-memory-empty-narrow-dark.png")
     }
     @Test fun emptyMemoryOff() = shot("49-memory-empty-off", false) { MemoryContent(emptyMemory.copy(autoMemory = false), {}, {}, {}, {}) }
+
+    // ---------- 0.4.2 聊天信息：免打扰、聊天背景 ----------
+
+    private val chatInfoSet = previewChatInfo.copy(muted = true, pinned = false, hasBackground = true)
+    @Test fun chatInfoMutedLight() = shot("52-chat-info-muted", false) { ChatInfoContent(chatInfoSet, {}, {}, {}, {}, {}, {}, {}) }
+    @Test fun chatInfoMutedDark() = shot("52-chat-info-muted", true) { ChatInfoContent(chatInfoSet, {}, {}, {}, {}, {}, {}, {}) }
+    @Test fun chatInfoLargeLight() = large("52-chat-info-large", false) { ChatInfoContent(chatInfoSet, {}, {}, {}, {}, {}, {}, {}) }
+    @Test fun chatInfoLargeDark() = large("52-chat-info-large", true) { ChatInfoContent(chatInfoSet, {}, {}, {}, {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun chatInfoNarrow() = large("52-chat-info-narrow", false) { ChatInfoContent(chatInfoSet, {}, {}, {}, {}, {}, {}, {}) }
+    @Test fun chatInfoBackgroundSheet() {
+        compose.setContent {
+            AIChatTheme(darkTheme = false) {
+                ChatInfoContent(chatInfoSet, {}, {}, {}, {}, {}, {}, {})
+                isomeria.aichat.ui.components.WeActionSheet(
+                    options = listOf(
+                        isomeria.aichat.ui.components.SheetOption("从相册选择") {},
+                        isomeria.aichat.ui.components.SheetOption("恢复默认背景") {},
+                    ),
+                    onDismiss = {},
+                )
+            }
+        }
+        captureScreenRoboImage("screenshots/52-chat-info-background-sheet-light.png")
+    }
+
+    /** 最考验可读性的背景：深浅交替的斜条纹，时间文字和气泡都会压在深色和浅色上 */
+    private val stripes: androidx.compose.ui.graphics.ImageBitmap by lazy {
+        val bitmap = android.graphics.Bitmap.createBitmap(360, 640, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = android.graphics.Paint().apply { strokeWidth = 40f }
+        canvas.drawColor(0xFF2E4A62.toInt())
+        for (i in -20..40) {
+            paint.color = if (i % 2 == 0) 0xFFF2D7A0.toInt() else 0xFF1B2A38.toInt()
+            canvas.drawLine(i * 40f, 0f, i * 40f - 640f, 640f, paint)
+        }
+        bitmap.asImageBitmap()
+    }
+    @Test fun chatBackgroundLight() = shot("53-chat-background", false) { ChatPageSample(background = stripes) }
+    @Test fun chatBackgroundDark() = shot("53-chat-background", true) { ChatPageSample(background = stripes) }
+    @Test fun chatBackgroundLargeLight() = large("53-chat-background-large", false) { ChatPageSample(background = stripes) }
+    @Test fun chatBackgroundLargeDark() = large("53-chat-background-large", true) { ChatPageSample(background = stripes) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun chatBackgroundNarrow() = large("53-chat-background-narrow", true) { ChatPageSample(background = stripes) }
 }

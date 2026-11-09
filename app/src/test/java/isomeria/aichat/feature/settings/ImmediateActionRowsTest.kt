@@ -52,7 +52,7 @@ class ImmediateActionRowsTest {
     @Test fun clearChatHasNoArrowAndStillInvokesConfirmation() {
         var clears = 0
         compose.setContent { AIChatTheme(darkTheme = false) {
-            ChatInfoContent(previewChatInfo, {}, {}, {}, {}, { clears++ })
+            ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}, {}, { clears++ })
         } }
         noArrow("清空聊天记录")
         compose.onNodeWithText("清空聊天记录").performClick()

@@ -68,7 +68,12 @@ private val noActions = MessageActions({}, {}, {}, {}, {}, {}, {})
 
 /** 聊天页的静态外观：顶栏、消息、输入栏。Compose Preview 和截图测试共用。 */
 @Composable
-internal fun ChatPageSample(typing: Boolean = false, input: String = "") {
+internal fun ChatPageSample(
+    typing: Boolean = false,
+    input: String = "",
+    /** 聊天背景：截图测试传入固定位图 */
+    background: androidx.compose.ui.graphics.ImageBitmap? = null,
+) {
     Column(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) {
         WeTopBar(
             title = if (typing) stringResource(R.string.chat_typing) else sampleContact.name,
@@ -77,15 +82,29 @@ internal fun ChatPageSample(typing: Boolean = false, input: String = "") {
         ) {
             TopBarIcon(WeIcons.More, "", {})
         }
-        ChatMessageList(
-            rows = sampleRows,
-            contact = sampleContact,
-            myName = "我",
-            myAvatarPath = null,
-            waitingReply = typing,
-            actions = noActions,
-            modifier = Modifier.weight(1f),
-        )
+        androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+            if (background != null) {
+                ChatBackgroundFrame(Modifier.matchParentSize()) {
+                    androidx.compose.foundation.Image(
+                        background,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
+            }
+            androidx.compose.runtime.CompositionLocalProvider(LocalChatHasBackground provides (background != null)) {
+                ChatMessageList(
+                    rows = sampleRows,
+                    contact = sampleContact,
+                    myName = "我",
+                    myAvatarPath = null,
+                    waitingReply = typing,
+                    actions = noActions,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
         ChatInputBar(
             value = TextFieldValue(input),
             onValueChange = {},

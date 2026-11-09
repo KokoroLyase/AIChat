@@ -48,6 +48,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
@@ -188,6 +190,13 @@ class ChatViewModel @Inject constructor(
             latestVisibleId = current.visibleLatest?.id ?: 0,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
+
+    /** 当前聊天背景；没设置或文件已丢失时为 null，显示默认背景 */
+    val background: StateFlow<java.io.File?> = chats.observeConversation(contactId)
+        .map { isomeria.aichat.data.repo.chatBackgroundFile(it?.backgroundPath) }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** 进入时载入草稿 */
     suspend fun loadDraft(): String = chats.observeConversation(contactId).first()?.draft.orEmpty()

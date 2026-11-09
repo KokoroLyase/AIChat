@@ -126,6 +126,7 @@ fun ChatScreen(
     val pageEntry by viewModel.entry.collectAsStateWithLifecycle()
     val pagedRows = viewModel.rows.collectAsLazyPagingItems()
     val newMessageCount by viewModel.newMessageCount.collectAsStateWithLifecycle()
+    val background by viewModel.background.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -379,6 +380,8 @@ fun ChatScreen(
             onAvatarClick = { contact?.let { onOpenContact(it.id) } },
         )
         Box(Modifier.weight(1f)) {
+        background?.let { ChatBackground(it, Modifier.matchParentSize()) }
+        androidx.compose.runtime.CompositionLocalProvider(LocalChatHasBackground provides (background != null)) {
         ChatMessageList(
             rows = emptyList(),
             pagingRows = pagedRows,
@@ -393,6 +396,7 @@ fun ChatScreen(
             highlightAlpha = { highlight.value },
             modifier = Modifier.fillMaxSize(),
         )
+        }
         // 只有真的没内容时才显示：发消息回到底部也会刷新，那时不能闪一下“正在加载”
         if (pagedRows.loadState.refresh is LoadState.Loading && pagedRows.itemCount == 0) {
             Box(Modifier.align(Alignment.TopCenter)) { FootnoteText(stringResource(R.string.local_loading)) }

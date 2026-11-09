@@ -1,6 +1,10 @@
 package isomeria.aichat.feature.chatinfo
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -44,6 +48,8 @@ import isomeria.aichat.di.ApplicationScope
 import isomeria.aichat.navigation.ChatInfoRoute
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.GroupSpacer
+import isomeria.aichat.ui.components.SheetOption
+import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeSwitch
@@ -51,10 +57,13 @@ import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.theme.AIChatTheme
 import isomeria.aichat.ui.theme.AvatarPalette
 import isomeria.aichat.ui.theme.WeTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -63,6 +72,9 @@ data class ChatInfoState(
     val loaded: Boolean = false,
     val contact: Contact? = null,
     val pinned: Boolean = false,
+    val muted: Boolean = false,
+    /** 已设置聊天背景（不管文件还在不在：在就能更换，丢了也能恢复默认） */
+    val hasBackground: Boolean = false,
 )
 
 @HiltViewModel
@@ -78,8 +90,40 @@ class ChatInfoViewModel @Inject constructor(
         contacts.observeContact(contactId),
         chats.observeConversation(contactId),
     ) { contact, conversation ->
-        ChatInfoState(loaded = true, contact = contact, pinned = conversation?.pinned == true)
+        ChatInfoState(
+            loaded = true,
+            contact = contact,
+            pinned = conversation?.pinned == true,
+            muted = conversation?.muted == true,
+            hasBackground = conversation?.backgroundPath != null,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatInfoState())
+
+    private val failures = Channel<Unit>(Channel.CONFLATED)
+
+    /** 设置背景失败（图片读不出来等），页面弹提示 */
+    val backgroundFailed = failures.receiveAsFlow()
+
+    fun setMuted(muted: Boolean) {
+        viewModelScope.launch { chats.setMuted(contactId, muted) }
+    }
+
+    /** 离开页面也要把选好的图存完，放在应用级作用域 */
+    fun setBackground(uri: Uri) {
+        appScope.launch {
+            try {
+                chats.setBackground(contactId, uri)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failures.trySend(Unit)
+            }
+        }
+    }
+
+    fun clearBackground() {
+        appScope.launch { chats.clearBackground(contactId) }
+    }
 
     fun setPinned(pinned: Boolean) {
         viewModelScope.launch { chats.setPinned(contactId, pinned) }
@@ -101,14 +145,36 @@ fun ChatInfoScreen(
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
+    var backgroundSheet by remember { mutableStateOf(false) }
+    val pickBackground = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) viewModel.setBackground(uri)
+    }
+    fun launchPicker() = pickBackground.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    androidx.compose.runtime.LaunchedEffect(viewModel) {
+        viewModel.backgroundFailed.collect {
+            Toast.makeText(context, R.string.chat_image_import_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
     ChatInfoContent(
         state = state,
         onBack = onBack,
         onOpenContact = { onOpenContact(viewModel.contactId) },
         onSearchHistory = { onSearchHistory(viewModel.contactId) },
+        onMutedChange = viewModel::setMuted,
         onPinnedChange = viewModel::setPinned,
+        // 还没有背景时直接打开相册；已有背景时可以更换或恢复默认
+        onBackground = { if (state.hasBackground) backgroundSheet = true else launchPicker() },
         onClear = { confirmClear = true },
     )
+    if (backgroundSheet) {
+        WeActionSheet(
+            options = listOf(
+                SheetOption(stringResource(R.string.contact_avatar_pick)) { launchPicker() },
+                SheetOption(stringResource(R.string.chat_info_background_reset)) { viewModel.clearBackground() },
+            ),
+            onDismiss = { backgroundSheet = false },
+        )
+    }
     if (confirmClear) {
         WeDialog(
             message = stringResource(R.string.chat_info_clear_confirm, state.contact?.name.orEmpty()),
@@ -130,7 +196,9 @@ fun ChatInfoContent(
     onBack: () -> Unit,
     onOpenContact: () -> Unit,
     onSearchHistory: () -> Unit,
+    onMutedChange: (Boolean) -> Unit,
     onPinnedChange: (Boolean) -> Unit,
+    onBackground: () -> Unit,
     onClear: () -> Unit,
 ) {
     val colors = WeTheme.colors
@@ -172,10 +240,18 @@ fun ChatInfoContent(
             WeListRow(title = stringResource(R.string.chat_info_search), onClick = onSearchHistory)
             GroupSpacer()
             WeListRow(
+                title = stringResource(R.string.chat_info_mute),
+                showArrow = false,
+                showDivider = true,
+                trailing = { WeSwitch(state.muted, onMutedChange) },
+            )
+            WeListRow(
                 title = stringResource(R.string.chat_info_pin),
                 showArrow = false,
                 trailing = { WeSwitch(state.pinned, onPinnedChange) },
             )
+            GroupSpacer()
+            WeListRow(title = stringResource(R.string.chat_info_background), onClick = onBackground, titleMaxLines = 2)
             GroupSpacer()
             WeListRow(title = stringResource(R.string.chat_info_clear), onClick = onClear, showArrow = false)
             Spacer(Modifier.height(24.dp))
@@ -200,11 +276,11 @@ internal val previewChatInfo = ChatInfoState(
 @Preview(name = "聊天信息 浅色", showBackground = true, widthDp = 400, heightDp = 860)
 @Composable
 private fun ChatInfoLightPreview() {
-    AIChatTheme(darkTheme = false) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}) }
+    AIChatTheme(darkTheme = false) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}, {}, {}) }
 }
 
 @Preview(name = "聊天信息 深色", showBackground = true, widthDp = 400, heightDp = 860)
 @Composable
 private fun ChatInfoDarkPreview() {
-    AIChatTheme(darkTheme = true) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}) }
+    AIChatTheme(darkTheme = true) { ChatInfoContent(previewChatInfo, {}, {}, {}, {}, {}, {}, {}) }
 }
