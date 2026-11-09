@@ -263,7 +263,7 @@
 
     <!-- 导出数据 -->
     <string name="export_title">导出数据</string>
-    <string name="export_intro">导出联系人、聊天记录、记忆、用量统计、服务商、头像、聊天图片和设置。不设密码时是普通 zip 文件，拿到文件的人都能打开；设置密码后整个文件都会加密。卸载 App 后，只能靠导出文件找回数据。</string>
+    <string name="export_intro">导出联系人、聊天记录、记忆、用量统计、服务商、头像、聊天图片、聊天背景和设置。不设密码时是普通 zip 文件，拿到文件的人都能打开；设置密码后整个文件都会加密。卸载 App 后，只能靠导出文件找回数据。</string>
     <string name="export_include_key">包含 API Key</string>
     <string name="export_no_key">还没有保存 API Key</string>
     <string name="export_key_hint">包含 API Key 时必须设置密码。忘记密码后，这个文件里的所有数据都无法恢复。</string>
