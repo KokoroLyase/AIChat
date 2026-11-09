@@ -75,7 +75,7 @@
 | --- | --- |
 | 网络（`INTERNET`） | 连接用户配置的服务商和 GitHub |
 | 通知（`POST_NOTIFICATIONS`） | 回复到达时提醒 |
-| 前台服务（`FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC`） | 等待回复时让请求在后台继续 |
+| 前台服务（`FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC`） | 等待回复时让请求在后台继续；0.5.0 起，一次回复的几条还要等一会儿才送达时，也让投递在后台继续 |
 | 安装应用（`REQUEST_INSTALL_PACKAGES`） | 应用内更新时拉起系统安装界面 |
 | `ACCESS_NETWORK_STATE`、`WAKE_LOCK`、`RECEIVE_BOOT_COMPLETED` | 由 WorkManager 依赖库加入，用于调度后台任务 |
 
