@@ -41,6 +41,55 @@ class ReplyRhythmTest {
         assertEquals(listOf("。"), ReplyRhythm.split("。", defaults))
     }
 
+    // ---------- 断句兜底：模型没按要求换行 ----------
+
+    @Test
+    fun noNewlines_longParagraph_splitsAtSentenceEnds_andMergesShortSentencesToTarget() {
+        // 每条 14 字；整段 36 字没有换行，超过两倍。凑满 14 字就另起一条
+        val text = "今天下班有点晚。路上还堵车了！你吃饭了吗？我刚到家，准备随便煮点面条吃。"
+        assertEquals(listOf("今天下班有点晚。路上还堵车了！", "你吃饭了吗？我刚到家，准备随便煮点面条吃"), ReplyRhythm.split(text, defaults))
+    }
+
+    @Test
+    fun underTwiceTheTarget_orNoSentenceEnd_staysOneMessage() {
+        // 28 字（正好两倍）不拆
+        val exact = "一二三四五六七。" + "一二三四五六七八九十一二三四五六七八九十"
+        assertEquals(listOf(exact), ReplyRhythm.split(exact, defaults))
+        // 没有句末标点，不在逗号处拆，也不截断
+        val commas = "我刚到家，准备随便煮点面条吃，你要不要也一起来吃一点，还有很多"
+        assertEquals(listOf(commas), ReplyRhythm.split(commas, defaults))
+    }
+
+    @Test
+    fun keepsEllipsisQuotesAndBracketsWithTheirSentence() {
+        val text = "他说：「明天见。」我还以为他忘了……结果真的来了（还带了蛋糕！）我特别开心"
+        assertEquals(listOf("他说：「明天见。」我还以为他忘了……", "结果真的来了（还带了蛋糕！）", "我特别开心"), ReplyRhythm.split(text, defaults))
+    }
+
+    @Test
+    fun englishFullStopNeedsSpace_soUrlsVersionsAndDecimalsStayWhole() {
+        val text = "Try version 0.5.0 from https://example.com/a.b today. It costs 3.5 dollars. Ok?"
+        assertEquals(listOf("Try version 0.5.0 from https://example.com/a.b today.", "It costs 3.5 dollars.", "Ok?"), ReplyRhythm.split(text, defaults))
+        // 短的英文句子合并时补回空格
+        assertEquals(listOf("Hi there. How are you?", "I just got home."), ReplyRhythm.split("Hi there. How are you? I just got home.", defaults))
+    }
+
+    @Test
+    fun codeBlock_neverSentenceSplit() {
+        val text = "看这个：```val a = 1。val b = 2。val c = 3。val d = 4。```就这样。"
+        assertEquals(listOf("看这个：```val a = 1。val b = 2。val c = 3。val d = 4。```就这样"), ReplyRhythm.split(text, defaults))
+    }
+
+    @Test
+    fun onlyTheLongLineIsSplit_newlinesStillWin_andMaxCountStillApplies() {
+        val text = "好呀\n今天下班有点晚。路上还堵车了！你吃饭了吗？我刚到家，准备随便煮点面条吃。"
+        assertEquals(listOf("好呀", "今天下班有点晚。路上还堵车了！", "你吃饭了吗？我刚到家，准备随便煮点面条吃"), ReplyRhythm.split(text, defaults))
+        assertEquals(
+            listOf("好呀", "今天下班有点晚。路上还堵车了！\n你吃饭了吗？我刚到家，准备随便煮点面条吃"),
+            ReplyRhythm.split(text, defaults.copy(maxCount = 2)),
+        )
+    }
+
     @Test
     fun mergedTailAlsoLosesTrailingPunctuationPerLine() {
         assertEquals(listOf("一", "二\n三"), ReplyRhythm.split("一。\n二。\n三。", defaults.copy(maxCount = 2)))
