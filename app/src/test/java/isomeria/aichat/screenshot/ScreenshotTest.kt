@@ -639,20 +639,20 @@ class ScreenshotTest {
     // ---------- 0.4.2「我」页：四个入口，各进一栏设置页 ----------
 
     private val settingsSample = SettingsUiState(hasKey = true, canNotify = false, newerVersion = "0.4.3")
-    @Composable private fun section(section: SettingsSection) = SettingsSectionContent(section, settingsSample, {}, SettingsNavigation(), SettingsActions())
+    @Composable private fun SettingsPage(section: SettingsSection) = SettingsSectionContent(section, settingsSample, {}, SettingsNavigation(), SettingsActions())
     @Test fun meLargeLight() = large("55-me-large", false) { Me() }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun meNarrow() = large("55-me-narrow", true) { Me() }
-    @Test fun settingsModelsLight() = shot("56-settings-models", false) { section(SettingsSection.MODELS) }
-    @Test fun settingsModelsDark() = shot("56-settings-models", true) { section(SettingsSection.MODELS) }
-    @Test fun settingsGeneralLight() = shot("56-settings-general", false) { section(SettingsSection.GENERAL) }
-    @Test fun settingsGeneralDark() = shot("56-settings-general", true) { section(SettingsSection.GENERAL) }
-    @Test fun settingsDataLight() = shot("56-settings-data", false) { section(SettingsSection.DATA) }
-    @Test fun settingsDataDark() = shot("56-settings-data", true) { section(SettingsSection.DATA) }
-    @Test fun settingsAboutLight() = shot("56-settings-about", false) { section(SettingsSection.ABOUT) }
-    @Test fun settingsAboutDark() = shot("56-settings-about", true) { section(SettingsSection.ABOUT) }
-    @Test fun settingsGeneralLarge() = large("56-settings-general-large", false) { section(SettingsSection.GENERAL) }
-    @Test fun settingsAboutLarge() = large("56-settings-about-large", true) { section(SettingsSection.ABOUT) }
-    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun settingsDataNarrow() = large("56-settings-data-narrow", false) { section(SettingsSection.DATA) }
+    @Test fun settingsModelsLight() = shot("56-settings-models", false) { SettingsPage(SettingsSection.MODELS) }
+    @Test fun settingsModelsDark() = shot("56-settings-models", true) { SettingsPage(SettingsSection.MODELS) }
+    @Test fun settingsGeneralLight() = shot("56-settings-general", false) { SettingsPage(SettingsSection.GENERAL) }
+    @Test fun settingsGeneralDark() = shot("56-settings-general", true) { SettingsPage(SettingsSection.GENERAL) }
+    @Test fun settingsDataLight() = shot("56-settings-data", false) { SettingsPage(SettingsSection.DATA) }
+    @Test fun settingsDataDark() = shot("56-settings-data", true) { SettingsPage(SettingsSection.DATA) }
+    @Test fun settingsAboutLight() = shot("56-settings-about", false) { SettingsPage(SettingsSection.ABOUT) }
+    @Test fun settingsAboutDark() = shot("56-settings-about", true) { SettingsPage(SettingsSection.ABOUT) }
+    @Test fun settingsGeneralLarge() = large("56-settings-general-large", false) { SettingsPage(SettingsSection.GENERAL) }
+    @Test fun settingsAboutLarge() = large("56-settings-about-large", true) { SettingsPage(SettingsSection.ABOUT) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun settingsDataNarrow() = large("56-settings-data-narrow", false) { SettingsPage(SettingsSection.DATA) }
 
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun chatBackgroundNarrow() = large("53-chat-background-narrow", true) { ChatPageSample(background = stripes) }
 }
