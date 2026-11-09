@@ -261,9 +261,17 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         activeChat = activeChat,
         clock = Clock { now },
         promptGlobals = GlobalMemoryRepository(db, { preferences }, Clock { now }),
+        preferences = { preferences },
+        random = object : kotlin.random.Random() {
+            override fun nextBits(bitCount: Int) = 0
+        },
+        sleeper = isomeria.aichat.core.Sleeper { sleeps += it; now += it },
     )
 
     var preferences = isomeria.aichat.core.ReplyPreferences()
+
+    /** 「稍等几秒」请求的等待；假装等完，时钟往前走 */
+    val sleeps = mutableListOf<Long>()
 
     /** 跑一次回复，返回发出的请求；然后把这个联系人的消息还原，下一次请求看到的历史和这次一样 */
     suspend fun runAndRewind(contactId: Long): ChatRequest {

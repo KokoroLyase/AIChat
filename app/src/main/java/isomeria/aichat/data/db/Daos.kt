@@ -254,6 +254,10 @@ interface MessageDao {
     @Query("SELECT id FROM message WHERE contactId = :contactId AND role = 'USER' AND status = 'SENDING'")
     suspend fun sendingIds(contactId: Long): List<Long>
 
+    /** 等待回复的消息里最新一条的时间：回复偏好的「稍等几秒」从这里算 */
+    @Query("SELECT MAX(createdAt) FROM message WHERE contactId = :contactId AND role = 'USER' AND status = 'SENDING'")
+    suspend fun latestSendingAt(contactId: Long): Long?
+
     @Query("SELECT DISTINCT contactId FROM message WHERE status = 'SENDING'")
     suspend fun contactsWithSending(): List<Long>
 

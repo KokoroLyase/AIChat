@@ -23,6 +23,10 @@ import isomeria.aichat.data.llm.ChatEvent
 import isomeria.aichat.data.llm.ChatRequest
 import isomeria.aichat.data.llm.LlmException
 import isomeria.aichat.core.Clock
+import isomeria.aichat.core.ReplyPreferencesSource
+import isomeria.aichat.core.ReplyRhythm
+import isomeria.aichat.core.Sleeper
+import kotlin.random.Random
 import isomeria.aichat.data.memory.MemoryQueue
 import isomeria.aichat.data.memory.NicknameSource
 import isomeria.aichat.data.repo.FailReason
@@ -37,8 +41,10 @@ import javax.inject.Singleton
 /**
  * 一次「等待回复」的完整过程，在 [ReplyWorker] 里执行。
  *
+ * - 联系人开了「使用回复偏好」时，先等用户最后一条消息之后的设定秒数（期间又发消息，这个任务会被新任务替换）
  * - 接收过程中不显示气泡，正文和思考内容只在内存里分开累积
- * - 完成后一次写库：分条后的各条回复时间依次相隔约 1 秒，聊天页按时间逐条显示出来
+ * - 完成后一次写库。回复偏好开启时按换行拆条、去句尾标点，各条按估算的打字间隔排开，第一条扣掉生成用掉的时间；
+ *   关闭时保留旧的分条显示：开了分条的按空行拆、相隔约 1 秒，没开的一条
  * - 失败（含 401/402/429/5xx/断网）时把这次等待回复的消息标记为失败，可手动重试
  * - 被取消（用户取消，或又发了新消息替换了任务）时什么也不写，由发起取消的一方处理状态
  */
@@ -59,8 +65,26 @@ class ReplyEngine @Inject constructor(
     private val activeChat: ActiveChatTracker,
     private val clock: Clock,
     private val promptGlobals: PromptGlobalsSource,
+    private val preferences: ReplyPreferencesSource,
+    private val random: Random,
+    private val sleeper: Sleeper,
 ) {
-    suspend fun run(contactId: Long) = isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
+    suspend fun run(contactId: Long) {
+        waitForQuiet(contactId)
+        isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
+    }
+
+    /** 回复偏好的「稍等几秒」：从等待回复的最新一条消息算起；可以取消，不占用存储操作的闸门 */
+    private suspend fun waitForQuiet(contactId: Long) {
+        val contact = contactDao.get(contactId) ?: return
+        if (!contact.useReplyPreferences) return
+        while (true) {
+            val last = messageDao.latestSendingAt(contactId) ?: return
+            val wait = ReplyRhythm.waitBeforeReply(last, clock.now(), preferences.replyPreferences())
+            if (wait <= 0) return
+            sleeper.sleep(wait)
+        }
+    }
 
     private suspend fun runProtected(contactId: Long) {
         // 只处理此刻在等待回复的消息；之后新发的消息会由替换上来的新任务处理
@@ -136,8 +160,15 @@ class ReplyEngine @Inject constructor(
             fail(waiting, FailReason.EMPTY_REPLY)
             return
         }
-        val parts = if (contact.splitReplies) ReplySplitter.split(text).ifEmpty { listOf(text) } else listOf(text)
         val finishedAt = clock.now()
+        val replyPreferences = if (contact.useReplyPreferences) preferences.replyPreferences() else null
+        val parts = when {
+            replyPreferences != null -> ReplyRhythm.split(text, replyPreferences)
+            contact.splitReplies -> ReplySplitter.split(text).ifEmpty { listOf(text) }
+            else -> listOf(text)
+        }
+        val times = replyPreferences?.let { ReplyRhythm.schedule(parts, it, startedAt, finishedAt, random) }
+            ?: parts.indices.map { finishedAt + it * ReplySplitter.PART_INTERVAL_MILLIS }
         val thinkingMillis = if (reasoning.isNotEmpty()) {
             (if (firstContentAt > 0) firstContentAt else finishedAt) - startedAt
         } else {
@@ -157,7 +188,7 @@ class ReplyEngine @Inject constructor(
                 promptTokens = if (index == 0) promptTokens else 0,
                 completionTokens = if (index == 0) completionTokens else 0,
                 replyGroup = group,
-                createdAt = finishedAt + index * ReplySplitter.PART_INTERVAL_MILLIS,
+                createdAt = times[index],
             )
         }
         val viewing = activeChat.isViewing(contactId)

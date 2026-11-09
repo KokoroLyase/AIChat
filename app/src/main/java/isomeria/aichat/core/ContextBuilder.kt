@@ -115,8 +115,9 @@ class ContextBuilder(
             }
             val last = currentParts.lastOrNull()
             if (last is ChatPart.Text && part is ChatPart.Text) {
-                // 用户连发的几条用换行连接；同一次回复拆出的几条还原成空行分隔
-                val separator = if (role == ChatRole.ASSISTANT) "\n\n" else "\n"
+                // 用户连发的几条用换行连接；同一次回复拆出的几条还原成空行分隔，
+                // 开了回复偏好时按它的约定还原成换行分隔
+                val separator = if (role == ChatRole.ASSISTANT && globals.replyStyle == null) "\n\n" else "\n"
                 currentParts[currentParts.lastIndex] = ChatPart.Text(last.text + separator + part.text)
             } else {
                 currentParts += part

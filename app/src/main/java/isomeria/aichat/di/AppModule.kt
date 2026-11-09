@@ -128,6 +128,12 @@ object AppModule {
     fun clock(): isomeria.aichat.core.Clock = isomeria.aichat.core.Clock.SYSTEM
 
     @Provides
+    fun random(): kotlin.random.Random = kotlin.random.Random.Default
+
+    @Provides
+    fun sleeper(): isomeria.aichat.core.Sleeper = isomeria.aichat.core.Sleeper.DELAY
+
+    @Provides
     @Singleton
     fun memoryLabels(@ApplicationContext context: Context): MemoryLabels {
         val res = context.resources
