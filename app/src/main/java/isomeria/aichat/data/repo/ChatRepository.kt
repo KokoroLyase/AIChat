@@ -41,9 +41,9 @@ class ChatRepository @Inject constructor(
     suspend fun chatEntry(contactId: Long, focusId: Long): ChatEntry = paging.entry(contactId, focusId)
     fun pagedMessages(contactId: Long) = AbsoluteRefreshPagingSource(messageDao.pagingByContact(contactId))
     fun timeline(contactId: Long): Flow<ChatTimeline> = paging.timeline(contactId)
-    suspend fun latestVisible(contactId: Long): Message? = messageDao.latestVisible(contactId, System.currentTimeMillis())
-    suspend fun newerVisibleCount(contactId: Long, anchor: Message, now: Long): Int =
-        messageDao.countNewerVisible(contactId, anchor.createdAt, anchor.id, now)
+    suspend fun latestVisible(contactId: Long): Message? = messageDao.latestVisible(contactId)
+    suspend fun newerVisibleCount(contactId: Long, anchor: Message): Int =
+        messageDao.countNewerVisible(contactId, anchor.createdAt, anchor.id)
 
     fun observeConversations(): Flow<List<ConversationItem>> = conversationDao.observeList()
 
@@ -117,7 +117,7 @@ class ChatRepository @Inject constructor(
         if (messageActions.regenerate(contactId) { refreshLastMessage(contactId) }) replyScheduler.enqueue(contactId)
     }
 
-    /** 取消回复：丢弃未完成的内容，等待中的消息标记失败 */
+    /** 取消回复：丢弃未完成的内容，等待中的消息标记失败。已经生成、等着投递的回复照常送达 */
     suspend fun cancelReply(contactId: Long) {
         replyScheduler.cancel(contactId)
         messageDao.failSending(contactId, FailReason.CANCELLED.code)
@@ -139,6 +139,7 @@ class ChatRepository @Inject constructor(
     /** 删除聊天：只删聊天记录，不删联系人 */
     suspend fun deleteConversation(contactId: Long) {
         replyScheduler.cancel(contactId)
+        replyScheduler.cancelDelivery(contactId)
         val images = messageDao.imagePaths(contactId)
         val background = conversationDao.get(contactId)?.backgroundPath
         db.withTransaction {
@@ -153,6 +154,7 @@ class ChatRepository @Inject constructor(
     /** 聊天信息页「清空聊天记录」：删掉消息和图片，聊天仍留在列表里（置顶和草稿保留） */
     suspend fun clearHistory(contactId: Long) {
         replyScheduler.cancel(contactId)
+        replyScheduler.cancelDelivery(contactId)
         val images = messageDao.imagePaths(contactId)
         db.withTransaction {
             ensureConversation(contactId)
@@ -167,6 +169,7 @@ class ChatRepository @Inject constructor(
     suspend fun clearAllHistory() {
         val contacts = contactDao.listAll().map { it.id }
         contacts.forEach(replyScheduler::cancel)
+        contacts.forEach(replyScheduler::cancelDelivery)
         val images = messageDao.allImagePaths()
         db.withTransaction {
             messageDao.deleteAll()
@@ -251,6 +254,7 @@ class ChatRepository @Inject constructor(
 
     /**
      * 启动时检查：等待中但已经没有对应任务的消息（App 在等待中被系统杀掉），标记为失败，可重试。
+     * 只看等待回复的用户消息；已经生成、待投递的回复（PENDING）不受影响，由 [isomeria.aichat.data.reply.DeliveryEngine.recover] 送达。
      */
     suspend fun markInterruptedRequests() {
         for (contactId in messageDao.contactsWithSending()) {
@@ -265,7 +269,7 @@ class ChatRepository @Inject constructor(
     }
 
     private suspend fun refreshLastMessage(contactId: Long) {
-        val latest = messageDao.latest(contactId)
+        val latest = messageDao.latestVisible(contactId)
         if (latest == null) {
             conversationDao.setLastMessage(contactId, 0, "")
         } else {

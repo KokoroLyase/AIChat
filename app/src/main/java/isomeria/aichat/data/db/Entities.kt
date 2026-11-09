@@ -14,8 +14,13 @@ enum class Role { USER, ASSISTANT }
 
 enum class MessageType { TEXT, IMAGE }
 
-/** 消息状态：发送中（等待回复）、成功、失败。 */
-enum class MessageStatus { SENDING, SUCCESS, FAILED }
+/**
+ * 消息状态：发送中（等待回复）、成功、失败、待投递。
+ *
+ * PENDING（0.5.0）：模型已经回复、还没到计划时间的回复消息，createdAt 是计划出现的时间。
+ * 不在聊天页、搜索、会话预览、未读里出现，转成 SUCCESS 才算送达；导出时按已送达写入。
+ */
+enum class MessageStatus { SENDING, SUCCESS, FAILED, PENDING }
 
 enum class ProviderKind { LLM, TTS, ASR }
 

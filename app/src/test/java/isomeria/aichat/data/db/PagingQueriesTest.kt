@@ -68,28 +68,57 @@ class PagingQueriesTest {
         assertEquals(0L, ChatPaging(db).entry(1, 3).targetId)
         assertEquals(0L, ChatPaging(db).entry(1, 999).targetId)
     }
-    @Test fun newMessageCountExcludesFutureRowsAndDeletedRows() = runBlocking {
-        messages.insertAll(listOf(message(1, time = 100), message(2, time = 100), message(3, time = 1000)))
-        assertEquals(1, messages.countNewerVisible(1, 100, 1, 500))
+    @Test fun newMessageCountExcludesPendingRowsAndDeletedRows() = runBlocking {
+        messages.insertAll(listOf(message(1, time = 100), message(2, time = 100), message(3, time = 50, status = MessageStatus.PENDING), message(4, time = 1000, status = MessageStatus.PENDING)))
+        assertEquals(1, messages.countNewerVisible(1, 100, 1))
         messages.delete(2)
-        assertEquals(0, messages.countNewerVisible(1, 100, 1, 500))
-        assertEquals(1, messages.countNewerVisible(1, 100, 1, 1000))
+        assertEquals(0, messages.countNewerVisible(1, 100, 1))
+        messages.setStatus(listOf(4), MessageStatus.SUCCESS, 0)
+        assertEquals(1, messages.countNewerVisible(1, 100, 1))
     }
-    @Test fun timelineHidesScheduledRowsAndReportsTyping() = runBlocking {
+    @Test fun timelineHidesPendingRowsAndReportsTyping() = runBlocking {
         val now = System.currentTimeMillis()
-        messages.insertAll(listOf(message(1, role = Role.USER, time = now - 1, status = MessageStatus.SENDING), message(2, time = now + 60_000)))
+        // 待投递的回复计划时间已过也不显示：是否显示只看状态
+        messages.insertAll(listOf(message(1, role = Role.USER, time = now - 10, status = MessageStatus.SENDING), message(2, time = now - 5, status = MessageStatus.PENDING)))
         val timeline = ChatPaging(db).timeline(1).first()
         assertEquals(1L, timeline.visibleLatest?.id)
+        assertEquals(1L, timeline.latest?.id)
         assertTrue(timeline.waiting)
         assertTrue(timeline.pending)
+        assertFalse(timeline.regenerationAllowed)
     }
-    @Test fun retryOnlyChangesFailedUsersAfterLastReplyIncludingTimestampTies() = runBlocking {
-        messages.insertAll(listOf(message(1, Role.USER, time = 10, status = MessageStatus.FAILED), message(2, time = 10),
-            message(3, Role.USER, time = 10, status = MessageStatus.FAILED), message(4, Role.USER, time = 10)))
+    @Test fun retryOnlyChangesFailedUsersAfterLastAnsweredUserIncludingTimestampTies() = runBlocking {
+        messages.insertAll(listOf(message(1, Role.USER, time = 10, status = MessageStatus.FAILED), message(2, Role.USER, time = 10),
+            message(3, time = 10), message(4, Role.USER, time = 10, status = MessageStatus.FAILED)))
         assertTrue(ChatMessageActions(db).retry(1))
         assertEquals(MessageStatus.FAILED, messages.get(1)?.status)
+        assertEquals(MessageStatus.SUCCESS, messages.get(2)?.status)
+        assertEquals(MessageStatus.SENDING, messages.get(4)?.status)
+    }
+    /** 投递期间发的消息被取消或失败：时间夹在几条回复中间，仍然可以重试；之后的回复不算「已经回答过」 */
+    @Test fun retry_failedMessageSentDuringDelivery_isStillRetryable() = runBlocking {
+        messages.insertAll(listOf(
+            message(1, Role.USER, time = 10), message(2, time = 20, group = "a"),
+            message(3, Role.USER, time = 25, status = MessageStatus.FAILED),
+            message(4, time = 30, group = "a"), message(5, time = 40, group = "a"),
+        ))
+        assertTrue(ChatMessageActions(db).retry(1))
         assertEquals(MessageStatus.SENDING, messages.get(3)?.status)
-        assertEquals(MessageStatus.SUCCESS, messages.get(4)?.status)
+        assertEquals(MessageStatus.SUCCESS, messages.get(1)?.status)
+    }
+    /** 投递期间发的消息得到回复后：重新生成回答的是这条，边界是上一次回复的第一条 */
+    @Test fun regenerate_turnSentDuringPreviousDelivery_isResent() = runBlocking {
+        messages.insertAll(listOf(
+            message(1, Role.USER, time = 10), message(2, time = 20, group = "a"),
+            message(3, Role.USER, time = 25), message(4, time = 30, group = "a"),
+            message(5, time = 50, group = "b"), message(6, time = 60, group = "b"),
+        ))
+        assertTrue(ChatPaging(db).timeline(1).first().regenerationAllowed)
+        assertTrue(ChatMessageActions(db).regenerate(1))
+        assertNull(messages.get(5)); assertNull(messages.get(6))
+        assertNotNull(messages.get(4))
+        assertEquals(MessageStatus.SENDING, messages.get(3)?.status)
+        assertEquals(MessageStatus.SUCCESS, messages.get(1)?.status)
     }
     @Test fun regenerateDeletesLastGroupOnlyInThisChatAndResendsItsUserTurn() = runBlocking {
         messages.insertAll(listOf(message(1, Role.USER), message(2, group = "old"), message(3, Role.USER),
@@ -103,13 +132,14 @@ class PagingQueriesTest {
         assertEquals(MessageStatus.SENDING, messages.get(3)?.status)
         assertEquals(MessageStatus.SUCCESS, messages.get(1)?.status)
     }
-    @Test fun regenerateIsRefusedForNewUserOrPendingReveal() = runBlocking {
+    @Test fun regenerateIsRefusedForNewUserOrPendingDelivery() = runBlocking {
         messages.insertAll(listOf(message(1, Role.USER), message(2), message(3, Role.USER)))
         assertFalse(ChatMessageActions(db).regenerate(1))
         messages.delete(3)
-        messages.insert(message(4, time = System.currentTimeMillis() + 60_000))
+        messages.insert(message(4, time = 0, status = MessageStatus.PENDING))
         assertFalse(ChatMessageActions(db).regenerate(1))
         assertNotNull(messages.get(2))
+        assertNotNull(messages.get(4))
     }
     @Test fun deletingLastUserTurnMakesRegenerationUnavailableWithoutDeletingReply() = runBlocking {
         messages.insertAll(listOf(message(1, Role.USER), message(2, group = "old"), message(3, group = "last")))

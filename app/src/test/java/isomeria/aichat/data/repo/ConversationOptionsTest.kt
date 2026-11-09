@@ -239,14 +239,18 @@ class ConversationOptionsTest {
     private class FakeNotifications : ReplyNotifications {
         val notified = mutableListOf<Long>()
         val cancelled = mutableListOf<Long>()
-        override fun notifyReply(contact: Contact, parts: List<String>) { notified += contact.id }
+        override fun notifyReply(contact: Contact, parts: List<String>, alert: Boolean) { notified += contact.id }
         override fun cancelReply(contactId: Long) { cancelled += contactId }
     }
 
     private class FakeQueue : ReplyQueue {
         val cancelled = mutableListOf<Long>()
+        val deliveryCancelled = mutableListOf<Long>()
         override fun enqueue(contactId: Long) = Unit
+        override fun enqueueDelivery(contactId: Long) = Unit
         override fun cancel(contactId: Long) { cancelled += contactId }
         override suspend fun isActive(contactId: Long) = false
+        override fun cancelDelivery(contactId: Long) { deliveryCancelled += contactId }
+        override suspend fun isDelivering(contactId: Long) = false
     }
 }

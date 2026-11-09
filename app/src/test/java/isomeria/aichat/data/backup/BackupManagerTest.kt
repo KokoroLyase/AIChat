@@ -175,6 +175,35 @@ class BackupManagerTest {
         assertEquals(FailReason.INTERRUPTED.code, restored.errorCode)
     }
 
+    /** 0.5.0：待投递的回复按已送达导出，恢复后不会再投递；会话预览和未读按送达后的样子；覆盖恢复前停掉投递任务 */
+    @Test
+    fun pendingReplies_exportAsDelivered_andOverwriteStopsDelivery() = runBlocking {
+        seed()
+        val before = db.conversationDao().get(1)!!
+        val ids = db.messageDao().insertAll(
+            listOf(
+                Message(contactId = 1, role = Role.ASSISTANT, type = MessageType.TEXT, content = "还没送达一", status = MessageStatus.PENDING, replyGroup = "p", createdAt = 9_000),
+                Message(contactId = 1, role = Role.ASSISTANT, type = MessageType.TEXT, content = "还没送达二", status = MessageStatus.PENDING, replyGroup = "p", createdAt = 9_500),
+            ),
+        )
+        val zip = export(password = null)
+        val data = backup.inspect(zip).data
+        assertTrue(data.messages.none { it.status == MessageStatus.PENDING })
+        data.conversations.first { it.contactId == 1L }.let {
+            assertEquals("还没送达二", it.lastMessagePreview)
+            assertEquals(9_500L, it.lastMessageTime)
+            assertEquals(before.unreadCount + 2, it.unreadCount)
+        }
+        // 本机的会话没被导出改动
+        assertEquals(before, db.conversationDao().get(1))
+
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertTrue(ids.all { db.messageDao().get(it)!!.status == MessageStatus.SUCCESS })
+        assertFalse(db.messageDao().hasPending(1))
+        assertEquals("还没送达二", db.conversationDao().get(1)!!.lastMessagePreview)
+        assertTrue(replies.deliveryCancelled.containsAll(listOf(1L, 2L)))
+    }
+
     @Test fun v3RoundTripKeepsMemorySelectionOverridesAndManualIdentityAfterIdMerge() = runBlocking {
         seed()
         val config = db.providerDao().get(secondProviderId)!!
@@ -1063,10 +1092,17 @@ class BackupManagerTest {
 
     private class FakeReplies : ReplyControl {
         val cancelled = mutableListOf<Long>()
+        val deliveryCancelled = mutableListOf<Long>()
         override fun cancel(contactId: Long) {
             cancelled += contactId
         }
 
         override suspend fun isActive(contactId: Long) = false
+
+        override fun cancelDelivery(contactId: Long) {
+            deliveryCancelled += contactId
+        }
+
+        override suspend fun isDelivering(contactId: Long) = false
     }
 }

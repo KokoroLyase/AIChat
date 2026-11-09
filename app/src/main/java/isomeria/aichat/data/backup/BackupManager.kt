@@ -248,7 +248,20 @@ class BackupManager @Inject constructor(
                 globalDao.items(),
             )
         }
-        val (contacts, conversations, messages, configs, models) = tables
+        val (contacts, rawConversations, rawMessages, configs, models) = tables
+        // 待投递的回复按已送达写入：恢复后不会再投递一次；会话预览和未读也按送达后的样子
+        val pending = rawMessages.filter { it.status == MessageStatus.PENDING }.groupBy { it.contactId }
+        val messages = rawMessages.map { if (it.status == MessageStatus.PENDING) it.copy(status = MessageStatus.SUCCESS) else it }
+        val conversations = rawConversations.map { conversation ->
+            val rows = pending[conversation.contactId] ?: return@map conversation
+            val last = rows.maxWith(compareBy<Message>({ it.createdAt }, { it.id }))
+            val newer = last.createdAt >= conversation.lastMessageTime
+            conversation.copy(
+                lastMessageTime = if (newer) last.createdAt else conversation.lastMessageTime,
+                lastMessagePreview = if (newer) last.content else conversation.lastMessagePreview,
+                unreadCount = conversation.unreadCount + rows.size,
+            )
+        }
         val appSettings = settings.read()
 
         val media = MediaCollector()
@@ -452,12 +465,13 @@ class BackupManager @Inject constructor(
             key?.let { provider.id to it }
         }.toMap()
 
-    /** 覆盖前停掉所有等待中的回复，最多等 3 秒，免得旧任务把回复写进新数据 */
+    /** 覆盖前停掉所有等待中的回复和投递，最多等 3 秒，免得旧任务把回复写进新数据 */
     private suspend fun stopAllReplies() {
         val ids = contactDao.listAll().map { it.id }
         ids.forEach(replies::cancel)
+        ids.forEach(replies::cancelDelivery)
         withTimeoutOrNull(3_000) {
-            while (ids.any { replies.isActive(it) }) delay(100)
+            while (ids.any { replies.isActive(it) || replies.isDelivering(it) }) delay(100)
         }
     }
 
@@ -748,7 +762,7 @@ class BackupManager @Inject constructor(
     }
 
     private suspend fun refreshLastMessage(contactId: Long) {
-        val latest = messageDao.latest(contactId) ?: return
+        val latest = messageDao.latestVisible(contactId) ?: return
         val preview = when (latest.type) {
             MessageType.TEXT -> latest.content
             MessageType.IMAGE -> context.getString(R.string.preview_image)
@@ -864,13 +878,17 @@ class BackupManager @Inject constructor(
         completionTokens = completionTokens, replyGroup = replyGroup, createdAt = createdAt,
     )
 
-    /** 导出时还在等待回复的消息：恢复后标记为失败，可以点击重试 */
+    /** 导出时还在等待回复的消息：恢复后标记为失败，可以点击重试；待投递的按已送达（导出时已经这样写，这里再兜一次） */
     private fun MessageDto.toEntity(contactId: Long, imagePath: String?): Message {
         val sending = status == MessageStatus.SENDING
         return Message(
             id = id, contactId = contactId, role = role, type = type, content = content, imagePath = imagePath,
             imageWidth = imageWidth, imageHeight = imageHeight, reasoning = reasoning, reasoningMillis = reasoningMillis,
-            status = if (sending) MessageStatus.FAILED else status,
+            status = when (status) {
+                MessageStatus.SENDING -> MessageStatus.FAILED
+                MessageStatus.PENDING -> MessageStatus.SUCCESS
+                else -> status
+            },
             errorCode = if (sending) FailReason.INTERRUPTED.code else errorCode,
             model = model, promptTokens = promptTokens, completionTokens = completionTokens,
             replyGroup = replyGroup, createdAt = createdAt,

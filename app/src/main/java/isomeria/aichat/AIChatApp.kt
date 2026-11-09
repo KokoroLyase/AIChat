@@ -23,6 +23,7 @@ class AIChatApp : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var notifier: Provider<ReplyNotifier>
     @Inject lateinit var chatRepository: Provider<ChatRepository>
+    @Inject lateinit var delivery: Provider<isomeria.aichat.data.reply.DeliveryEngine>
     @Inject @ApplicationScope lateinit var appScope: CoroutineScope
 
     override val workManagerConfiguration: Configuration
@@ -36,7 +37,11 @@ class AIChatApp : Application(), Configuration.Provider {
         isomeria.aichat.data.repo.FileStorage.clearStaleRestoreCache(this)
         isomeria.aichat.data.repo.FileStorage.clearLegacySnapshotOnce(this)
         notifier.get().createChannels()
-        // 上次等待回复时 App 被系统杀掉：把这些请求标记为失败，用户可以点击重试
-        appScope.launch { chatRepository.get().markInterruptedRequests() }
+        // 上次等待回复时 App 被系统杀掉：把这些请求标记为失败，用户可以点击重试；
+        // 已经生成、还没送达的回复：到期的直接送达，没到期的重新排队（不会丢，也不会重复）
+        appScope.launch {
+            chatRepository.get().markInterruptedRequests()
+            delivery.get().recover()
+        }
     }
 }

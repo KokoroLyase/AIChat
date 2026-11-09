@@ -8,7 +8,6 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
-import androidx.paging.filter
 import androidx.paging.insertSeparators
 import androidx.paging.map
 import androidx.navigation.toRoute
@@ -121,7 +120,7 @@ class ChatViewModel @Inject constructor(
     init { viewModelScope.launch { seenLatest.value = chats.latestVisible(contactId) } }
 
     val newMessageCount = combine(timeline, seenLatest) { current, seen ->
-        if (seen == null) 0 else chats.newerVisibleCount(contactId, seen, current.now)
+        if (seen == null) 0 else chats.newerVisibleCount(contactId, seen)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val messages = pageVersion.flatMapLatest { version ->
@@ -134,8 +133,8 @@ class ChatViewModel @Inject constructor(
     }.cachedIn(viewModelScope)
 
     val rows: Flow<PagingData<ChatRow>> = combine(messages, timeline) { data, current ->
-        data.filter { it.createdAt <= current.now }
-            .map { ChatRow.Item(it, canRegenerate(it, current)) }
+        // 待投递的回复（PENDING）不在分页结果里，送达后随数据库刷新出现
+        data.map { ChatRow.Item(it, canRegenerate(it, current)) }
             .insertSeparators<ChatRow.Item, ChatRow> { newer, older -> chatTimeSeparator(newer, older, formatter, current.now) }
     }.cachedIn(viewModelScope)
 

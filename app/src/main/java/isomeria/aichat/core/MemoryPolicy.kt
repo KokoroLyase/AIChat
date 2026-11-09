@@ -49,8 +49,8 @@ object MemoryPolicy {
      * @param historyBudget 预算减去系统提示词和记忆之后，留给聊天记录的部分
      */
     fun planBatch(unsummarized: List<Message>, historyBudget: Int, estimator: TokenEstimator): List<Message> {
-        // 等待回复的消息和之后的消息还不算「较早的聊天」
-        val done = unsummarized.takeWhile { it.status != MessageStatus.SENDING }
+        // 等待回复、待投递的消息和之后的消息还不算「较早的聊天」
+        val done = unsummarized.takeWhile { it.status != MessageStatus.SENDING && it.status != MessageStatus.PENDING }
         val total = done.sumOf { estimator.message(it) }
         if (total <= historyBudget.coerceAtLeast(MIN_HISTORY_BUDGET) * TRIGGER_RATIO) return emptyList()
         return takeOldest(done, (total / 2).coerceAtMost(BATCH_MAX_TOKENS), estimator)

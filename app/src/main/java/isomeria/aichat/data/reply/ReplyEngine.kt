@@ -27,7 +27,6 @@ import isomeria.aichat.core.ReplyPreferencesSource
 import isomeria.aichat.core.ReplyRhythm
 import isomeria.aichat.core.Sleeper
 import kotlin.random.Random
-import isomeria.aichat.data.memory.MemoryQueue
 import isomeria.aichat.data.memory.NicknameSource
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.data.repo.FileStorage
@@ -45,6 +44,10 @@ import javax.inject.Singleton
  * - 接收过程中不显示气泡，正文和思考内容只在内存里分开累积
  * - 完成后一次写库。回复偏好开启时按换行拆条、去句尾标点，各条按估算的打字间隔排开，第一条扣掉生成用掉的时间；
  *   关闭时保留旧的分条显示：开了分条的按空行拆、相隔约 1 秒，没开的一条
+ * - 0.5.0 起各条以 PENDING 写入（createdAt 是计划时间），交给独立的投递任务按时送达；
+ *   会话预览、未读、通知和自动记忆都在送达时处理（[DeliveryEngine]）
+ * - 上一轮还有没送达的回复时，先等它们送达再开始（插话时新请求排在后面）；
+ *   拼上下文时把这次等待回复的用户消息排到最后，保证发给模型的最后一条是用户消息
  * - 失败（含 401/402/429/5xx/断网）时把这次等待回复的消息标记为失败，可手动重试
  * - 被取消（用户取消，或又发了新消息替换了任务）时什么也不写，由发起取消的一方处理状态
  */
@@ -57,19 +60,20 @@ class ReplyEngine @Inject constructor(
     private val memoryDao: MemoryDao,
     private val providers: ProviderRepository,
     private val usage: UsageRepository,
-    private val memoryScheduler: MemoryQueue,
     private val nicknames: NicknameSource,
     private val files: FileStorage,
     private val contextBuilder: ContextBuilder,
-    private val alerts: ReplyAlerts,
-    private val activeChat: ActiveChatTracker,
     private val clock: Clock,
     private val promptGlobals: PromptGlobalsSource,
     private val preferences: ReplyPreferencesSource,
     private val random: Random,
     private val sleeper: Sleeper,
+    private val delivery: DeliveryEngine,
+    private val queue: ReplyQueue,
 ) {
     suspend fun run(contactId: Long) {
+        // 上一轮已经生成的先发完：投递任务在发，这里只是等（到点时顺手送达，不会重复）
+        delivery.run(contactId)
         waitForQuiet(contactId)
         isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
     }
@@ -111,12 +115,15 @@ class ReplyEngine @Inject constructor(
         val globals = promptGlobals.forContact(contact)
         val system = contextBuilder.systemPrompt(contact, nickname, startedAt, memories, globals).orEmpty()
         val historyBudget = contact.contextTokens - estimator.text(system)
-        val history = ContextWindow.select(
-            messageDao.recent(contactId, ContextWindow.maxRows(historyBudget)),
+        val selected = ContextWindow.select(
+            messageDao.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING },
             historyBudget,
             estimator,
             supportsImage,
         )
+        // 投递期间发的消息，时间会夹在几条回复中间：等待回复的这几条排到最后
+        val waitingIds = waiting.toHashSet()
+        val history = selected.filterNot { it.id in waitingIds } + selected.filter { it.id in waitingIds }
         val messages = contextBuilder.build(
             contact = contact,
             history = history,
@@ -183,7 +190,7 @@ class ReplyEngine @Inject constructor(
                 content = part,
                 reasoning = if (index == 0) reasoning.toString().trim().ifEmpty { null } else null,
                 reasoningMillis = if (index == 0) thinkingMillis else 0L,
-                status = MessageStatus.SUCCESS,
+                status = MessageStatus.PENDING,
                 model = contact.model,
                 promptTokens = if (index == 0) promptTokens else 0,
                 completionTokens = if (index == 0) completionTokens else 0,
@@ -191,12 +198,9 @@ class ReplyEngine @Inject constructor(
                 createdAt = times[index],
             )
         }
-        val viewing = activeChat.isViewing(contactId)
         db.withTransaction {
             messageDao.insertAll(rows)
             messageDao.setStatus(waiting, MessageStatus.SUCCESS, 0)
-            conversationDao.setLastMessage(contactId, rows.last().createdAt, rows.last().content)
-            if (!viewing) conversationDao.addUnread(contactId, rows.size)
             // 服务商没有返回用量时用估算值
             usage.record(
                 contactId = contactId,
@@ -206,8 +210,8 @@ class ReplyEngine @Inject constructor(
             )
         }
         debugLog("reply ok: parts=${parts.size} prompt=$promptTokens completion=$completionTokens")
-        alerts.afterReply(contact, parts)
-        if (contact.autoMemory) memoryScheduler.enqueue(contactId)
+        // 预览、未读、通知和记忆都在送达时处理
+        queue.enqueueDelivery(contactId)
     }
 
     /** 任务被系统中断后重新调度：不再自动重试，标记失败 */

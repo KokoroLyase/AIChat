@@ -127,6 +127,37 @@ class ChatPagingRefreshTest {
         job.cancel()
     }
 
+    /** 0.5.0：待投递的回复写入时不出现；送达（PENDING → SUCCESS）引起的刷新和新消息一样，停在远处历史时窗口不跳 */
+    @Test fun deepHistoryStaysLoadedWhenPendingReplyIsDelivered() = runBlocking {
+        val (presenter, job) = open(initialKey = 0)
+        waitUntil("initial load") { presenter.loaded().isNotEmpty() }
+        withTimeout(20_000) {
+            while (presenter.loaded().first() > 2600) {
+                presenter.access { it.lastIndex }
+                delay(20)
+            }
+        }
+        val viewed = presenter.access { it.size / 2 }
+        db.messageDao().insert(message(9001).copy(status = MessageStatus.PENDING))
+        delay(500)
+        assertTrue("pending reply must stay hidden", 9001L !in presenter.loaded())
+        assertTrue(viewed in presenter.loaded())
+        refreshAfterWrite(presenter, viewed) { db.messageDao().setStatus(listOf(9001L), MessageStatus.SUCCESS, 0) }
+        job.cancel()
+    }
+
+    @Test fun nearNewest_pendingHidden_thenAppearsWhenDelivered() = runBlocking {
+        val (presenter, job) = open(initialKey = 0)
+        waitUntil("initial load") { presenter.loaded().isNotEmpty() }
+        presenter.access { 0 }
+        db.messageDao().insert(message(9001).copy(status = MessageStatus.PENDING))
+        delay(500)
+        assertEquals(3000L, presenter.loaded().first())
+        db.messageDao().setStatus(listOf(9001L), MessageStatus.SUCCESS, 0)
+        waitUntil("delivered message loaded") { presenter.loaded().firstOrNull() == 9001L }
+        job.cancel()
+    }
+
     @Test fun refreshNearNewestStillIncludesNewMessage() = runBlocking {
         val (presenter, job) = open(initialKey = 0)
         waitUntil("initial load") { presenter.loaded().isNotEmpty() }

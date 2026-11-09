@@ -217,7 +217,15 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
     val notifications = RecordingNotifications()
     val memoryQueue = mutableListOf<Long>()
     val activeChat = ActiveChatTracker()
+    val queue = RecordingQueue()
     var nickname = "阿哲"
+
+    /** 假装等完，时钟往前走；投递循环和「稍等几秒」都经过它 */
+    val sleeper = isomeria.aichat.core.Sleeper { sleeps += it; now += it }
+
+    val delivery by lazy {
+        DeliveryEngine(db, ReplyAlerts(db.conversationDao(), notifications, activeChat), activeChat, { memoryQueue += it }, queue, Clock { now }, sleeper)
+    }
 
     val contextBuilder = ContextBuilder(
         ContextLabels(
@@ -253,19 +261,18 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         memoryDao = db.memoryDao(),
         providers = providers,
         usage = UsageRepository(db.usageDao()),
-        memoryScheduler = { memoryQueue += it },
         nicknames = { nickname },
         files = FileStorage(context),
         contextBuilder = contextBuilder,
-        alerts = ReplyAlerts(db.conversationDao(), notifications, activeChat),
-        activeChat = activeChat,
         clock = Clock { now },
         promptGlobals = GlobalMemoryRepository(db, { preferences }, Clock { now }),
         preferences = { preferences },
         random = object : kotlin.random.Random() {
             override fun nextBits(bitCount: Int) = 0
         },
-        sleeper = isomeria.aichat.core.Sleeper { sleeps += it; now += it },
+        sleeper = sleeper,
+        delivery = delivery,
+        queue = queue,
     )
 
     var preferences = isomeria.aichat.core.ReplyPreferences()
@@ -291,6 +298,19 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
     }
 }
 
+internal class RecordingQueue : ReplyQueue {
+    val enqueued = mutableListOf<Long>()
+    val deliveries = mutableListOf<Long>()
+    val cancelled = mutableListOf<Long>()
+    val deliveryCancelled = mutableListOf<Long>()
+    override fun enqueue(contactId: Long) { enqueued += contactId }
+    override fun enqueueDelivery(contactId: Long) { deliveries += contactId }
+    override fun cancel(contactId: Long) { cancelled += contactId }
+    override suspend fun isActive(contactId: Long) = false
+    override fun cancelDelivery(contactId: Long) { deliveryCancelled += contactId }
+    override suspend fun isDelivering(contactId: Long) = false
+}
+
 internal class RecordingProvider {
     val requests = mutableListOf<ChatRequest>()
     var lastProtocol = ""
@@ -311,10 +331,11 @@ internal class RecordingProvider {
 }
 
 internal class RecordingNotifications : ReplyNotifications {
-    val notified = mutableListOf<Pair<Long, List<String>>>()
+    /** 联系人、通知内容、是否响铃 */
+    val notified = mutableListOf<Triple<Long, List<String>, Boolean>>()
     val cancelled = mutableListOf<Long>()
-    override fun notifyReply(contact: Contact, parts: List<String>) {
-        notified += contact.id to parts
+    override fun notifyReply(contact: Contact, parts: List<String>, alert: Boolean) {
+        notified += Triple(contact.id, parts, alert)
     }
 
     override fun cancelReply(contactId: Long) {

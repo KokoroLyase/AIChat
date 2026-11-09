@@ -11,12 +11,18 @@ import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** 取消回复任务。恢复数据时用：覆盖前先停掉所有等待中的回复。 */
+/** 取消回复和投递任务。恢复数据时用：覆盖前先停掉所有等待中的回复和投递。 */
 interface ReplyControl {
+    /** 取消还没生成的回复请求；已经生成、等着投递的不受影响 */
     fun cancel(contactId: Long)
 
     /** 这个联系人是否还有排队或进行中的回复任务 */
     suspend fun isActive(contactId: Long): Boolean
+
+    /** 取消投递任务：删除聊天、清空、删除联系人、覆盖恢复时用（待投递的消息由调用方一起删掉） */
+    fun cancelDelivery(contactId: Long)
+
+    suspend fun isDelivering(contactId: Long): Boolean
 }
 
 /**
@@ -24,6 +30,9 @@ interface ReplyControl {
  *
  * 每个联系人一个唯一任务。等待期间又发了新消息时替换旧任务（REPLACE），
  * 新请求会带上所有还在等待回复的消息，联系人像真人一样看完再一起回。
+ *
+ * 投递是另一个唯一任务 `deliver-{contactId}`（0.5.0），用 APPEND_OR_REPLACE 接在正在跑的投递后面，
+ * 回复任务被替换时不会连带取消。
  */
 @Singleton
 class ReplyScheduler @Inject constructor(@ApplicationContext private val context: Context) : ReplyQueue {
@@ -45,9 +54,28 @@ class ReplyScheduler @Inject constructor(@ApplicationContext private val context
     override suspend fun isActive(contactId: Long): Boolean =
         workManager.getWorkInfosForUniqueWorkFlow(uniqueName(contactId)).first().any { !it.state.isFinished }
 
+    override fun enqueueDelivery(contactId: Long) {
+        val request = OneTimeWorkRequestBuilder<DeliveryWorker>()
+            .setInputData(workDataOf(DeliveryWorker.KEY_CONTACT_ID to contactId))
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .addTag(DELIVERY_TAG)
+            .build()
+        workManager.enqueueUniqueWork(deliveryName(contactId), ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+    }
+
+    override fun cancelDelivery(contactId: Long) {
+        workManager.cancelUniqueWork(deliveryName(contactId))
+    }
+
+    override suspend fun isDelivering(contactId: Long): Boolean =
+        workManager.getWorkInfosForUniqueWorkFlow(deliveryName(contactId)).first().any { !it.state.isFinished }
+
     private fun uniqueName(contactId: Long) = "reply-$contactId"
+
+    private fun deliveryName(contactId: Long) = "deliver-$contactId"
 
     private companion object {
         const val TAG = "reply"
+        const val DELIVERY_TAG = "deliver"
     }
 }

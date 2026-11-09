@@ -138,7 +138,7 @@ class MemoryEngine @Inject constructor(
         val conversation = conversationDao.get(contact.id) ?: return@withTransaction null
         if (conversation.memoryCursor != null) return@withTransaction conversation
         val budget = historyBudget(contact, estimator)
-        val recent = messageDao.recent(contact.id, ContextWindow.maxRows(budget))
+        val recent = messageDao.recent(contact.id, ContextWindow.maxRows(budget)).filter { it.status != isomeria.aichat.data.db.MessageStatus.PENDING }
         val window = ContextWindow.select(recent, budget, estimator, providers.supportsImage(config.id, contact.model))
         val first = window.firstOrNull()?.createdAt ?: 0L
         val hasOlder = first > 0 && messageDao.countBefore(contact.id, first) > 0

@@ -166,6 +166,18 @@ class ContextWindowTest {
         assertEquals(done.take(10), batch)
     }
 
+    /** 待投递的回复（以及之后插话的消息）还不算「较早的聊天」，也不计入是否触发 */
+    @Test
+    fun plan_stopsAtPendingReplies() {
+        val done = List(6) { ten() }
+        val pending = message("一".repeat(200), status = MessageStatus.PENDING)
+        val after = List(20) { ten() }
+        assertTrue(MemoryPolicy.planBatch(done + pending + after, historyBudget = 200, estimator).isEmpty())
+        val more = List(20) { ten() }
+        val batch = MemoryPolicy.planBatch(more + pending + after, historyBudget = 200, estimator)
+        assertTrue(pending !in batch && batch.all { it in more })
+    }
+
     @Test
     fun plan_batchIsCappedByMaxTokens() {
         val messages = List(1000) { ten() } // 14000 token，一半是 7000，超过上限 6000

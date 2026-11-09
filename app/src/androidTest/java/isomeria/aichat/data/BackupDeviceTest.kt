@@ -59,6 +59,10 @@ private class NoReplies : ReplyControl {
     override fun cancel(contactId: Long) = Unit
 
     override suspend fun isActive(contactId: Long): Boolean = false
+
+    override fun cancelDelivery(contactId: Long) = Unit
+
+    override suspend fun isDelivering(contactId: Long): Boolean = false
 }
 
 @RunWith(AndroidJUnit4::class)

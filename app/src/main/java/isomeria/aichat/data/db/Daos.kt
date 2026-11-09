@@ -160,17 +160,41 @@ interface ConversationDao {
 
 @Dao
 interface MessageDao {
-    @Query("SELECT * FROM message WHERE contactId = :contactId ORDER BY createdAt DESC, id DESC")
+    /** 聊天页分页：不含待投递的回复 */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND status != 'PENDING' ORDER BY createdAt DESC, id DESC")
     fun pagingByContact(contactId: Long): androidx.paging.PagingSource<Int, Message>
 
     @Query("SELECT * FROM message WHERE contactId = :contactId ORDER BY createdAt DESC, id DESC LIMIT 1")
     fun observeLatest(contactId: Long): Flow<Message?>
 
-    @Query("SELECT * FROM message WHERE contactId = :contactId AND createdAt <= :now ORDER BY createdAt DESC, id DESC LIMIT 1")
-    suspend fun latestVisible(contactId: Long, now: Long): Message?
+    /** 已经出现在聊天里的最新一条（不含待投递的） */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND status != 'PENDING' ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun latestVisible(contactId: Long): Message?
 
-    @Query("SELECT MIN(createdAt) FROM message WHERE contactId = :contactId AND createdAt > :now")
-    suspend fun nextRevealTime(contactId: Long, now: Long): Long?
+    @Query("SELECT EXISTS(SELECT 1 FROM message WHERE contactId = :contactId AND status = 'PENDING')")
+    suspend fun hasPending(contactId: Long): Boolean
+
+    @Query("SELECT MIN(createdAt) FROM message WHERE contactId = :contactId AND status = 'PENDING'")
+    suspend fun nextPendingAt(contactId: Long): Long?
+
+    /** 到了计划时间、该送达的待投递回复，按时间正序 */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND status = 'PENDING' AND createdAt <= :now ORDER BY createdAt, id")
+    suspend fun duePending(contactId: Long, now: Long): List<Message>
+
+    @Query("SELECT DISTINCT contactId FROM message WHERE status = 'PENDING'")
+    suspend fun contactsWithPending(): List<Long>
+
+    /** 同一次回复里已经送达的几条，按时间正序：通知内容随投递更新 */
+    @Query("SELECT content FROM message WHERE contactId = :contactId AND replyGroup = :group AND status = 'SUCCESS' ORDER BY createdAt, id")
+    suspend fun deliveredParts(contactId: Long, group: String): List<String>
+
+    /** 同一次回复的第一条（不论是否已送达） */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND replyGroup = :group ORDER BY createdAt, id LIMIT 1")
+    suspend fun firstOfGroup(contactId: Long, group: String): Message?
+
+    /** 已经得到回复的最新一条用户消息：它之后失败的消息才需要重试 */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'USER' AND status = 'SUCCESS' ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun latestAnsweredUser(contactId: Long): Message?
 
     @Query("SELECT EXISTS(SELECT 1 FROM message WHERE contactId = :contactId AND role = 'USER' AND status = 'SENDING')")
     suspend fun hasSending(contactId: Long): Boolean
@@ -181,20 +205,23 @@ interface MessageDao {
     @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' ORDER BY createdAt DESC, id DESC LIMIT 1")
     suspend fun latestAssistant(contactId: Long): Message?
 
-    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' AND id != :lastId AND (:group IS NULL OR replyGroup IS NULL OR replyGroup != :group) ORDER BY createdAt DESC, id DESC LIMIT 1")
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' AND status != 'PENDING' AND id != :lastId AND (:group IS NULL OR replyGroup IS NULL OR replyGroup != :group) ORDER BY createdAt DESC, id DESC LIMIT 1")
     suspend fun previousAssistant(contactId: Long, lastId: Long, group: String?): Message?
 
     @Query("SELECT EXISTS(SELECT 1 FROM message WHERE contactId = :contactId AND role = 'USER' AND (createdAt > :time OR (createdAt = :time AND id > :id)))")
     suspend fun hasUserAfter(contactId: Long, time: Long, id: Long): Boolean
 
-    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' ORDER BY createdAt DESC, id DESC LIMIT 1 OFFSET :offset")
+    /** 第一条未读：倒数第 offset+1 条已送达的回复 */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'ASSISTANT' AND status != 'PENDING' ORDER BY createdAt DESC, id DESC LIMIT 1 OFFSET :offset")
     suspend fun unreadAnchor(contactId: Long, offset: Int): Message?
 
-    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND (createdAt > :time OR (createdAt = :time AND id > :id))")
+    /** 比某条新的条数，和聊天页分页同一个可见范围（不含待投递），用作定位偏移 */
+    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND status != 'PENDING' AND (createdAt > :time OR (createdAt = :time AND id > :id))")
     suspend fun countNewer(contactId: Long, time: Long, id: Long): Int
 
-    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND createdAt <= :now AND (createdAt > :time OR (createdAt = :time AND id > :id))")
-    suspend fun countNewerVisible(contactId: Long, time: Long, id: Long, now: Long): Int
+    /** 新消息浮标的条数：比看过的那条新、已经出现的 */
+    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND status != 'PENDING' AND (createdAt > :time OR (createdAt = :time AND id > :id))")
+    suspend fun countNewerVisible(contactId: Long, time: Long, id: Long): Int
 
     @Query("SELECT id FROM message WHERE contactId = :contactId AND role = 'USER' AND (createdAt > :time OR (createdAt = :time AND id > :id)) AND (:status IS NULL OR status = :status) ORDER BY createdAt, id")
     suspend fun trailingUserIds(contactId: Long, time: Long, id: Long, status: MessageStatus?): List<Long>
@@ -236,10 +263,10 @@ interface MessageDao {
     )
     suspend fun before(contactId: Long, time: Long, limit: Int): List<Message>
 
-    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND createdAt < :time")
+    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND status != 'PENDING' AND createdAt < :time")
     fun observeCountBefore(contactId: Long, time: Long): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND createdAt < :time")
+    @Query("SELECT COUNT(*) FROM message WHERE contactId = :contactId AND status != 'PENDING' AND createdAt < :time")
     suspend fun countBefore(contactId: Long, time: Long): Int
 
     @Query("SELECT * FROM message WHERE id = :id")
@@ -309,7 +336,7 @@ interface MessageDao {
                contact.name AS contactName, contact.avatarPath AS contactAvatarPath,
                contact.avatarColor AS contactAvatarColor
         FROM message JOIN contact ON contact.id = message.contactId
-        WHERE message.type = 'TEXT' AND message.content LIKE '%' || :query || '%' ESCAPE '\'
+        WHERE message.type = 'TEXT' AND message.status != 'PENDING' AND message.content LIKE '%' || :query || '%' ESCAPE '\'
         GROUP BY message.contactId
         ORDER BY lastTime DESC
         """,
@@ -320,7 +347,7 @@ interface MessageDao {
     @Query(
         """
         SELECT * FROM message
-        WHERE contactId = :contactId AND type = 'TEXT' AND content LIKE '%' || :query || '%' ESCAPE '\'
+        WHERE contactId = :contactId AND type = 'TEXT' AND status != 'PENDING' AND content LIKE '%' || :query || '%' ESCAPE '\'
         ORDER BY createdAt DESC, id DESC LIMIT :limit
         """,
     )

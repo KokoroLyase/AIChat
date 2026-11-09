@@ -50,6 +50,8 @@ class Backup041FixtureTest {
         backup = BackupManager(context, db, FileStorage(context), cipher, settings, object : ReplyControl {
             override fun cancel(contactId: Long) = Unit
             override suspend fun isActive(contactId: Long) = false
+            override fun cancelDelivery(contactId: Long) = Unit
+            override suspend fun isDelivering(contactId: Long) = false
         })
     }
 

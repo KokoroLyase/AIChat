@@ -59,7 +59,7 @@ class ReplyNotifier @Inject constructor(
             PackageManager.PERMISSION_GRANTED && manager.areNotificationsEnabled()
 
     /** 回复到达。[parts] 是分条后的各条内容。 */
-    override fun notifyReply(contact: Contact, parts: List<String>) {
+    override fun notifyReply(contact: Contact, parts: List<String>, alert: Boolean) {
         if (!settings.notifyEnabled.value || !canNotify()) return
         val text = when {
             !settings.notifyPreview.value -> context.getString(R.string.notification_hidden_content)
@@ -76,6 +76,8 @@ class ReplyNotifier @Inject constructor(
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            // 同一次回复的后几条只更新内容：通知还在时不再响
+            .setOnlyAlertOnce(!alert)
             .setWhen(System.currentTimeMillis())
             .setContentIntent(openChatIntent(contact.id))
             .build()

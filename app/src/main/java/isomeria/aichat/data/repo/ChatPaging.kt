@@ -7,10 +7,9 @@ import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.Message
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.flow.mapLatest
 
 /**
  * Room 的分页源把 anchorPosition 当成数据库偏移，但关闭占位后它只是已加载窗口里的下标。
@@ -63,25 +62,19 @@ class ChatPaging(private val db: AppDatabase) {
         if (target == null) ChatEntry() else ChatEntry(messages.countNewer(contactId, target.createdAt, target.id), target.id)
     }
 
+    /**
+     * 聊天页顶部和列表需要的状态。0.5.0 起待投递的回复是 PENDING，送达时写库会触发重新计算，
+     * 不再按时间轮询；[ChatTimeline.pending] 表示还有没送达的回复（标题显示「对方正在输入…」）。
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun timeline(contactId: Long): Flow<ChatTimeline> = messages.observeLatest(contactId).transformLatest {
-        while (true) {
-            val now = System.currentTimeMillis()
-            val (snapshot, next) = db.withTransaction {
-                val latest = messages.latest(contactId)
-                val visible = messages.latestVisible(contactId, now)
-                val waiting = messages.hasSending(contactId)
-                val scheduled = messages.nextRevealTime(contactId, now)
-                val previous = latest?.takeIf { it.role == isomeria.aichat.data.db.Role.ASSISTANT }?.let {
-                    messages.previousAssistant(contactId, it.id, it.replyGroup)
-                }
-                val allowed = latest?.role == isomeria.aichat.data.db.Role.ASSISTANT && !waiting && scheduled == null &&
-                    messages.hasUserAfter(contactId, previous?.createdAt ?: Long.MIN_VALUE, previous?.id ?: Long.MIN_VALUE)
-                ChatTimeline(latest, visible, waiting, scheduled != null, now, allowed) to scheduled
-            }
-            emit(snapshot)
-            if (next == null) break
-            delay((next - System.currentTimeMillis()).coerceAtLeast(1))
+    fun timeline(contactId: Long): Flow<ChatTimeline> = messages.observeLatest(contactId).mapLatest {
+        db.withTransaction {
+            val visible = messages.latestVisible(contactId)
+            val waiting = messages.hasSending(contactId)
+            val pending = messages.hasPending(contactId)
+            val allowed = visible?.role == isomeria.aichat.data.db.Role.ASSISTANT && !waiting && !pending &&
+                ChatMessageActions(db).regenerationTurn(contactId, visible).isNotEmpty()
+            ChatTimeline(visible, visible, waiting, pending, System.currentTimeMillis(), allowed)
         }
     }.flowOn(Dispatchers.IO)
 }

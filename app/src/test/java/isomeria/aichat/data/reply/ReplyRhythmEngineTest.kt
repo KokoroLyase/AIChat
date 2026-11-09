@@ -109,11 +109,14 @@ class ReplyRhythmEngineTest {
         assertEquals(start + 2_000, requestedAt)
         assertEquals("先说一句\n再补一句", harness.provider.requests.single().messages.last().plainText())
 
-        // 等待时间设为 0：不等
+        // 等待时间设为 0：上一轮送达后不再等
+        harness.delivery.run(id)
+        harness.sleeps.clear()
         harness.preferences = harness.preferences.copy(waitSeconds = 0)
         userMessage(id, "还在吗", harness.now)
         harness.engine.run(id)
-        assertEquals(listOf(2_000L), harness.sleeps)
+        assertEquals(2, harness.provider.requests.size)
+        assertTrue(harness.sleeps.isEmpty())
     }
 
     @Test

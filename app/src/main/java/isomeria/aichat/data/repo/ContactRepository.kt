@@ -67,6 +67,7 @@ class ContactRepository @Inject constructor(
     /** 删除联系人，同时删除聊天记录、记忆、头像、聊天图片和聊天背景；用量并到「已删除的联系人」，总量不变 */
     suspend fun delete(id: Long) {
         replyScheduler.cancel(id)
+        replyScheduler.cancelDelivery(id)
         val contact = contactDao.get(id) ?: return
         val images = messageDao.imagePaths(id)
         val background = conversationDao.get(id)?.backgroundPath

@@ -49,13 +49,16 @@ class ConversationOptionsDeviceTest {
     private val created = mutableListOf<File>()
 
     private val notifications = object : ReplyNotifications {
-        override fun notifyReply(contact: Contact, parts: List<String>) { notified += contact.id }
+        override fun notifyReply(contact: Contact, parts: List<String>, alert: Boolean) { notified += contact.id }
         override fun cancelReply(contactId: Long) = Unit
     }
     private val queue = object : ReplyQueue {
         override fun enqueue(contactId: Long) = Unit
+        override fun enqueueDelivery(contactId: Long) = Unit
         override fun cancel(contactId: Long) = Unit
         override suspend fun isActive(contactId: Long) = false
+        override fun cancelDelivery(contactId: Long) = Unit
+        override suspend fun isDelivering(contactId: Long) = false
     }
 
     @Before
