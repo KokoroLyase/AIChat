@@ -163,7 +163,7 @@
 
 ### 0.4.2 界面逻辑优化（已发布）
 
-**状态**：2026-11-09 发布，tag `v0.4.2`（`main` `3f5c4d9`）。在 `feature/0.4.2`（从 `main` `9bb5530` 出发）开发和验证，CI 通过后合并到 `main`。正式 APK 6,750,836 字节，SHA-256 `7f8f8ccb605e736d5aec23b2841e1bf0db60341a2f55e2ef5346cfbac8836e7e`，签名证书与此前各版相同。Release 工作流第一次在旧测试 `ChatPagingRefreshTest.deepHistoryStaysLoadedAfterNewMessage` 上失败（`IndexOutOfBoundsException`，0.4.0 起的分页测试；同一提交在分支和 `main` 的 CI 都通过），只重跑失败的 job 后通过；这个测试偶发失败的原因尚未修复。下面先记录实际结果，原计划保留在后面供对照。
+**状态**：2026-11-09 发布，tag `v0.4.2`（`main` `3f5c4d9`）。在 `feature/0.4.2`（从 `main` `9bb5530` 出发）开发和验证，CI 通过后合并到 `main`。正式 APK 6,750,836 字节，SHA-256 `7f8f8ccb605e736d5aec23b2841e1bf0db60341a2f55e2ef5346cfbac8836e7e`，签名证书与此前各版相同。Release 工作流第一次在旧测试 `ChatPagingRefreshTest.deepHistoryStaysLoadedAfterNewMessage` 上失败（`IndexOutOfBoundsException`，0.4.0 起的分页测试；同一提交在分支和 `main` 的 CI 都通过），只重跑失败的 job 后通过。原因是测试在两个线程上同时访问不是线程安全的 `PagingDataPresenter`，发布后已在 `main` 修复（只改测试，不影响 App）。下面先记录实际结果，原计划保留在后面供对照。
 
 **实际完成：**
 
@@ -624,6 +624,7 @@
 - 文首、版本总览和 0.4.2 小节改为已发布；0.4.1 不再标“当前发布版”；0.5.0 标为下一个计划版本。
 - 第二节“已改代码、尚未发布”改为“随 0.4.2 发布的两项 `main` 改动”，最新 Release 改为 v0.4.2。
 - 发布后补记 Release 的 APK 大小、SHA-256、签名核对和 Release 工作流的一次测试重跑。
+- 记录 `ChatPagingRefreshTest` 偶发失败的原因和修复。
 
 ## 附录 E：2026-11-09 0.4.2 开发完成后的更新（历史）
 
