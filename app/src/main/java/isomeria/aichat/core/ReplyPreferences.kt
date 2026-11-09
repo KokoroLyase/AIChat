@@ -46,6 +46,15 @@ data class ReplyPreferences(
     }
 }
 
+/** 当前时间（毫秒）。回复和投递的计时都经过它，测试里换成固定时钟。 */
+fun interface Clock {
+    fun now(): Long
+
+    companion object {
+        val SYSTEM = Clock { System.currentTimeMillis() }
+    }
+}
+
 /** 读取当前的回复偏好。单元测试里换成固定值（MMKV 需要原生库）。 */
 fun interface ReplyPreferencesSource {
     fun replyPreferences(): ReplyPreferences

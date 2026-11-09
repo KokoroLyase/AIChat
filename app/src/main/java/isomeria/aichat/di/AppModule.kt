@@ -120,6 +120,9 @@ object AppModule {
     }
 
     @Provides
+    fun clock(): isomeria.aichat.core.Clock = isomeria.aichat.core.Clock.SYSTEM
+
+    @Provides
     @Singleton
     fun memoryLabels(@ApplicationContext context: Context): MemoryLabels {
         val res = context.resources
@@ -158,6 +161,8 @@ abstract class BindingsModule {
     @Binds @IntoSet abstract fun genericOpenAi(impl: GenericOpenAiProvider): LlmProvider
 
     @Binds abstract fun nicknameSource(impl: SettingsStore): NicknameSource
+
+    @Binds abstract fun memoryQueue(impl: isomeria.aichat.data.memory.MemoryScheduler): isomeria.aichat.data.memory.MemoryQueue
 
     @Binds abstract fun replyPreferencesSource(impl: SettingsStore): isomeria.aichat.core.ReplyPreferencesSource
 

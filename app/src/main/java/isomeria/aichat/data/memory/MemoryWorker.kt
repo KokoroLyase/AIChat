@@ -36,10 +36,15 @@ class MemoryWorker @AssistedInject constructor(
     }
 }
 
+/** 排队一次自动记忆检查；[MemoryScheduler] 用 WorkManager 实现，测试里换成记录调用。 */
+fun interface MemoryQueue {
+    fun enqueue(contactId: Long)
+}
+
 /** 每个联系人最多一个记忆任务：已经有一个在排队或进行中时不再加。 */
 @Singleton
-class MemoryScheduler @Inject constructor(@ApplicationContext private val context: Context) {
-    fun enqueue(contactId: Long) {
+class MemoryScheduler @Inject constructor(@ApplicationContext private val context: Context) : MemoryQueue {
+    override fun enqueue(contactId: Long) {
         val request = OneTimeWorkRequestBuilder<MemoryWorker>()
             .setInputData(workDataOf(MemoryWorker.KEY_CONTACT_ID to contactId))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())

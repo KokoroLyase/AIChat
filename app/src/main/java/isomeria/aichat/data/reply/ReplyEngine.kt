@@ -22,12 +22,13 @@ import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.llm.ChatEvent
 import isomeria.aichat.data.llm.ChatRequest
 import isomeria.aichat.data.llm.LlmException
-import isomeria.aichat.data.memory.MemoryScheduler
+import isomeria.aichat.core.Clock
+import isomeria.aichat.data.memory.MemoryQueue
+import isomeria.aichat.data.memory.NicknameSource
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.data.repo.FileStorage
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.repo.UsageRepository
-import isomeria.aichat.data.settings.SettingsStore
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -49,12 +50,13 @@ class ReplyEngine @Inject constructor(
     private val memoryDao: MemoryDao,
     private val providers: ProviderRepository,
     private val usage: UsageRepository,
-    private val memoryScheduler: MemoryScheduler,
-    private val settings: SettingsStore,
+    private val memoryScheduler: MemoryQueue,
+    private val nicknames: NicknameSource,
     private val files: FileStorage,
     private val contextBuilder: ContextBuilder,
     private val alerts: ReplyAlerts,
     private val activeChat: ActiveChatTracker,
+    private val clock: Clock,
 ) {
     suspend fun run(contactId: Long) = isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
 
@@ -70,8 +72,8 @@ class ReplyEngine @Inject constructor(
         val config = snapshot.config
         val endpoint = snapshot.endpoint
         val supportsImage = snapshot.supportsImage
-        val startedAt = System.currentTimeMillis()
-        val nickname = settings.nickname.value
+        val startedAt = clock.now()
+        val nickname = nicknames.nickname()
 
         // 预算 = 系统提示词 + 记忆 + 聊天记录。记忆最多占 1/4，放不下的这次先不带
         val estimator = TokenEstimator.forProtocol(config.provider)
@@ -109,7 +111,7 @@ class ReplyEngine @Inject constructor(
                 when (event) {
                     is ChatEvent.Reasoning -> reasoning.append(event.delta)
                     is ChatEvent.Content -> {
-                        if (firstContentAt == 0L) firstContentAt = System.currentTimeMillis()
+                        if (firstContentAt == 0L) firstContentAt = clock.now()
                         content.append(event.delta)
                     }
                     is ChatEvent.Usage -> {
@@ -131,7 +133,7 @@ class ReplyEngine @Inject constructor(
             return
         }
         val parts = if (contact.splitReplies) ReplySplitter.split(text).ifEmpty { listOf(text) } else listOf(text)
-        val finishedAt = System.currentTimeMillis()
+        val finishedAt = clock.now()
         val thinkingMillis = if (reasoning.isNotEmpty()) {
             (if (firstContentAt > 0) firstContentAt else finishedAt) - startedAt
         } else {
