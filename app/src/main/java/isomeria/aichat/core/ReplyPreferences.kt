@@ -32,12 +32,12 @@ data class ReplyPreferences(
     }
 
     companion object {
-        const val DEFAULT_WAIT_SECONDS = 3
-        const val DEFAULT_TARGET_LENGTH = 14
+        const val DEFAULT_WAIT_SECONDS = 1
+        const val DEFAULT_TARGET_LENGTH = 16
         const val DEFAULT_MIN_COUNT = 1
-        const val DEFAULT_MAX_COUNT = 5
-        const val DEFAULT_MIN_INTERVAL = 3
-        const val DEFAULT_MAX_INTERVAL = 10
+        const val DEFAULT_MAX_COUNT = 3
+        const val DEFAULT_MIN_INTERVAL = 2
+        const val DEFAULT_MAX_INTERVAL = 4
 
         val WAIT_RANGE = 0..30
         val LENGTH_RANGE = 2..200

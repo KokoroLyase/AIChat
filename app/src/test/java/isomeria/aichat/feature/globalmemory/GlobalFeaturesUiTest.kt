@@ -155,8 +155,8 @@ class GlobalFeaturesUiTest {
         compose.onNodeWithContentDescription(text(R.string.reply_pref_decrease, text(R.string.reply_pref_max_interval))).performScrollTo().performClick()
         compose.onNodeWithContentDescription("${text(R.string.reply_pref_min_interval)} 9 秒").assertExists()
         compose.onNodeWithText(text(R.string.reply_pref_reset)).performScrollTo().performClick()
-        compose.onNodeWithContentDescription("${text(R.string.reply_pref_wait)} 3 秒").performScrollTo().assertExists()
-        compose.onNodeWithContentDescription("${text(R.string.reply_pref_max_count)} 5 条").assertExists()
+        compose.onNodeWithContentDescription("${text(R.string.reply_pref_wait)} 1 秒").performScrollTo().assertExists()
+        compose.onNodeWithContentDescription("${text(R.string.reply_pref_max_count)} 3 条").assertExists()
     }
 
     @Test

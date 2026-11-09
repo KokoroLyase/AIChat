@@ -275,7 +275,7 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         queue = queue,
     )
 
-    var preferences = isomeria.aichat.core.ReplyPreferences()
+    var preferences = isomeria.aichat.core.RHYTHM_TEST_PREFERENCES
 
     /** 「稍等几秒」请求的等待；假装等完，时钟往前走 */
     val sleeps = mutableListOf<Long>()

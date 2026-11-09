@@ -217,7 +217,7 @@ class ContextBuilderTest {
             "全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n- 养了一只猫\n[个人信息 / 饮食]\n- 不吃香菜\n[工作 / 职业]\n- 后端开发" +
                 "\n\n人设" +
                 "\n\n下面是记忆：\n- [2026年11月1日] 喜欢拿铁" +
-                "\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。" +
+                "\n\n回复方式：每次 1～3 条，每条 16 字左右，用换行分隔。" +
                 "\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。",
             prompt,
         )
@@ -255,6 +255,6 @@ class ContextBuilderTest {
     fun replyStyle_usesSingleCountWhenMinEqualsMax_andNormalizes() {
         assertEquals("回复方式：每次 3 条，每条 20 字左右，用换行分隔。", full.replyStyleBlock(ReplyPreferences(minCount = 3, maxCount = 3, targetLength = 20)))
         // 最多小于最少时按最少算
-        assertEquals("回复方式：每次 4 条，每条 14 字左右，用换行分隔。", full.replyStyleBlock(ReplyPreferences(minCount = 4, maxCount = 2)))
+        assertEquals("回复方式：每次 4 条，每条 16 字左右，用换行分隔。", full.replyStyleBlock(ReplyPreferences(minCount = 4, maxCount = 2)))
     }
 }

@@ -7,7 +7,7 @@ import kotlin.random.Random
 
 /** 回复偏好的纯逻辑：拆条、尾部合并、句尾标点、间隔、第一条扣掉生成时间、稍等几秒。 */
 class ReplyRhythmTest {
-    private val defaults = ReplyPreferences()
+    private val defaults = RHYTHM_TEST_PREFERENCES
 
     /** 随机量恒为 0，间隔只看字数 */
     private val noJitter = object : Random() {
@@ -140,5 +140,29 @@ class ReplyRhythmTest {
         assertEquals(0, ReplyRhythm.waitBeforeReply(10_000, 20_000, defaults))
         assertEquals(0, ReplyRhythm.waitBeforeReply(10_000, 10_000, defaults.copy(waitSeconds = 0)))
         assertEquals(30_000, ReplyRhythm.waitBeforeReply(10_000, 10_000, defaults.copy(waitSeconds = 99)))
+    }
+
+    // ---------- 默认值 ----------
+
+    @Test
+    fun defaults_areTheValuesChosenAfterDeviceTesting() {
+        // 用户实机试用后定下的默认值：等 1 秒、每条约 16 字、每轮 1～3 条、去句尾标点、间隔 2～4 秒
+        assertEquals(
+            ReplyPreferences(
+                waitSeconds = 1, targetLength = 16, minCount = 1, maxCount = 3,
+                stripPunctuation = true, minIntervalSeconds = 2, maxIntervalSeconds = 4,
+            ),
+            ReplyPreferences(),
+        )
+        val p = ReplyPreferences()
+        assertEquals(p, p.normalized())
+        // 默认下：说完 1 秒开始回复；短的一条隔 2 秒，一条 16 字隔 4 秒，再长也不超过 4 秒
+        assertEquals(1_000, ReplyRhythm.waitBeforeReply(10_000, 10_000, p))
+        assertEquals(2_000, ReplyRhythm.interval("好的", p, noJitter))
+        assertEquals(4_000, ReplyRhythm.interval("一".repeat(16), p, noJitter))
+        assertEquals(4_000, ReplyRhythm.interval("一".repeat(100), p, Random(42)))
+        // 没换行的一大段按 16 字左右断句，最多 3 条
+        val parts = ReplyRhythm.split("今天下雨了。我没带伞，只好在楼下等。你那边呢？也下雨了吗？我们晚上还去吃饭吗？还是改天吧。", p)
+        assertTrue(parts.size in 2..3)
     }
 }
