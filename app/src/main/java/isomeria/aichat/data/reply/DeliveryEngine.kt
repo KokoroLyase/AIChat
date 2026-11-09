@@ -16,6 +16,7 @@ import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.memory.MemoryQueue
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -105,23 +106,34 @@ class DeliveryEngine @Inject constructor(
 /**
  * 投递任务：每个联系人一个唯一任务 `deliver-{contactId}`，和回复任务 `reply-{contactId}` 分开，
  * 用户又发消息替换回复任务时不会把投递一起取消。重试时（runAttemptCount > 0）照常继续投递。
+ *
+ * 开始时和回复任务一样申请转为前台任务：条与条之间要等几秒，只靠普通任务时，部分系统（真机 HyperOS）
+ * 会在 App 退到后台约 2 秒后冻结进程，后几条要等系统解冻（实测约 1 分钟）才送达。投递通常在回复任务
+ * 还是前台任务时排上，这时允许；系统不允许时照常以普通任务执行。Android 12 起前台通知延迟约 10 秒显示，
+ * 所以只有投递较久时才会看到「正在接收消息」。
  */
 @HiltWorker
 class DeliveryWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
     private val engine: DeliveryEngine,
-    private val notifier: ReplyNotifier,
+    private val foreground: ReceivingForeground,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
         val contactId = inputData.getLong(KEY_CONTACT_ID, -1L)
         if (contactId < 0) return Result.failure()
+        try {
+            setForeground(getForegroundInfo())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // 系统不允许从后台启动前台服务，继续以普通任务执行
+        }
         engine.run(contactId)
         return Result.success()
     }
 
-    /** 只在系统要求时用（Android 12 以下的加急任务）；平时投递不显示前台通知 */
-    override suspend fun getForegroundInfo(): ForegroundInfo = notifier.receivingForegroundInfo()
+    override suspend fun getForegroundInfo(): ForegroundInfo = foreground.receivingForegroundInfo()
 
     companion object {
         const val KEY_CONTACT_ID = "contact_id"

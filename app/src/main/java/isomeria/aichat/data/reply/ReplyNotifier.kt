@@ -27,6 +27,11 @@ import isomeria.aichat.data.settings.SettingsStore
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** 后台任务转为前台时用的「正在接收消息」通知；单独成接口，投递任务的测试不必构造 MMKV。 */
+fun interface ReceivingForeground {
+    fun receivingForegroundInfo(): ForegroundInfo
+}
+
 /**
  * 通知：回复到达提醒（标题为联系人名称，内容为回复预览），以及等待较久时的「正在接收消息」常驻通知。
  */
@@ -34,7 +39,7 @@ import javax.inject.Singleton
 class ReplyNotifier @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settings: SettingsStore,
-) : ReplyNotifications {
+) : ReplyNotifications, ReceivingForeground {
     private val manager = NotificationManagerCompat.from(context)
 
     fun createChannels() {
@@ -93,7 +98,7 @@ class ReplyNotifier @Inject constructor(
     }
 
     /** 等待较久时转为前台任务。系统会延迟约 10 秒才显示这条通知，回复很快时用户看不到它。 */
-    fun receivingForegroundInfo(): ForegroundInfo {
+    override fun receivingForegroundInfo(): ForegroundInfo {
         val notification = NotificationCompat.Builder(context, CHANNEL_RECEIVING)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(BRAND_COLOR)

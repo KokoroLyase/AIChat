@@ -185,6 +185,8 @@ abstract class BindingsModule {
 
     @Binds abstract fun replyNotifications(impl: ReplyNotifier): ReplyNotifications
 
+    @Binds abstract fun receivingForeground(impl: ReplyNotifier): isomeria.aichat.data.reply.ReceivingForeground
+
     @Binds abstract fun backupSettings(impl: SettingsStoreBackupAccess): BackupSettingsAccess
 
     @Binds abstract fun updatePrefs(impl: SettingsStore): UpdatePrefs
