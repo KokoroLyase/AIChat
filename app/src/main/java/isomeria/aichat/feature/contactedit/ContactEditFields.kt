@@ -24,10 +24,19 @@ enum class ContactEditField(@StringRes val label: Int, @StringRes val hint: Int 
     AUTO_MEMORY(R.string.contact_auto_memory),
 }
 
-/** 「朋友资料」下的小字：编辑朋友的头像、名称……等 */
+/**
+ * 「朋友资料」下的小字：编辑朋友的头像、名称……等。
+ * [keepItemsTogether] 为 true 时在每个项目的字之间插入不可见的 WORD JOINER，换行只落在项目之间，只用于显示。
+ */
 @Composable
-fun contactProfileHint(): String {
+fun contactProfileHint(keepItemsTogether: Boolean = false): String {
     val separator = stringResource(R.string.list_separator)
     val items = ContactEditField.entries.map { stringResource(it.hint) }
+        .map { if (keepItemsTogether) it.keepTogether() else it }
     return stringResource(R.string.contact_profile_hint, items.joinToString(separator))
 }
+
+private const val WORD_JOINER = '\u2060'
+
+/** 字与字之间都不许断行 */
+internal fun String.keepTogether(): String = toList().joinToString(WORD_JOINER.toString())

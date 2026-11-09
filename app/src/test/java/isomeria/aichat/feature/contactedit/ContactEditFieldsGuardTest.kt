@@ -33,7 +33,7 @@ class ContactEditFieldsGuardTest {
         "contact_delete_confirm", "contact_discard", "contact_discard_title", "contact_edit_title", "contact_edit_title_new",
         "contact_model_empty", "contact_model_image", "contact_model_pending", "contact_model_pending_required",
         "contact_model_pick", "contact_model_pick_first", "contact_model_required", "contact_model_thinking",
-        "contact_model_unavailable", "contact_name_hint", "contact_name_required", "contact_prompt_hint",
+        "contact_model_unavailable", "contact_name_hint", "contact_name_required", "contact_prompt_empty", "contact_prompt_hint",
         "contact_provider_pick", "contact_split_hint",
     )
 
@@ -59,5 +59,16 @@ class ContactEditFieldsGuardTest {
         val separator = app.getString(R.string.list_separator)
         val text = app.getString(R.string.contact_profile_hint, ContactEditField.entries.joinToString(separator) { app.getString(it.hint) })
         assertEquals("编辑朋友的头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文上限、是否分条显示、自动记忆等", text)
+    }
+
+    /** 显示用的小字只在项目字间多了不可见的 WORD JOINER：去掉后和原文一样，“、”前后不加 */
+    @Test
+    fun keepTogetherOnlyJoinsInsideItems() {
+        assertEquals("思\u2060考\u2060强\u2060度", "思考强度".keepTogether())
+        assertEquals("头", "头".keepTogether())
+        val separator = app.getString(R.string.list_separator)
+        val shown = app.getString(R.string.contact_profile_hint, ContactEditField.entries.joinToString(separator) { app.getString(it.hint).keepTogether() })
+        assertEquals("编辑朋友的头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文上限、是否分条显示、自动记忆等", shown.replace("\u2060", ""))
+        assertTrue(shown.split(separator).all { !it.startsWith("\u2060") && !it.endsWith("\u2060") })
     }
 }

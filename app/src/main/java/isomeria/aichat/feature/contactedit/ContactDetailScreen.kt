@@ -228,13 +228,7 @@ fun ContactDetailContent(
             ConfigActionRow(stringResource(R.string.contact_memory_issue), stringResource(configurationIssueText(issue, memory = true)), titleColor = colors.dangerText, onClick = onOpenMemory)
         }
         GroupSpacer()
-        ConfigActionRow(
-            title = stringResource(R.string.contact_profile),
-            value = "",
-            detail = contactProfileHint(),
-            showDivider = true,
-            onClick = onEdit,
-        )
+        ProfileRow(onClick = onEdit)
         WeListRow(
             title = stringResource(R.string.memory_title),
             value = if (state.memoryCount > 0) stringResource(R.string.memory_count, state.memoryCount) else null,
@@ -254,6 +248,16 @@ internal fun temperatureLabel(value: RequestTemperature): String = when (value) 
     RequestTemperature.NotSent -> stringResource(R.string.rule_no_send)
     is RequestTemperature.Blocked -> temperatureText(value.saved)
 }
+
+/** 「朋友资料」：每个项目不在中间断行（不会出现“思考强/度”），只在“、”后面换行 */
+@Composable
+private fun ProfileRow(onClick: () -> Unit) = DetailEntryRow(
+    title = stringResource(R.string.contact_profile),
+    detail = contactProfileHint(),
+    shown = contactProfileHint(keepItemsTogether = true),
+    showDivider = true,
+    onClick = onClick,
+)
 
 @Composable
 private fun ActionRow(icon: ImageVector, text: String, onClick: () -> Unit) {
