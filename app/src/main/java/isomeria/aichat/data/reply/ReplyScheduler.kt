@@ -54,13 +54,17 @@ class ReplyScheduler @Inject constructor(@ApplicationContext private val context
     override suspend fun isActive(contactId: Long): Boolean =
         workManager.getWorkInfosForUniqueWorkFlow(uniqueName(contactId)).first().any { !it.state.isFinished }
 
-    override fun enqueueDelivery(contactId: Long) {
+    override fun enqueueDelivery(contactId: Long) = enqueueDelivery(contactId, ExistingWorkPolicy.APPEND_OR_REPLACE)
+
+    override fun restartDelivery(contactId: Long) = enqueueDelivery(contactId, ExistingWorkPolicy.REPLACE)
+
+    private fun enqueueDelivery(contactId: Long, policy: ExistingWorkPolicy) {
         val request = OneTimeWorkRequestBuilder<DeliveryWorker>()
             .setInputData(workDataOf(DeliveryWorker.KEY_CONTACT_ID to contactId))
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .addTag(DELIVERY_TAG)
             .build()
-        workManager.enqueueUniqueWork(deliveryName(contactId), ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        workManager.enqueueUniqueWork(deliveryName(contactId), policy, request)
     }
 
     override fun cancelDelivery(contactId: Long) {

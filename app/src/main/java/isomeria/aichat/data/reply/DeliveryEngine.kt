@@ -86,7 +86,7 @@ class DeliveryEngine @Inject constructor(
         for (contactId in messages.contactsWithPending()) {
             val delivered = deliverDueAndNotify(contactId)
             if (messages.hasPending(contactId)) {
-                queue.enqueueDelivery(contactId)
+                queue.restartDelivery(contactId)
             } else if (delivered && db.contactDao().get(contactId)?.autoMemory == true) {
                 memoryQueue.enqueue(contactId)
             }

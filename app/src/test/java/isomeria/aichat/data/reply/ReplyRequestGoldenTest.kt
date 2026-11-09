@@ -305,6 +305,8 @@ internal class RecordingQueue : ReplyQueue {
     val deliveryCancelled = mutableListOf<Long>()
     override fun enqueue(contactId: Long) { enqueued += contactId }
     override fun enqueueDelivery(contactId: Long) { deliveries += contactId }
+    val restarts = mutableListOf<Long>()
+    override fun restartDelivery(contactId: Long) { restarts += contactId }
     override fun cancel(contactId: Long) { cancelled += contactId }
     override suspend fun isActive(contactId: Long) = false
     override fun cancelDelivery(contactId: Long) { deliveryCancelled += contactId }

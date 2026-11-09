@@ -165,7 +165,9 @@ class DeliveryTest {
         chats.markInterruptedRequests()
         h.delivery.recover()
         assertEquals(listOf("好的" to MessageStatus.SUCCESS, "马上来" to MessageStatus.PENDING), statuses())
-        assertEquals(listOf(id), h.queue.deliveries)
+        // 替换上一个进程留下的投递任务，不接在它后面（它在重试退避里，接在后面要等退避结束）
+        assertEquals(listOf(id), h.queue.restarts)
+        assertTrue(h.queue.deliveries.isEmpty())
         assertEquals(1, conversation().unreadCount)
         // 投递任务接着跑：剩下的一条送达，消息条数不变、没有重复
         h.delivery.run(id)
@@ -183,6 +185,7 @@ class DeliveryTest {
         h.delivery.recover()
         assertTrue(statuses().all { it.second == MessageStatus.SUCCESS })
         assertTrue(h.queue.deliveries.isEmpty())
+        assertTrue(h.queue.restarts.isEmpty())
         assertEquals(2, conversation().unreadCount)
         assertEquals(listOf(id), h.memoryQueue)
     }

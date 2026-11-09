@@ -17,7 +17,14 @@ interface ReplyNotifications {
 interface ReplyQueue : ReplyControl {
     fun enqueue(contactId: Long)
 
+    /** 生成了新一轮：接在正在跑的投递后面，不打断它 */
     fun enqueueDelivery(contactId: Long)
+
+    /**
+     * 启动恢复时用：替换上一个进程留下的投递任务。进程被杀时 WorkManager 把它留在重试退避里（约 30 秒），
+     * 接在它后面排队的话，还没到点的几条要等退避结束才送达（真机实测晚了约 15 秒）。
+     */
+    fun restartDelivery(contactId: Long) = enqueueDelivery(contactId)
 }
 
 /**

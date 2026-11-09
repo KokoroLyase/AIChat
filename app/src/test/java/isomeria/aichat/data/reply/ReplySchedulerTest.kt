@@ -88,4 +88,25 @@ class ReplySchedulerTest {
         withTimeout(10_000) { while (scheduler.isDelivering(1)) delay(20) }
         assertTrue(states("deliver-1").all { it == WorkInfo.State.CANCELLED })
     }
+
+    @Test
+    fun restartAtLaunch_replacesTheLeftoverDelivery_insteadOfQueueingBehindIt() = runBlocking {
+        // 上一个进程留下的投递任务还没结束（真机上它在重试退避里）
+        scheduler.enqueueDelivery(2)
+        awaitRunning("deliver-2")
+        val leftover = WorkManager.getInstance(context).getWorkInfosForUniqueWork("deliver-2").get().single().id
+
+        scheduler.restartDelivery(2)
+        // 新任务立即在跑，没有排在旧任务后面（BLOCKED）；旧任务不再运行
+        val infos = withTimeout(10_000) {
+            var infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork("deliver-2").get()
+            while (infos.none { it.id != leftover && it.state == WorkInfo.State.RUNNING }) {
+                delay(20)
+                infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork("deliver-2").get()
+            }
+            infos
+        }
+        assertEquals(listOf(WorkInfo.State.RUNNING), infos.filter { it.id != leftover }.map { it.state })
+        assertTrue(infos.filter { it.id == leftover }.all { it.state == WorkInfo.State.CANCELLED })
+    }
 }
