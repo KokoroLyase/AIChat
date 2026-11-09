@@ -130,7 +130,7 @@ class ScreenshotTest {
     private fun Contacts() = WithTabs(1) { ContactsContent(previewSections, {}, {}, {}) }
 
     @Composable
-    private fun Me(state: SettingsUiState = SettingsUiState(hasKey = true)) = WithTabs(2) { MeContent("Isomeria", null, {}) { SettingsList(state, SettingsNavigation(), SettingsActions()) } }
+    private fun Me() = WithTabs(2) { MeContent("Isomeria", null, {}, {}) }
 
     @Test fun chatListLight() = shot("1-chatlist", false) { ChatList() }
 
@@ -636,19 +636,23 @@ class ScreenshotTest {
     @Test fun contactDetailLargeDark() = large("54-contact-detail-large", true) { ContactDetailContent(detailNotSent.copy(temperature = RequestTemperature.Blocked(2.5f), chatIssue = ConfigurationIssue.TEMPERATURE), {}, {}, {}, {}) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contactDetailNarrow() = large("54-contact-detail-narrow", false) { ContactDetailContent(detailFixed, {}, {}, {}, {}) }
 
-    // ---------- 0.4.2「我」页：设置并入四个分栏 ----------
+    // ---------- 0.4.2「我」页：四个入口，各进一栏设置页 ----------
 
-    private fun meBottom(name: String, dark: Boolean, large: Boolean) {
-        val state = SettingsUiState(hasKey = true, canNotify = false, newerVersion = "0.4.3")
-        if (large) large(name, dark) { Me(state) } else shot(name, dark) { Me(state) }
-        compose.onNodeWithText("GitHub 仓库").performScrollTo()
-        compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
-    }
-    @Test fun meBottomLight() = meBottom("55-me-bottom", false, large = false)
-    @Test fun meBottomDark() = meBottom("55-me-bottom", true, large = false)
-    @Test fun meLargeLight() = large("55-me-large", false) { Me(SettingsUiState(hasKey = false, canNotify = false)) }
-    @Test fun meLargeDark() = meBottom("55-me-large-bottom", true, large = true)
-    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun meNarrow() = large("55-me-narrow", false) { Me(SettingsUiState(hasKey = true, canNotify = false)) }
+    private val settingsSample = SettingsUiState(hasKey = true, canNotify = false, newerVersion = "0.4.3")
+    @Composable private fun section(section: SettingsSection) = SettingsSectionContent(section, settingsSample, {}, SettingsNavigation(), SettingsActions())
+    @Test fun meLargeLight() = large("55-me-large", false) { Me() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun meNarrow() = large("55-me-narrow", true) { Me() }
+    @Test fun settingsModelsLight() = shot("56-settings-models", false) { section(SettingsSection.MODELS) }
+    @Test fun settingsModelsDark() = shot("56-settings-models", true) { section(SettingsSection.MODELS) }
+    @Test fun settingsGeneralLight() = shot("56-settings-general", false) { section(SettingsSection.GENERAL) }
+    @Test fun settingsGeneralDark() = shot("56-settings-general", true) { section(SettingsSection.GENERAL) }
+    @Test fun settingsDataLight() = shot("56-settings-data", false) { section(SettingsSection.DATA) }
+    @Test fun settingsDataDark() = shot("56-settings-data", true) { section(SettingsSection.DATA) }
+    @Test fun settingsAboutLight() = shot("56-settings-about", false) { section(SettingsSection.ABOUT) }
+    @Test fun settingsAboutDark() = shot("56-settings-about", true) { section(SettingsSection.ABOUT) }
+    @Test fun settingsGeneralLarge() = large("56-settings-general-large", false) { section(SettingsSection.GENERAL) }
+    @Test fun settingsAboutLarge() = large("56-settings-about-large", true) { section(SettingsSection.ABOUT) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun settingsDataNarrow() = large("56-settings-data-narrow", false) { section(SettingsSection.DATA) }
 
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun chatBackgroundNarrow() = large("53-chat-background-narrow", true) { ChatPageSample(background = stripes) }
 }

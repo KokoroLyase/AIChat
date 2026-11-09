@@ -33,6 +33,8 @@ import isomeria.aichat.feature.settings.ModelEditScreen
 import isomeria.aichat.feature.settings.ProviderEditScreen
 import isomeria.aichat.feature.settings.ProviderListScreen
 import isomeria.aichat.feature.settings.SettingsNavigation
+import isomeria.aichat.feature.settings.SettingsSection
+import isomeria.aichat.feature.settings.SettingsSectionScreen
 import isomeria.aichat.feature.settings.CrashLogsScreen
 import isomeria.aichat.feature.settings.StorageScreen
 import isomeria.aichat.feature.usage.UsageDetailScreen
@@ -62,6 +64,8 @@ import kotlinx.serialization.Serializable
 /** 某一天各联系人的用量，或某个联系人每天的用量；不用的条件是 [NO_USAGE_FILTER] */
 @Serializable data class UsageDetailRoute(val day: Long = NO_USAGE_FILTER, val contactId: Long = NO_USAGE_FILTER)
 @Serializable data object LicensesRoute
+/** 「我」页的一栏设置；[section] 是 [SettingsSection] 的名字 */
+@Serializable data class SettingsSectionRoute(val section: String)
 @Serializable data object ProfileRoute
 @Serializable data object SearchRoute
 @Serializable data class ChatInfoRoute(val contactId: Long)
@@ -109,7 +113,14 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onNewContact = { nav.navigate(ContactEditRoute()) },
                 onSearch = { nav.navigate(SearchRoute) },
                 onOpenProfile = { nav.navigate(ProfileRoute) },
-                settings = SettingsNavigation(
+                onOpenSettings = { nav.navigate(SettingsSectionRoute(it.name)) },
+            )
+        }
+        page<SettingsSectionRoute>(nav) { entry ->
+            SettingsSectionScreen(
+                section = SettingsSection.valueOf(entry.toRoute<SettingsSectionRoute>().section),
+                onBack = nav::popBackStackSafely,
+                navigation = SettingsNavigation(
                     onOpenLlm = { nav.navigate(ProviderListRoute) },
                     onOpenUsage = { nav.navigate(UsageRoute) },
                     onOpenLicenses = { nav.navigate(LicensesRoute) },

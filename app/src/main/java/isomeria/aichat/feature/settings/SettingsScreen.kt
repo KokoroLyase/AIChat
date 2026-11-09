@@ -4,7 +4,13 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -36,7 +42,8 @@ import isomeria.aichat.data.settings.SettingsStore
 import isomeria.aichat.data.settings.ThemeMode
 import isomeria.aichat.di.ApplicationScope
 import isomeria.aichat.ui.components.FootnoteText
-import isomeria.aichat.ui.components.SectionHeader
+import isomeria.aichat.ui.components.GroupSpacer
+import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.UnreadBadge
 import isomeria.aichat.ui.components.WeActionSheet
@@ -97,7 +104,15 @@ class SettingsViewModel @Inject constructor(
     }
 }
 
-/** 「我」页设置分栏要打开的页面 */
+/** 「我」页的四个设置入口，每个进入自己的设置页（0.4.2 起代替单独的「设置」页） */
+enum class SettingsSection(@androidx.annotation.StringRes val title: Int) {
+    MODELS(R.string.settings_group_models),
+    GENERAL(R.string.settings_group_general),
+    DATA(R.string.settings_group_data),
+    ABOUT(R.string.settings_group_about),
+}
+
+/** 设置页里要打开的下一级页面 */
 data class SettingsNavigation(
     val onOpenLlm: () -> Unit = {},
     val onOpenUsage: () -> Unit = {},
@@ -108,7 +123,7 @@ data class SettingsNavigation(
     val onOpenStorage: () -> Unit = {},
 )
 
-/** 设置分栏显示用的状态 */
+/** 设置页显示用的状态 */
 data class SettingsUiState(
     val hasKey: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -123,7 +138,7 @@ data class SettingsUiState(
     val githubRepo: String = BuildConfig.GITHUB_REPO,
 )
 
-/** 设置分栏里的操作：跳转之外的点击和开关 */
+/** 设置页里跳转之外的点击和开关 */
 data class SettingsActions(
     val onTheme: () -> Unit = {},
     val onFont: () -> Unit = {},
@@ -138,11 +153,16 @@ data class SettingsActions(
 )
 
 /**
- * 0.4.2 起设置不再是单独的页面，全部放进「我」页，分「模型服务」「通用设置」「数据管理」「关于 APP」四栏。
- * 这里负责状态、弹窗和系统跳转；行本身由 [SettingsList] 画。放在调用方的滚动列里。
+ * 一栏的设置页：「我」→ 模型服务 / 通用设置 / 数据管理 / 关于 APP。
+ * 管状态、弹窗和系统跳转，行由 [SettingsSectionList] 画。各栏的行和 0.4.1 设置页对应分组一一对应。
  */
 @Composable
-fun SettingsSections(navigation: SettingsNavigation, viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsSectionScreen(
+    section: SettingsSection,
+    onBack: () -> Unit,
+    navigation: SettingsNavigation,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
     val context = LocalContext.current
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val fontSize by viewModel.fontSize.collectAsStateWithLifecycle()
@@ -177,7 +197,8 @@ fun SettingsSections(navigation: SettingsNavigation, viewModel: SettingsViewMode
         }
     }
 
-    SettingsList(
+    SettingsSectionContent(
+        section = section,
         state = SettingsUiState(
             hasKey = hasKey,
             themeMode = themeMode,
@@ -188,6 +209,7 @@ fun SettingsSections(navigation: SettingsNavigation, viewModel: SettingsViewMode
             autoCheckUpdate = autoCheckUpdate,
             newerVersion = newerRelease?.version,
         ),
+        onBack = onBack,
         navigation = navigation,
         actions = SettingsActions(
             onTheme = { showTheme = true },
@@ -263,106 +285,138 @@ fun SettingsSections(navigation: SettingsNavigation, viewModel: SettingsViewMode
     }
 }
 
-/** 设置的四个分栏，行和 0.4.1 的设置页一一对应 */
+/** 一栏设置页的外观：顶栏标题是栏名，下面是这一栏的行 */
 @Composable
-fun SettingsList(state: SettingsUiState, navigation: SettingsNavigation, actions: SettingsActions) {
-    val colors = WeTheme.colors
-    SectionHeader(stringResource(R.string.settings_group_models))
-    WeListRow(
-        title = stringResource(R.string.settings_llm),
-        value = if (state.hasKey) stringResource(R.string.llm_api_key_set) else stringResource(R.string.llm_api_key_missing),
-        onClick = navigation.onOpenLlm,
-        showDivider = true,
-    )
-    WeListRow(title = stringResource(R.string.usage_title), onClick = navigation.onOpenUsage, showDivider = true)
-    WeListRow(
-        title = stringResource(R.string.settings_tts),
-        value = stringResource(R.string.coming_soon),
-        showArrow = false,
-        showDivider = true,
-        enabled = false,
-    )
-    WeListRow(
-        title = stringResource(R.string.settings_asr),
-        value = stringResource(R.string.coming_soon),
-        showArrow = false,
-        enabled = false,
-    )
-
-    SectionHeader(stringResource(R.string.settings_group_general))
-    WeListRow(
-        title = stringResource(R.string.settings_dark_mode),
-        value = stringResource(themeLabel(state.themeMode)),
-        onClick = actions.onTheme,
-        showDivider = true,
-    )
-    WeListRow(
-        title = stringResource(R.string.settings_font_size),
-        value = stringResource(fontLabel(state.fontSize)),
-        onClick = actions.onFont,
-        showDivider = true,
-    )
-    WeListRow(
-        title = stringResource(R.string.settings_notify),
-        showArrow = false,
-        showDivider = true,
-        trailing = { WeSwitch(state.notifyEnabled, actions.onNotifyEnabled) },
-    )
-    WeListRow(
-        title = stringResource(R.string.settings_notify_preview),
-        showArrow = false,
-        showDivider = true,
-        enabled = state.notifyEnabled,
-        trailing = { WeSwitch(state.notifyPreview, actions.onNotifyPreview, enabled = state.notifyEnabled) },
-    )
-    if (state.notifyEnabled && !state.canNotify) {
-        WeListRow(
-            title = stringResource(R.string.settings_notify_permission_off),
-            titleColor = colors.danger,
-            titleStyle = WeTheme.typography.small,
-            onClick = actions.onNotifyPermission,
-            showDivider = true,
-        )
+fun SettingsSectionContent(
+    section: SettingsSection,
+    state: SettingsUiState,
+    onBack: () -> Unit,
+    navigation: SettingsNavigation,
+    actions: SettingsActions,
+) {
+    Column(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) {
+        WeTopBar(title = stringResource(section.title), onBack = onBack)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
+            GroupSpacer()
+            SettingsSectionList(section, state, navigation, actions)
+            Spacer(Modifier.height(24.dp))
+        }
     }
-    WeListRow(title = stringResource(R.string.settings_battery), onClick = actions.onBattery)
-    FootnoteText(stringResource(R.string.settings_battery_hint))
+}
 
-    SectionHeader(stringResource(R.string.settings_group_data))
-    WeListRow(title = stringResource(R.string.storage_title), onClick = navigation.onOpenStorage, showDivider = true)
-    WeListRow(title = stringResource(R.string.settings_export), onClick = navigation.onOpenExport, showDivider = true)
-    WeListRow(title = stringResource(R.string.settings_restore), onClick = navigation.onOpenRestore, showDivider = true)
-    WeListRow(title = stringResource(R.string.settings_clear_all), onClick = actions.onClearAll, showArrow = false)
-    FootnoteText(stringResource(R.string.settings_data_notice))
-
-    SectionHeader(stringResource(R.string.settings_group_about))
-    WeListRow(title = stringResource(R.string.crash_title), onClick = navigation.onOpenCrashLogs, showDivider = true)
-    WeListRow(
-        title = stringResource(R.string.settings_version),
-        value = state.versionName,
-        showArrow = false,
-        showDivider = true,
-    )
-    WeListRow(
-        title = stringResource(R.string.settings_check_update),
-        showArrow = false,
-        value = state.newerVersion?.let { stringResource(R.string.settings_new_version, it) },
-        trailing = if (state.newerVersion != null) {
-            { UnreadBadge(0, dotOnly = true) }
-        } else {
-            null
-        },
-        onClick = actions.onCheckUpdate,
-        showDivider = true,
-    )
-    WeListRow(
-        title = stringResource(R.string.settings_auto_update),
-        showArrow = false,
-        showDivider = true,
-        trailing = { WeSwitch(state.autoCheckUpdate, actions.onAutoCheckUpdate) },
-    )
-    WeListRow(title = stringResource(R.string.settings_licenses), onClick = navigation.onOpenLicenses, showDivider = true)
-    WeListRow(title = stringResource(R.string.settings_github), value = state.githubRepo, onClick = actions.onGithub)
-    Spacer(Modifier.height(24.dp))
+/** 一栏里的行，和 0.4.1 设置页的对应分组一致 */
+@Composable
+fun SettingsSectionList(section: SettingsSection, state: SettingsUiState, navigation: SettingsNavigation, actions: SettingsActions) {
+    val colors = WeTheme.colors
+    when (section) {
+        SettingsSection.MODELS -> {
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_llm),
+                value = if (state.hasKey) stringResource(R.string.llm_api_key_set) else stringResource(R.string.llm_api_key_missing),
+                onClick = navigation.onOpenLlm,
+                showDivider = true,
+            )
+            WeListRow(titleMaxLines = 2, title = stringResource(R.string.usage_title), onClick = navigation.onOpenUsage, showDivider = true)
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_tts),
+                value = stringResource(R.string.coming_soon),
+                showArrow = false,
+                showDivider = true,
+                enabled = false,
+            )
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_asr),
+                value = stringResource(R.string.coming_soon),
+                showArrow = false,
+                enabled = false,
+            )
+        }
+        SettingsSection.GENERAL -> {
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_dark_mode),
+                value = stringResource(themeLabel(state.themeMode)),
+                onClick = actions.onTheme,
+                showDivider = true,
+            )
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_font_size),
+                value = stringResource(fontLabel(state.fontSize)),
+                onClick = actions.onFont,
+                showDivider = true,
+            )
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_notify),
+                showArrow = false,
+                showDivider = true,
+                trailing = { WeSwitch(state.notifyEnabled, actions.onNotifyEnabled) },
+            )
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_notify_preview),
+                showArrow = false,
+                showDivider = true,
+                enabled = state.notifyEnabled,
+                trailing = { WeSwitch(state.notifyPreview, actions.onNotifyPreview, enabled = state.notifyEnabled) },
+            )
+            if (state.notifyEnabled && !state.canNotify) {
+                WeListRow(
+                titleMaxLines = 2,
+                    title = stringResource(R.string.settings_notify_permission_off),
+                    titleColor = colors.danger,
+                    titleStyle = WeTheme.typography.small,
+                    onClick = actions.onNotifyPermission,
+                    showDivider = true,
+                )
+            }
+            WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_battery), onClick = actions.onBattery)
+            FootnoteText(stringResource(R.string.settings_battery_hint))
+        }
+        SettingsSection.DATA -> {
+            WeListRow(titleMaxLines = 2, title = stringResource(R.string.storage_title), onClick = navigation.onOpenStorage, showDivider = true)
+            WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_export), onClick = navigation.onOpenExport, showDivider = true)
+            WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_restore), onClick = navigation.onOpenRestore, showDivider = true)
+            WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_clear_all), onClick = actions.onClearAll, showArrow = false)
+            FootnoteText(stringResource(R.string.settings_data_notice))
+        }
+        SettingsSection.ABOUT -> {
+            WeListRow(titleMaxLines = 2, title = stringResource(R.string.crash_title), onClick = navigation.onOpenCrashLogs, showDivider = true)
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_version),
+                value = state.versionName,
+                showArrow = false,
+                showDivider = true,
+            )
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_check_update),
+                showArrow = false,
+                value = state.newerVersion?.let { stringResource(R.string.settings_new_version, it) },
+                trailing = if (state.newerVersion != null) {
+                    { UnreadBadge(0, dotOnly = true) }
+                } else {
+                    null
+                },
+                onClick = actions.onCheckUpdate,
+                showDivider = true,
+            )
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_auto_update),
+                showArrow = false,
+                showDivider = true,
+                trailing = { WeSwitch(state.autoCheckUpdate, actions.onAutoCheckUpdate) },
+            )
+            WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_licenses), onClick = navigation.onOpenLicenses, showDivider = true)
+            WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_github), value = state.githubRepo, onClick = actions.onGithub)
+        }
+    }
 }
 
 private fun themeLabel(mode: ThemeMode) = when (mode) {
