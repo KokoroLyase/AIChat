@@ -169,6 +169,7 @@
     <string name="thinking_max">最高</string>
     <string name="contact_temperature">温度</string>
     <string name="contact_prompt">系统提示词</string>
+    <string name="contact_prompt_empty">未填写</string>
     <string name="contact_prompt_hint">定义人设和说话方式。{名称} 会自动替换为联系人名称</string>
     <string name="contact_context_tokens">上下文上限（token）</string>
     <string name="contact_context_tokens_hint">系统提示词、记忆和聊天记录合计不超过这个上限，超出时丢弃最早的消息。上限越高，每次请求消耗的额度越多</string>

@@ -99,6 +99,7 @@ fun ContactEditScreen(
     onDeleted: () -> Unit,
     onOpenProvider: (Long) -> Unit = {},
     onOpenModel: (Long, String) -> Unit = { _, _ -> },
+    onOpenPrompt: () -> Unit = {},
     viewModel: ContactEditViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -209,23 +210,7 @@ fun ContactEditScreen(
             }
 
             GroupSpacer()
-            Column(Modifier.fillMaxWidth().background(colors.listBackground).padding(dimens.horizontalPadding)) {
-                Text(stringResource(R.string.contact_prompt), style = WeTheme.typography.listTitle, color = colors.textPrimary)
-                Spacer(Modifier.height(10.dp))
-                BasicTextField(
-                    value = form.systemPrompt,
-                    onValueChange = { text -> viewModel.update { it.copy(systemPrompt = text) } },
-                    textStyle = WeTheme.typography.small.copy(color = colors.textPrimary, lineHeight = WeTheme.typography.thinking.lineHeight),
-                    cursorBrush = SolidColor(colors.brand),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 140.dp)
-                        .clip(RoundedCornerShape(dimens.inputCorner))
-                        .background(colors.pageBackground)
-                        .padding(10.dp),
-                )
-            }
-            FootnoteText(stringResource(R.string.contact_prompt_hint))
+            PromptRow(form.systemPrompt, onOpenPrompt)
 
             GroupSpacer()
             ContextBudgetRow(form.contextTokens, viewModel::setContextValue, state.contextInput,
@@ -317,6 +302,18 @@ fun ContactEditScreen(
             },
         )
     }
+}
+
+/** 「系统提示词」：提示词可能很长，单独一页编辑；这里只显示开头两行，没写时显示「未填写」 */
+@Composable
+internal fun PromptRow(prompt: String, onClick: () -> Unit) {
+    val preview = promptPreview(prompt)
+    DetailEntryRow(
+        title = stringResource(R.string.contact_prompt),
+        detail = preview ?: stringResource(R.string.contact_prompt_empty),
+        detailMaxLines = 2,
+        onClick = onClick,
+    )
 }
 
 @Composable

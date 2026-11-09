@@ -28,6 +28,8 @@ import isomeria.aichat.feature.chatinfo.previewChatInfo
 import isomeria.aichat.feature.chatlist.ChatListContent
 import isomeria.aichat.feature.chatlist.previewItems
 import isomeria.aichat.feature.contactedit.ContactDetailContent
+import isomeria.aichat.feature.contactedit.ContactPromptContent
+import isomeria.aichat.feature.contactedit.PromptRow
 import isomeria.aichat.feature.contactedit.previewState
 import isomeria.aichat.feature.contacts.ContactsContent
 import isomeria.aichat.feature.contacts.previewSections
@@ -41,6 +43,7 @@ import isomeria.aichat.data.llm.*
 import isomeria.aichat.data.db.*
 import isomeria.aichat.data.memory.MemoryTaskState
 import isomeria.aichat.data.repo.*
+import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ModelParameterControls
 import isomeria.aichat.ui.components.ThinkingSelector
 import isomeria.aichat.feature.settings.ProviderListContent
@@ -635,6 +638,19 @@ class ScreenshotTest {
     @Test fun contactDetailLargeLight() = large("54-contact-detail-large", false) { ContactDetailContent(detailFixed, {}, {}, {}, {}) }
     @Test fun contactDetailLargeDark() = large("54-contact-detail-large", true) { ContactDetailContent(detailNotSent.copy(temperature = RequestTemperature.Blocked(2.5f), chatIssue = ConfigurationIssue.TEMPERATURE), {}, {}, {}, {}) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contactDetailNarrow() = large("54-contact-detail-narrow", false) { ContactDetailContent(detailFixed, {}, {}, {}, {}) }
+
+    // ---------- 0.4.2 编辑联系人：系统提示词改为一行入口，单独一页编辑 ----------
+    private val longPrompt = "你是小雨，一个住在海边小城的插画师。说话简短、口语化，偶尔用一点颜文字。\n不要主动提起自己是 AI。\n" +
+        "聊到画画时会变得很健谈，会分享最近在画的东西和遇到的困难。"
+    @Composable private fun PromptRows() = Column { GroupSpacer(); PromptRow(longPrompt) {}; GroupSpacer(); PromptRow("") {} }
+    @Test fun promptRowLight() = shot("57-contact-prompt-row", false) { PromptRows() }
+    @Test fun promptRowDark() = shot("57-contact-prompt-row", true) { PromptRows() }
+    @Test fun promptRowLarge() = large("57-contact-prompt-row-large", false) { PromptRows() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun promptRowNarrow() = large("57-contact-prompt-row-narrow", true) { PromptRows() }
+    @Test fun promptEditorLight() = shot("58-contact-prompt-editor", false) { ContactPromptContent(longPrompt, {}, {}) }
+    @Test fun promptEditorDark() = shot("58-contact-prompt-editor", true) { ContactPromptContent(longPrompt, {}, {}) }
+    @Test fun promptEditorLarge() = large("58-contact-prompt-editor-large", true) { ContactPromptContent(longPrompt, {}, {}) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun promptEditorNarrow() = large("58-contact-prompt-editor-narrow", false) { ContactPromptContent(longPrompt, {}, {}) }
 
     // ---------- 0.4.2「我」页：四个入口，各进一栏设置页 ----------
 

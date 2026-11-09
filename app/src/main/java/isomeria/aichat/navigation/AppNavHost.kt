@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
@@ -24,6 +26,7 @@ import isomeria.aichat.feature.chat.ImageViewerScreen
 import isomeria.aichat.feature.chatlist.SearchScreen
 import isomeria.aichat.feature.contactedit.ContactDetailScreen
 import isomeria.aichat.feature.contactedit.ContactEditScreen
+import isomeria.aichat.feature.contactedit.ContactPromptScreen
 import isomeria.aichat.feature.main.MainScreen
 import isomeria.aichat.feature.me.ProfileScreen
 import isomeria.aichat.feature.memory.MemoryEditScreen
@@ -50,6 +53,9 @@ import kotlinx.serialization.Serializable
 
 /** contactId 为 -1 时是新建 */
 @Serializable data class ContactEditRoute(val contactId: Long = NEW_CONTACT)
+
+/** 编辑联系人里的「系统提示词」单独一页，和编辑页共用 ViewModel（草稿） */
+@Serializable data object ContactPromptRoute
 @Serializable data object CrashLogsRoute
 @Serializable data object StorageRoute
 @Serializable data object ProviderListRoute
@@ -190,7 +196,12 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onDeleted = { nav.popBackStack(MainRoute, inclusive = false) },
                 onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
                 onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
+                onOpenPrompt = { nav.navigate(ContactPromptRoute) },
             )
+        }
+        page<ContactPromptRoute>(nav) { entry ->
+            val editEntry = remember(entry) { nav.getBackStackEntry<ContactEditRoute>() }
+            ContactPromptScreen(onBack = nav::popBackStackSafely, viewModel = hiltViewModel(editEntry))
         }
         page<ExportRoute>(nav) { ExportScreen(onBack = nav::popBackStackSafely) }
         page<CrashLogsRoute>(nav) { CrashLogsScreen(onBack = nav::popBackStackSafely) }
