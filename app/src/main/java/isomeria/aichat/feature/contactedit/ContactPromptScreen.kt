@@ -39,16 +39,18 @@ import isomeria.aichat.ui.theme.WeTheme
 @Composable
 fun ContactPromptScreen(onBack: () -> Unit, viewModel: ContactEditViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val usage by viewModel.promptUsage.collectAsStateWithLifecycle()
     ImeBackHandler()
     ContactPromptContent(
         value = state.form.systemPrompt,
         onValueChange = { text -> viewModel.update { it.copy(systemPrompt = text) } },
         onBack = onBack,
+        usage = usage,
     )
 }
 
 @Composable
-internal fun ContactPromptContent(value: String, onValueChange: (String) -> Unit, onBack: () -> Unit) {
+internal fun ContactPromptContent(value: String, onValueChange: (String) -> Unit, onBack: () -> Unit, usage: PromptUsage? = null) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     val title = stringResource(R.string.contact_prompt)
@@ -74,6 +76,7 @@ internal fun ContactPromptContent(value: String, onValueChange: (String) -> Unit
                 )
             }
             FootnoteText(stringResource(R.string.contact_prompt_hint))
+            PromptUsageNote(usage)
             Spacer(Modifier.height(24.dp))
         }
     }

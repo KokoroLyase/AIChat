@@ -29,13 +29,39 @@ data class ContextLabels(
     val memoryHeader: String,
     /** 一条记忆。参数：年、月、日、内容 */
     val memoryItem: String,
+    /** 全局记忆前面的说明（0.5.0） */
+    val globalMemoryHeader: String = "",
+    /** 全局记忆的一个主题。参数：类别、主题 */
+    val globalMemoryTopic: String = "[%1\$s / %2\$s]",
+    /** 全局记忆的一条。参数：内容 */
+    val globalMemoryItem: String = "- %1\$s",
+    /** 回复偏好要求（0.5.0）。参数：条数（如 1～5）、每条字数 */
+    val replyStyle: String = "",
+    /** 条数范围。参数：最少、最多 */
+    val countRange: String = "%1\$d～%2\$d",
 )
+
+/** 全局记忆里要发出去的一条：已启用、所在的类别和主题。 */
+data class GlobalMemoryEntry(val category: String, val topic: String, val content: String)
+
+/**
+ * 系统提示词里由 App 统一加的内容（0.5.0）：联系人开启「使用全局记忆」时的全局记忆，
+ * 开启「使用回复偏好」时的回复要求。两项都空时，系统提示词和 0.4.2 完全一样。
+ */
+data class PromptGlobals(
+    val globalMemory: List<GlobalMemoryEntry> = emptyList(),
+    val replyStyle: ReplyPreferences? = null,
+) {
+    companion object {
+        val NONE = PromptGlobals()
+    }
+}
 
 /**
  * 每次请求 = 系统提示词 + 记忆 + 预算内的聊天记录（由 [ContextWindow] 选出）。
  *
- * - 系统提示词里的 {名称} 换成联系人名称；模板里没改过的人设占位行去掉；为空且没有记忆时不发送
- * - 人设之后是长期记忆，再后面附上当前日期、星期、时间和自己的昵称
+ * - 系统提示词里的 {名称} 换成联系人名称；模板里没改过的人设占位行去掉；人设、记忆、全局内容都为空时不发送
+ * - 顺序：全局记忆 → 人设 → 长期记忆 → 回复偏好要求 → 当前日期、星期、时间和自己的昵称
  * - 历史回复里的思考内容不回传
  * - 只有最近 [MAX_IMAGES] 张图片带原图，更早的替换为「[图片]」；模型不支持图片时全部替换
  * - 连续同一角色的消息合并成一条（文字和图片作为同一条消息的不同部分）
@@ -57,9 +83,10 @@ class ContextBuilder(
         now: Long,
         memories: List<Memory> = emptyList(),
         loadImage: (String) -> String?,
+        globals: PromptGlobals = PromptGlobals.NONE,
     ): List<ChatMessage> {
         val result = mutableListOf<ChatMessage>()
-        systemPrompt(contact, nickname, now, memories)?.let { result += ChatMessage(ChatRole.SYSTEM, it) }
+        systemPrompt(contact, nickname, now, memories, globals)?.let { result += ChatMessage(ChatRole.SYSTEM, it) }
 
         val imagesWithData = if (supportsImage) ContextWindow.imagesWithData(history) else emptySet()
 
@@ -99,9 +126,17 @@ class ContextBuilder(
         return result
     }
 
-    fun systemPrompt(contact: Contact, nickname: String, now: Long, memories: List<Memory> = emptyList()): String? {
+    fun systemPrompt(
+        contact: Contact,
+        nickname: String,
+        now: Long,
+        memories: List<Memory> = emptyList(),
+        globals: PromptGlobals = PromptGlobals.NONE,
+    ): String? {
         val prompt = resolvePrompt(contact.systemPrompt, contact.name)
-        if (prompt.isBlank() && memories.isEmpty()) return null
+        val global = globalMemoryBlock(globals.globalMemory)
+        val style = globals.replyStyle?.let(::replyStyleBlock).orEmpty()
+        if (prompt.isBlank() && memories.isEmpty() && global.isEmpty() && style.isEmpty()) return null
         val time = Instant.ofEpochMilli(now).atZone(zone)
         val extra = buildString {
             append(
@@ -116,7 +151,32 @@ class ContextBuilder(
             )
             if (nickname.isNotBlank()) append(labels.nicknameLine.format(nickname.trim()))
         }
-        return listOf(prompt, memoryBlock(memories), extra).filter { it.isNotEmpty() }.joinToString("\n\n")
+        return listOf(global, prompt, memoryBlock(memories), style, extra).filter { it.isNotEmpty() }.joinToString("\n\n")
+    }
+
+    /** 全局记忆：按类别、主题分组，顺序和「我 → 全局记忆」里一样；没有已启用的条目时为空 */
+    fun globalMemoryBlock(entries: List<GlobalMemoryEntry>): String {
+        val usable = entries.filter { it.content.isNotBlank() }
+        if (usable.isEmpty()) return ""
+        return buildString {
+            append(labels.globalMemoryHeader)
+            var topic: Pair<String, String>? = null
+            for (entry in usable) {
+                val key = entry.category to entry.topic
+                if (key != topic) {
+                    append('\n').append(labels.globalMemoryTopic.format(entry.category, entry.topic))
+                    topic = key
+                }
+                append('\n').append(labels.globalMemoryItem.format(entry.content.trim()))
+            }
+        }.trim()
+    }
+
+    /** 回复偏好里写进提示词的部分：条数和每条字数是风格引导；「用换行分隔每一条」是 App 拆条的约定 */
+    fun replyStyleBlock(preferences: ReplyPreferences): String {
+        val p = preferences.normalized()
+        val count = if (p.minCount == p.maxCount) p.minCount.toString() else labels.countRange.format(p.minCount, p.maxCount)
+        return labels.replyStyle.format(count, p.targetLength)
     }
 
     private fun memoryBlock(memories: List<Memory>): String {

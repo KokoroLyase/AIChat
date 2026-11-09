@@ -115,6 +115,11 @@ object AppModule {
                 imagePlaceholder = res.getString(R.string.preview_image),
                 memoryHeader = res.getString(R.string.prompt_memory_header),
                 memoryItem = res.getString(R.string.prompt_memory_item),
+                globalMemoryHeader = res.getString(R.string.prompt_global_memory_header),
+                globalMemoryTopic = res.getString(R.string.prompt_global_memory_topic),
+                globalMemoryItem = res.getString(R.string.prompt_global_memory_item),
+                replyStyle = res.getString(R.string.prompt_reply_style),
+                countRange = res.getString(R.string.prompt_count_range),
             ),
         )
     }
@@ -161,6 +166,8 @@ abstract class BindingsModule {
     @Binds @IntoSet abstract fun genericOpenAi(impl: GenericOpenAiProvider): LlmProvider
 
     @Binds abstract fun nicknameSource(impl: SettingsStore): NicknameSource
+
+    @Binds abstract fun promptGlobals(impl: isomeria.aichat.data.repo.GlobalMemoryRepository): isomeria.aichat.data.repo.PromptGlobalsSource
 
     @Binds abstract fun memoryQueue(impl: isomeria.aichat.data.memory.MemoryScheduler): isomeria.aichat.data.memory.MemoryQueue
 

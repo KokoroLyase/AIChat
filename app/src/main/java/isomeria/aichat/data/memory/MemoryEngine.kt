@@ -19,6 +19,7 @@ import isomeria.aichat.data.llm.ChatMessage
 import isomeria.aichat.data.llm.ChatRole
 import isomeria.aichat.data.llm.LlmError
 import isomeria.aichat.data.llm.LlmException
+import isomeria.aichat.data.repo.PromptGlobalsSource
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.repo.UsageRepository
 import javax.inject.Inject
@@ -60,6 +61,8 @@ enum class BacklogResult {
  * - [autoRun] 在回复成功后由后台任务调用，失败时不打扰用户，下次回复后再试
  * - 等模型返回期间聊天可能被恢复数据改掉，写库前检查进度没有变
  * - 日志不记录消息和记忆的内容
+ * - 总结和合并的请求只用原来的总结/合并指令，不带全局记忆和回复偏好要求；
+ *   但判断何时触发时，系统提示词按聊天请求的完整内容算（[historyBudget]），和聊天一致
  */
 @Singleton
 class MemoryEngine @Inject constructor(
@@ -68,6 +71,7 @@ class MemoryEngine @Inject constructor(
     private val usage: UsageRepository,
     private val contextBuilder: ContextBuilder,
     private val labels: MemoryLabels,
+    private val promptGlobals: PromptGlobalsSource = PromptGlobalsSource.NONE,
     val tasks: MemoryTasks = MemoryTasks(),
     private val nickname: NicknameSource,
 ) {
@@ -203,7 +207,8 @@ class MemoryEngine @Inject constructor(
             MemoryPolicy.memoryBudget(contact.contextTokens),
             estimator,
         )
-        val system = contextBuilder.systemPrompt(contact, nickname.nickname(), System.currentTimeMillis(), memories).orEmpty()
+        val globals = promptGlobals.forContact(contact)
+        val system = contextBuilder.systemPrompt(contact, nickname.nickname(), System.currentTimeMillis(), memories, globals).orEmpty()
         return contact.contextTokens - estimator.text(system)
     }
 

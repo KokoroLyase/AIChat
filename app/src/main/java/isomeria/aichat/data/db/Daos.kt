@@ -43,6 +43,14 @@ interface ContactDao {
 
     @Query("DELETE FROM contact WHERE id = :id")
     suspend fun delete(id: Long)
+
+    /** 「我 → 全局记忆」里一键全部开启或关闭 */
+    @Query("UPDATE contact SET useGlobalMemory = :on")
+    suspend fun setUseGlobalMemoryForAll(on: Boolean)
+
+    /** 「我 → 回复偏好」里一键全部开启或关闭 */
+    @Query("UPDATE contact SET useReplyPreferences = :on")
+    suspend fun setUseReplyPreferencesForAll(on: Boolean)
 }
 
 @Dao

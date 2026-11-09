@@ -652,6 +652,77 @@ class ScreenshotTest {
     @Test fun promptEditorLarge() = large("58-contact-prompt-editor-large", true) { ContactPromptContent(longPrompt, {}, {}) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun promptEditorNarrow() = large("58-contact-prompt-editor-narrow", false) { ContactPromptContent(longPrompt, {}, {}) }
 
+    // ---------- 0.5.0 全局记忆、回复偏好、编辑联系人的开关和提示词占用 ----------
+
+    private val globalTree = isomeria.aichat.data.repo.GlobalMemoryTree(
+        categories = listOf(
+            isomeria.aichat.data.db.GlobalMemoryCategory(1, "个人信息", 0, 1, 1),
+            isomeria.aichat.data.db.GlobalMemoryCategory(2, "工作和学习", 1, 2, 2),
+        ),
+        topics = listOf(
+            isomeria.aichat.data.db.GlobalMemoryTopic(10, 1, "基本情况", 0, 1, 1),
+            isomeria.aichat.data.db.GlobalMemoryTopic(11, 1, "饮食习惯", 1, 1, 1),
+            isomeria.aichat.data.db.GlobalMemoryTopic(12, 2, "职业", 0, 1, 1),
+        ),
+        items = listOf(
+            isomeria.aichat.data.db.GlobalMemoryItem(100, 10, "住在杭州，平时骑车上班", true, 0, 1, 1),
+            isomeria.aichat.data.db.GlobalMemoryItem(101, 10, "生日是 3 月 5 日，不喜欢过生日被大张旗鼓地庆祝，简单吃顿饭就好", false, 1, 1, 1),
+            isomeria.aichat.data.db.GlobalMemoryItem(102, 10, "养了一只叫豆包的橘猫", true, 2, 1, 1),
+            isomeria.aichat.data.db.GlobalMemoryItem(103, 11, "不吃香菜", true, 0, 1, 1),
+            isomeria.aichat.data.db.GlobalMemoryItem(104, 12, "做后端开发", true, 0, 1, 1),
+        ),
+    )
+    private val globalState = isomeria.aichat.feature.globalmemory.GlobalMemoryState(true, globalTree, 4, 33, 96, 3, 4, listOf("DeepSeek", "OpenRouter"))
+    private val noActions = isomeria.aichat.feature.globalmemory.GlobalMemoryActions()
+    @Composable private fun GlobalPage() = isomeria.aichat.feature.globalmemory.GlobalMemoryContent(globalState, noActions, {}, {})
+    @Composable private fun GlobalCategory() = isomeria.aichat.feature.globalmemory.GlobalMemoryCategoryContent(1, globalState, noActions, {}, {})
+    @Composable private fun GlobalTopic() = isomeria.aichat.feature.globalmemory.GlobalMemoryTopicContent(10, globalState, noActions, {}, { _, _ -> })
+    @Composable private fun GlobalItem() = isomeria.aichat.feature.globalmemory.GlobalMemoryItemContent(
+        isomeria.aichat.feature.globalmemory.GlobalItemDraft(true, true, "生日是 3 月 5 日，不喜欢过生日被大张旗鼓地庆祝，简单吃顿饭就好", false), {}, {}, {}, {}, {},
+    )
+    @Composable private fun GlobalEmpty() = isomeria.aichat.feature.globalmemory.GlobalMemoryContent(
+        isomeria.aichat.feature.globalmemory.GlobalMemoryState(loaded = true, contactsTotal = 4), noActions, {}, {},
+    )
+    @Test fun globalMemoryLight() = shot("59-global-memory", false) { GlobalPage() }
+    @Test fun globalMemoryDark() = shot("59-global-memory", true) { GlobalPage() }
+    @Test fun globalMemoryLarge() = large("59-global-memory-large", false) { GlobalPage() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun globalMemoryNarrow() = large("59-global-memory-narrow", true) { GlobalPage() }
+    @Test fun globalMemoryEmptyLight() = shot("59-global-memory-empty", false) { GlobalEmpty() }
+    @Test fun globalCategoryLight() = shot("60-global-memory-category", false) { GlobalCategory() }
+    @Test fun globalCategoryDark() = shot("60-global-memory-category", true) { GlobalCategory() }
+    @Test fun globalCategoryLarge() = large("60-global-memory-category-large", true) { GlobalCategory() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun globalCategoryNarrow() = large("60-global-memory-category-narrow", false) { GlobalCategory() }
+    @Test fun globalTopicLight() = shot("61-global-memory-topic", false) { GlobalTopic() }
+    @Test fun globalTopicDark() = shot("61-global-memory-topic", true) { GlobalTopic() }
+    @Test fun globalTopicLarge() = large("61-global-memory-topic-large", false) { GlobalTopic() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun globalTopicNarrow() = large("61-global-memory-topic-narrow", true) { GlobalTopic() }
+    @Test fun globalItemLight() = shot("62-global-memory-item", false) { GlobalItem() }
+    @Test fun globalItemDark() = shot("62-global-memory-item", true) { GlobalItem() }
+    @Test fun globalItemLarge() = large("62-global-memory-item-large", true) { GlobalItem() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun globalItemNarrow() = large("62-global-memory-item-narrow", false) { GlobalItem() }
+
+    private val replyState = isomeria.aichat.feature.replyprefs.ReplyPreferencesState(true, isomeria.aichat.core.ReplyPreferences(), 4, 4)
+    @Composable private fun ReplyPage() = isomeria.aichat.feature.replyprefs.ReplyPreferencesContent(replyState, {}, {}, {})
+    @Test fun replyPreferencesLight() = shot("63-reply-preferences", false) { ReplyPage() }
+    @Test fun replyPreferencesDark() = shot("63-reply-preferences", true) { ReplyPage() }
+    @Test fun replyPreferencesLarge() = large("63-reply-preferences-large", false) { ReplyPage() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun replyPreferencesNarrow() = large("63-reply-preferences-narrow", true) { ReplyPage() }
+
+    @Composable private fun ContactSwitches() = Column {
+        GroupSpacer()
+        PromptRow(longPrompt, isomeria.aichat.feature.contactedit.PromptUsage(2_300, 4_000)) {}
+        GroupSpacer()
+        PromptRow(longPrompt, isomeria.aichat.feature.contactedit.PromptUsage(640, 4_000)) {}
+        isomeria.aichat.feature.contactedit.GlobalSwitchRows(isomeria.aichat.feature.contactedit.ContactForm()) {}
+    }
+    @Test fun contactSwitchesLight() = shot("64-contact-global-switches", false) { ContactSwitches() }
+    @Test fun contactSwitchesDark() = shot("64-contact-global-switches", true) { ContactSwitches() }
+    @Test fun contactSwitchesLarge() = large("64-contact-global-switches-large", false) { ContactSwitches() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contactSwitchesNarrow() = large("64-contact-global-switches-narrow", true) { ContactSwitches() }
+    @Test fun promptEditorUsageLight() = shot("64-contact-prompt-editor-usage", false) {
+        ContactPromptContent(longPrompt, {}, {}, isomeria.aichat.feature.contactedit.PromptUsage(2_300, 4_000))
+    }
+
     // ---------- 0.4.2「我」页：四个入口，各进一栏设置页 ----------
 
     private val settingsSample = SettingsUiState(hasKey = true, canNotify = false, newerVersion = "0.4.3")

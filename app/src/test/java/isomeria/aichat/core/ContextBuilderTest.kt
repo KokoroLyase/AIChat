@@ -180,4 +180,81 @@ class ContextBuilderTest {
         val user = builder.build(contact(""), history, true, "", now, loadImage = loader).single()
         assertEquals("你好", user.plainText())
     }
+
+    // ---------- 0.5.0 全局记忆、回复偏好要求 ----------
+
+    private val full = ContextBuilder(
+        ContextLabels(
+            namePlaceholder = "{名称}",
+            personaPlaceholderPrefix = "{在这里写人设",
+            timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。",
+            nicknameLine = "对方的昵称是「%1\$s」。",
+            weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
+            imagePlaceholder = "[图片]",
+            memoryHeader = "下面是记忆：",
+            memoryItem = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
+            globalMemoryHeader = "全局记忆：",
+            globalMemoryTopic = "[%1\$s / %2\$s]",
+            globalMemoryItem = "- %1\$s",
+            replyStyle = "回复方式：每次 %1\$s 条，每条 %2\$d 字左右，用换行分隔。",
+            countRange = "%1\$d～%2\$d",
+        ),
+        zone,
+    )
+
+    private val entries = listOf(
+        GlobalMemoryEntry("个人信息", "基本情况", "住在杭州"),
+        GlobalMemoryEntry("个人信息", "基本情况", "  养了一只猫  "),
+        GlobalMemoryEntry("个人信息", "饮食", "不吃香菜"),
+        GlobalMemoryEntry("工作", "职业", "后端开发"),
+        GlobalMemoryEntry("工作", "职业", "   "),
+    )
+
+    @Test
+    fun globals_orderIsGlobalMemory_persona_memories_replyStyle_time() {
+        val prompt = full.systemPrompt(contact("人设"), "阿哲", now, listOf(memory("喜欢拿铁")), PromptGlobals(entries, ReplyPreferences()))!!
+        assertEquals(
+            "全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n- 养了一只猫\n[个人信息 / 饮食]\n- 不吃香菜\n[工作 / 职业]\n- 后端开发" +
+                "\n\n人设" +
+                "\n\n下面是记忆：\n- [2026年11月1日] 喜欢拿铁" +
+                "\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。" +
+                "\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。",
+            prompt,
+        )
+    }
+
+    @Test
+    fun globalsNone_isExactlyTheOldPrompt() {
+        val old = builder.systemPrompt(contact(), "阿哲", now, listOf(memory("喜欢拿铁")))
+        assertEquals(old, full.systemPrompt(contact(), "阿哲", now, listOf(memory("喜欢拿铁")), PromptGlobals.NONE))
+        assertNull(full.systemPrompt(contact(""), "阿哲", now, emptyList(), PromptGlobals(emptyList(), null)))
+        // 只有空白条目的全局记忆不算内容
+        assertNull(full.systemPrompt(contact(""), "", now, emptyList(), PromptGlobals(listOf(GlobalMemoryEntry("a", "b", "  ")), null)))
+    }
+
+    @Test
+    fun newContactWithoutPersona_stillGetsGlobalMemory() {
+        val prompt = full.systemPrompt(contact(""), "", now, emptyList(), PromptGlobals(entries.take(1), null))!!
+        assertEquals("全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n现在是 2026年11月1日 星期日 23:40。", prompt)
+        val messages = full.build(contact(""), listOf(text(Role.USER, "hi")), true, "", now, loadImage = loader, globals = PromptGlobals(entries.take(1), null))
+        assertEquals(listOf(ChatRole.SYSTEM, ChatRole.USER), messages.map { it.role })
+    }
+
+    @Test
+    fun turningOffOnePart_removesOnlyThatPart() {
+        val both = full.systemPrompt(contact("人设"), "", now, emptyList(), PromptGlobals(entries, ReplyPreferences()))!!
+        val noGlobal = full.systemPrompt(contact("人设"), "", now, emptyList(), PromptGlobals(emptyList(), ReplyPreferences()))!!
+        val noStyle = full.systemPrompt(contact("人设"), "", now, emptyList(), PromptGlobals(entries, null))!!
+        val neither = full.systemPrompt(contact("人设"), "", now, emptyList(), PromptGlobals.NONE)!!
+        assertEquals(both.replace(full.globalMemoryBlock(entries) + "\n\n", ""), noGlobal)
+        assertEquals(both.replace(full.replyStyleBlock(ReplyPreferences()) + "\n\n", ""), noStyle)
+        assertEquals("人设\n\n现在是 2026年11月1日 星期日 23:40。", neither)
+    }
+
+    @Test
+    fun replyStyle_usesSingleCountWhenMinEqualsMax_andNormalizes() {
+        assertEquals("回复方式：每次 3 条，每条 20 字左右，用换行分隔。", full.replyStyleBlock(ReplyPreferences(minCount = 3, maxCount = 3, targetLength = 20)))
+        // 最多小于最少时按最少算
+        assertEquals("回复方式：每次 4 条，每条 14 字左右，用换行分隔。", full.replyStyleBlock(ReplyPreferences(minCount = 4, maxCount = 2)))
+    }
 }

@@ -91,7 +91,7 @@ import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.launch
 
-/** 联系人编辑：头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文预算、分条显示、自动记忆。 */
+/** 联系人编辑：头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文预算、全局记忆、回复偏好、分条显示、自动记忆。 */
 @Composable
 fun ContactEditScreen(
     onBack: () -> Unit,
@@ -107,6 +107,7 @@ fun ContactEditScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     val providerList by viewModel.providerList.collectAsStateWithLifecycle()
+    val promptUsage by viewModel.promptUsage.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val form = state.form
     var showAvatarSheet by remember { mutableStateOf(false) }
@@ -210,19 +211,12 @@ fun ContactEditScreen(
             }
 
             GroupSpacer()
-            PromptRow(form.systemPrompt, onOpenPrompt)
+            PromptRow(form.systemPrompt, promptUsage, onOpenPrompt)
 
             GroupSpacer()
             ContextBudgetRow(form.contextTokens, viewModel::setContextValue, state.contextInput,
                 viewModel::setContextInput, viewModel::finishContextInput, state.contextFocusRequest)
-            WeListRow(
-                title = stringResource(R.string.contact_split),
-                showArrow = false,
-                trailing = {
-                    WeSwitch(form.splitReplies, { on -> viewModel.update { it.copy(splitReplies = on) } }, label = stringResource(R.string.contact_split))
-                },
-            )
-            FootnoteText(stringResource(R.string.contact_split_hint))
+            GlobalSwitchRows(form, viewModel::update)
             GroupSpacer()
             WeListRow(
                 title = stringResource(R.string.contact_auto_memory),
@@ -304,9 +298,46 @@ fun ContactEditScreen(
     }
 }
 
-/** 「系统提示词」：提示词可能很长，单独一页编辑；这里只显示开头两行，没写时显示「未填写」 */
+/**
+ * 0.5.0 的两个开关和分条显示：「使用全局记忆」「使用回复偏好」默认开启；
+ * 开启回复偏好时由它拆条，分条显示的说明随之改变。
+ */
 @Composable
-internal fun PromptRow(prompt: String, onClick: () -> Unit) {
+internal fun GlobalSwitchRows(form: ContactForm, update: ((ContactForm) -> ContactForm) -> Unit) {
+    GroupSpacer()
+    WeListRow(
+        title = stringResource(R.string.contact_use_global_memory),
+        showArrow = false,
+        trailing = {
+            WeSwitch(form.useGlobalMemory, { on -> update { it.copy(useGlobalMemory = on) } }, label = stringResource(R.string.contact_use_global_memory))
+        },
+    )
+    FootnoteText(stringResource(R.string.contact_use_global_memory_hint))
+    GroupSpacer()
+    WeListRow(
+        title = stringResource(R.string.contact_use_reply_preferences),
+        showArrow = false,
+        showDivider = true,
+        trailing = {
+            WeSwitch(form.useReplyPreferences, { on -> update { it.copy(useReplyPreferences = on) } }, label = stringResource(R.string.contact_use_reply_preferences))
+        },
+    )
+    WeListRow(
+        title = stringResource(R.string.contact_split),
+        showArrow = false,
+        trailing = {
+            WeSwitch(form.splitReplies, { on -> update { it.copy(splitReplies = on) } }, label = stringResource(R.string.contact_split))
+        },
+    )
+    FootnoteText(stringResource(R.string.contact_use_reply_preferences_hint) + stringResource(if (form.useReplyPreferences) R.string.contact_split_hint_overridden else R.string.contact_split_hint))
+}
+
+/**
+ * 「系统提示词」：提示词可能很长，单独一页编辑；这里只显示开头两行，没写时显示「未填写」。
+ * 下面一行是系统提示词合计占用（含全局记忆、记忆、回复偏好要求），超过上下文上限一半时改成提醒。
+ */
+@Composable
+internal fun PromptRow(prompt: String, usage: PromptUsage? = null, onClick: () -> Unit) {
     val preview = promptPreview(prompt)
     DetailEntryRow(
         title = stringResource(R.string.contact_prompt),
@@ -314,6 +345,14 @@ internal fun PromptRow(prompt: String, onClick: () -> Unit) {
         detailMaxLines = 2,
         onClick = onClick,
     )
+    PromptUsageNote(usage)
+}
+
+@Composable
+internal fun PromptUsageNote(usage: PromptUsage?) {
+    if (usage == null || usage.tokens == 0) return
+    if (usage.overHalf) ErrorNote(stringResource(R.string.contact_prompt_usage_warning, usage.tokens))
+    else FootnoteText(stringResource(R.string.contact_prompt_usage, usage.tokens, usage.percent))
 }
 
 @Composable

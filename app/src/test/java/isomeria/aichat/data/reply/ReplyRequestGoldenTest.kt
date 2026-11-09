@@ -28,6 +28,7 @@ import isomeria.aichat.data.llm.LlmProvider
 import isomeria.aichat.data.llm.OpenAiRequestBuilder
 import isomeria.aichat.data.llm.RemoteModel
 import isomeria.aichat.data.repo.FileStorage
+import isomeria.aichat.data.repo.GlobalMemoryRepository
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.repo.UsageRepository
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -119,8 +121,7 @@ class ReplyRequestGoldenTest {
 
     /** 跑一次回复，返回真实请求构造器拼出的请求体 */
     private fun requestBody(contactId: Long): String = runBlocking {
-        harness.engine.run(contactId)
-        val request = harness.provider.requests.last()
+        val request = harness.runAndRewind(contactId)
         val body = if (harness.provider.lastProtocol == ProviderProtocol.DEEPSEEK) DeepSeekRequestBuilder.build(request) else OpenAiRequestBuilder.build(request)
         body.toString()
     }
@@ -141,6 +142,66 @@ class ReplyRequestGoldenTest {
     fun emptyPrompt_allNewFeaturesOff_sendsNoSystemMessage_like042() {
         harness.allOff(3)
         assertEquals(GOLDEN_EMPTY, requestBody(3))
+    }
+
+    // ---------- 0.5.0：新能力默认开启时的请求内容 ----------
+
+    private fun systemOf(contactId: Long): String? = runBlocking {
+        harness.runAndRewind(contactId).messages.firstOrNull { it.role == isomeria.aichat.data.llm.ChatRole.SYSTEM }?.plainText()
+    }
+
+    private suspend fun globalItem(content: String, category: String = "个人信息", topic: String = "基本情况") {
+        val repo = GlobalMemoryRepository(db, { harness.preferences }, Clock { now })
+        val c = db.globalMemoryDao().categories().firstOrNull { it.name == category }?.id ?: repo.addCategory(category)
+        val t = db.globalMemoryDao().topicsOf(c).firstOrNull { it.name == topic }?.id ?: repo.addTopic(c, topic)
+        repo.addItem(t, content)
+    }
+
+    private val time = "现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"
+    private val style = "回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。"
+
+    @Test
+    fun newContactWithoutPersona_readsGlobalMemory_andReplyStyle_byDefault() = runBlocking {
+        globalItem("住在杭州")
+        globalItem("关掉的", topic = "其他")
+        db.globalMemoryDao().items().first { it.content == "关掉的" }.let { db.globalMemoryDao().updateItems(listOf(it.copy(enabled = false))) }
+        assertEquals("全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n$style\n\n$time", systemOf(3))
+    }
+
+    @Test
+    fun eachSwitchRemovesOnlyItsPart_andAllOffMatchesGolden() = runBlocking {
+        globalItem("住在杭州")
+        val contact = db.contactDao().get(2)!!
+        db.contactDao().update(contact.copy(useGlobalMemory = false))
+        val noGlobal = systemOf(2)!!
+        db.contactDao().update(contact.copy(useReplyPreferences = false))
+        val noStyle = systemOf(2)!!
+        val memory = "下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁"
+        assertEquals("$memory\n\n$style\n\n$time", noGlobal)
+        assertEquals("全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n$memory\n\n$time", noStyle)
+        harness.allOff(2)
+        assertEquals(GOLDEN_GENERIC, requestBody(2))
+    }
+
+    @Test
+    fun upgradedLegacyContact_requestChangesWhileOn_andReturnsToGoldenWhenOff() = runBlocking {
+        globalItem("住在杭州")
+        val on = requestBody(1)
+        assertTrue(on != GOLDEN_DEEPSEEK && on.contains("全局记忆：") && on.contains("回复方式："))
+        harness.allOff(1)
+        assertEquals(GOLDEN_DEEPSEEK, requestBody(1))
+    }
+
+    /** 全局记忆远超上下文上限：聊天记录被挤掉，但这次等待回复的消息一定带上，回复照常写入 */
+    @Test
+    fun hugeGlobalMemory_chatStillSendsWaitingMessage() = runBlocking {
+        repeat(600) { globalItem("一条很长的全局记忆内容，用来把上下文挤满。") }
+        harness.engine.run(1)
+        val request = harness.provider.requests.last()
+        assertEquals(listOf("SYSTEM", "USER"), request.messages.map { it.role.name })
+        assertEquals("[图片]\n看看这张", request.messages.last().plainText())
+        assertTrue(db.messageDao().sendingIds(1).isEmpty())
+        assertTrue(db.messageDao().listByContact(1).any { it.role == Role.ASSISTANT && it.content == "好的" })
     }
 
     companion object {
@@ -168,6 +229,11 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             imagePlaceholder = "[图片]",
             memoryHeader = "下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：",
             memoryItem = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
+            globalMemoryHeader = "全局记忆：",
+            globalMemoryTopic = "[%1\$s / %2\$s]",
+            globalMemoryItem = "- %1\$s",
+            replyStyle = "回复方式：每次 %1\$s 条，每条 %2\$d 字左右，用换行分隔。",
+            countRange = "%1\$d～%2\$d",
         ),
         zone,
     )
@@ -194,7 +260,21 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         alerts = ReplyAlerts(db.conversationDao(), notifications, activeChat),
         activeChat = activeChat,
         clock = Clock { now },
+        promptGlobals = GlobalMemoryRepository(db, { preferences }, Clock { now }),
     )
+
+    var preferences = isomeria.aichat.core.ReplyPreferences()
+
+    /** 跑一次回复，返回发出的请求；然后把这个联系人的消息还原，下一次请求看到的历史和这次一样 */
+    suspend fun runAndRewind(contactId: Long): ChatRequest {
+        val before = db.messageDao().listByContact(contactId)
+        val count = provider.requests.size
+        engine.run(contactId)
+        check(provider.requests.size == count + 1) { "这次没有发出请求" }
+        db.messageDao().deleteByContact(contactId)
+        db.messageDao().insertAll(before)
+        return provider.requests.last()
+    }
 
     /** 关掉这个联系人的全部 0.5.0 新能力 */
     fun allOff(contactId: Long) = runBlocking {

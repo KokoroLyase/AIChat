@@ -27,6 +27,7 @@ import isomeria.aichat.data.memory.MemoryQueue
 import isomeria.aichat.data.memory.NicknameSource
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.data.repo.FileStorage
+import isomeria.aichat.data.repo.PromptGlobalsSource
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.repo.UsageRepository
 import java.util.UUID
@@ -57,6 +58,7 @@ class ReplyEngine @Inject constructor(
     private val alerts: ReplyAlerts,
     private val activeChat: ActiveChatTracker,
     private val clock: Clock,
+    private val promptGlobals: PromptGlobalsSource,
 ) {
     suspend fun run(contactId: Long) = isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
 
@@ -75,14 +77,15 @@ class ReplyEngine @Inject constructor(
         val startedAt = clock.now()
         val nickname = nicknames.nickname()
 
-        // 预算 = 系统提示词 + 记忆 + 聊天记录。记忆最多占 1/4，放不下的这次先不带
+        // 预算 = 系统提示词（含全局记忆和回复要求）+ 记忆 + 聊天记录。记忆最多占 1/4，放不下的这次先不带
         val estimator = TokenEstimator.forProtocol(config.provider)
         val memories = MemoryPolicy.forRequest(
             memoryDao.listByContact(contactId),
             MemoryPolicy.memoryBudget(contact.contextTokens),
             estimator,
         )
-        val system = contextBuilder.systemPrompt(contact, nickname, startedAt, memories).orEmpty()
+        val globals = promptGlobals.forContact(contact)
+        val system = contextBuilder.systemPrompt(contact, nickname, startedAt, memories, globals).orEmpty()
         val historyBudget = contact.contextTokens - estimator.text(system)
         val history = ContextWindow.select(
             messageDao.recent(contactId, ContextWindow.maxRows(historyBudget)),
@@ -97,6 +100,7 @@ class ReplyEngine @Inject constructor(
             nickname = nickname,
             now = startedAt,
             memories = memories,
+            globals = globals,
             loadImage = files::readAsDataUrl,
         )
         val request = snapshot.request(messages)

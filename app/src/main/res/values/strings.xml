@@ -624,4 +624,89 @@
     <string name="memory_empty_title">暂无记忆</string>
     <string name="memory_empty_on">较早的聊天会自动总结到这里。</string>
     <string name="memory_empty_off">自动记忆已关闭，可在联系人编辑页开启。</string>
+    <!-- 0.5.0 全局记忆、回复偏好：系统提示词 -->
+    <string name="prompt_global_memory_header">下面是对方亲自写下的关于自己的信息（全局记忆），自然地参考就好，不要逐条复述，也不要提到这份资料：</string>
+    <string name="prompt_global_memory_topic">[%1$s / %2$s]</string>
+    <string name="prompt_global_memory_item">- %1$s</string>
+    <string name="prompt_reply_style">回复方式：像真人在手机上发消息一样，每次回复发 %1$s 条，每条 %2$d 字左右。每条消息单独写一行，条与条之间只用换行分隔，不要空行，也不要给消息编号。</string>
+    <string name="prompt_count_range">%1$d～%2$d</string>
+
+    <!-- 0.5.0「我」页入口 -->
+    <string name="me_global_memory">全局记忆</string>
+    <string name="me_reply_preferences">回复偏好</string>
+
+    <!-- 0.5.0 全局记忆 -->
+    <string name="global_memory_title">全局记忆</string>
+    <string name="global_memory_notice">开启「使用全局记忆」的联系人，每次请求都会带上这里已启用的记忆。这些内容会发给每个开启它的联系人所用的服务商；联系人用的服务商不同时，同一份内容会发给多家。</string>
+    <string name="global_memory_providers">会发给：%1$s</string>
+    <string name="global_memory_providers_none">目前没有联系人开启全局记忆，不会发给任何服务商。</string>
+    <string name="global_memory_send_all">每次请求带上全部已启用的记忆，不会额外调用模型挑选。</string>
+    <string name="global_memory_usage" tools:ignore="PluralsCandidate">已启用 %1$d 条 · %2$d 字 · 约 %3$d token</string>
+    <string name="global_memory_usage_note">token 按每个汉字 1 个估算（各服务商算法不同，这里取较高的）。这部分算在每个联系人的上下文上限里。</string>
+    <string name="global_memory_contacts">使用全局记忆的联系人</string>
+    <string name="global_memory_contacts_value">%1$d/%2$d</string>
+    <string name="global_memory_all_on">全部联系人开启</string>
+    <string name="global_memory_all_off">全部联系人关闭</string>
+    <string name="global_memory_section_categories">类别</string>
+    <string name="global_memory_category_add">添加类别</string>
+    <string name="global_memory_category_detail">%1$d 个主题 · %2$d 条</string>
+    <string name="global_memory_empty">还没有记忆。可以按类别和主题整理，比如「个人信息 / 基本情况」。</string>
+    <string name="global_memory_topic_add">添加主题</string>
+    <string name="global_memory_topic_detail">%1$d 条，已启用 %2$d 条</string>
+    <string name="global_memory_topics_empty">这个类别下还没有主题。</string>
+    <string name="global_memory_item_add">添加记忆</string>
+    <string name="global_memory_items_empty">这个主题下还没有记忆。</string>
+    <string name="global_memory_item_disabled">已关闭</string>
+    <string name="global_memory_item_edit">编辑记忆</string>
+    <string name="global_memory_item_hint">写下希望联系人知道的事，比如：住在杭州</string>
+    <string name="global_memory_item_enabled">启用</string>
+    <string name="global_memory_item_enabled_hint">关闭后保留这条记忆，但不再发给联系人。</string>
+    <string name="global_memory_item_delete">删除这条记忆</string>
+    <string name="global_memory_item_delete_confirm">确定删除这条记忆吗？</string>
+    <string name="global_memory_category_name">类别名称</string>
+    <string name="global_memory_topic_name">主题名称</string>
+    <string name="global_memory_name_hint">最多 20 字</string>
+    <string name="global_memory_rename">重命名</string>
+    <string name="global_memory_move_up">上移</string>
+    <string name="global_memory_move_down">下移</string>
+    <string name="global_memory_delete_category">删除类别</string>
+    <string name="global_memory_delete_topic">删除主题</string>
+    <string name="global_memory_delete_category_confirm">删除类别「%1$s」？其中的 %2$d 个主题和 %3$d 条记忆会一起删除，无法撤销。</string>
+    <string name="global_memory_delete_category_empty">删除类别「%1$s」？</string>
+    <string name="global_memory_delete_topic_confirm">删除主题「%1$s」？其中的 %2$d 条记忆会一起删除，无法撤销。</string>
+    <string name="global_memory_delete_topic_empty">删除主题「%1$s」？</string>
+    <string name="global_memory_more">更多操作</string>
+
+    <!-- 0.5.0 回复偏好 -->
+    <string name="reply_pref_title">回复偏好</string>
+    <string name="reply_pref_notice">开启「使用回复偏好」的联系人按这里的设置回复：等你说完再回，一次分几条发，每条之间隔几秒。条数和字数写进提示词，只是风格引导；拆条、去标点和间隔由 App 处理。</string>
+    <string name="reply_pref_wait">等待时间</string>
+    <string name="reply_pref_wait_hint">你发出消息后先等这么久，期间没有再发消息才开始回复。</string>
+    <string name="reply_pref_seconds">%1$d 秒</string>
+    <string name="reply_pref_length">每条字数</string>
+    <string name="reply_pref_length_value">约 %1$d 字</string>
+    <string name="reply_pref_min_count">每轮最少条数</string>
+    <string name="reply_pref_max_count">每轮最多条数</string>
+    <string name="reply_pref_count_value">%1$d 条</string>
+    <string name="reply_pref_count_hint">回复按换行拆成多条；超过最多条数时，多出来的接在最后一条里。字数不做截断。</string>
+    <string name="reply_pref_strip">去掉句尾标点</string>
+    <string name="reply_pref_strip_hint">只去掉每条末尾的「。」和「，」，保留「？」「！」「…」。</string>
+    <string name="reply_pref_min_interval">最短间隔</string>
+    <string name="reply_pref_max_interval">最长间隔</string>
+    <string name="reply_pref_interval_hint">按每条的字数估算打字时间，限制在这个范围内；第一条会扣掉模型生成已经用掉的时间。</string>
+    <string name="reply_pref_reset">恢复默认</string>
+    <string name="reply_pref_contacts">使用回复偏好的联系人</string>
+    <string name="reply_pref_decrease">减少%1$s</string>
+    <string name="reply_pref_increase">增加%1$s</string>
+
+    <!-- 0.5.0 编辑联系人 -->
+    <string name="contact_use_global_memory">使用全局记忆</string>
+    <string name="contact_use_global_memory_hint">带上「我 → 全局记忆」里已启用的内容。这些内容会发给这个联系人所用的服务商。</string>
+    <string name="contact_use_reply_preferences">使用回复偏好</string>
+    <string name="contact_use_reply_preferences_hint">按「我 → 回复偏好」等你说完再回、分条并带间隔回复。</string>
+    <string name="contact_split_hint_overridden">已使用回复偏好，回复按回复偏好拆条；关闭回复偏好后才按这里的设置。</string>
+    <string name="contact_profile_item_global_memory">全局记忆</string>
+    <string name="contact_profile_item_reply_preferences">回复偏好</string>
+    <string name="contact_prompt_usage" tools:ignore="PluralsCandidate">系统提示词合计约 %1$d token，占上下文上限的 %2$d%%（含全局记忆、记忆和回复偏好）。</string>
+    <string name="contact_prompt_usage_warning" tools:ignore="PluralsCandidate">系统提示词约 %1$d token，超过上下文上限的一半，能带上的聊天记录会变少。可以精简提示词或全局记忆，或调高上下文上限。</string>
 </resources>

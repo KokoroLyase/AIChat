@@ -27,7 +27,12 @@ import isomeria.aichat.feature.chatlist.SearchScreen
 import isomeria.aichat.feature.contactedit.ContactDetailScreen
 import isomeria.aichat.feature.contactedit.ContactEditScreen
 import isomeria.aichat.feature.contactedit.ContactPromptScreen
+import isomeria.aichat.feature.globalmemory.GlobalMemoryCategoryScreen
+import isomeria.aichat.feature.globalmemory.GlobalMemoryItemScreen
+import isomeria.aichat.feature.globalmemory.GlobalMemoryScreen
+import isomeria.aichat.feature.globalmemory.GlobalMemoryTopicScreen
 import isomeria.aichat.feature.main.MainScreen
+import isomeria.aichat.feature.replyprefs.ReplyPreferencesScreen
 import isomeria.aichat.feature.me.ProfileScreen
 import isomeria.aichat.feature.memory.MemoryEditScreen
 import isomeria.aichat.feature.memory.MemoryScreen
@@ -73,6 +78,13 @@ import kotlinx.serialization.Serializable
 /** 「我」页的一栏设置；[section] 是 [SettingsSection] 的名字 */
 @Serializable data class SettingsSectionRoute(val section: String)
 @Serializable data object ProfileRoute
+@Serializable data object GlobalMemoryRoute
+@Serializable data class GlobalMemoryCategoryRoute(val categoryId: Long)
+@Serializable data class GlobalMemoryTopicRoute(val topicId: Long)
+
+/** [itemId] 为 [NEW_GLOBAL_ITEM] 时是在 [topicId] 下新加一条 */
+@Serializable data class GlobalMemoryItemRoute(val topicId: Long, val itemId: Long = NEW_GLOBAL_ITEM)
+@Serializable data object ReplyPreferencesRoute
 @Serializable data object SearchRoute
 @Serializable data class ChatInfoRoute(val contactId: Long)
 
@@ -85,6 +97,7 @@ import kotlinx.serialization.Serializable
 const val NEW_CONTACT = -1L
 const val NEW_PROVIDER = -1L
 const val NO_USAGE_FILTER = -1L
+const val NEW_GLOBAL_ITEM = -1L
 
 /**
  * 单 Activity + Navigation Compose。二级页面从右侧推入；返回按微信的动画滑出，
@@ -120,8 +133,29 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onSearch = { nav.navigate(SearchRoute) },
                 onOpenProfile = { nav.navigate(ProfileRoute) },
                 onOpenSettings = { nav.navigate(SettingsSectionRoute(it.name)) },
+                onOpenGlobalMemory = { nav.navigate(GlobalMemoryRoute) },
+                onOpenReplyPreferences = { nav.navigate(ReplyPreferencesRoute) },
             )
         }
+        page<GlobalMemoryRoute>(nav) {
+            GlobalMemoryScreen(onBack = nav::popBackStackSafely, onOpenCategory = { nav.navigate(GlobalMemoryCategoryRoute(it)) })
+        }
+        page<GlobalMemoryCategoryRoute>(nav) { entry ->
+            GlobalMemoryCategoryScreen(
+                categoryId = entry.toRoute<GlobalMemoryCategoryRoute>().categoryId,
+                onBack = nav::popBackStackSafely,
+                onOpenTopic = { nav.navigate(GlobalMemoryTopicRoute(it)) },
+            )
+        }
+        page<GlobalMemoryTopicRoute>(nav) { entry ->
+            GlobalMemoryTopicScreen(
+                topicId = entry.toRoute<GlobalMemoryTopicRoute>().topicId,
+                onBack = nav::popBackStackSafely,
+                onOpenItem = { topic, item -> nav.navigate(GlobalMemoryItemRoute(topic, item)) },
+            )
+        }
+        page<GlobalMemoryItemRoute>(nav) { GlobalMemoryItemScreen(onBack = nav::popBackStackSafely) }
+        page<ReplyPreferencesRoute>(nav) { ReplyPreferencesScreen(onBack = nav::popBackStackSafely) }
         page<SettingsSectionRoute>(nav) { entry ->
             SettingsSectionScreen(
                 section = SettingsSection.valueOf(entry.toRoute<SettingsSectionRoute>().section),

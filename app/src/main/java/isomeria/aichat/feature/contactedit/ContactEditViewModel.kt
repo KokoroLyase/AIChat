@@ -10,6 +10,16 @@ import androidx.navigation.toRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import isomeria.aichat.R
+import isomeria.aichat.core.Clock
+import isomeria.aichat.core.ContextBuilder
+import isomeria.aichat.core.MemoryPolicy
+import isomeria.aichat.core.PromptGlobals
+import isomeria.aichat.core.TokenEstimator
+import isomeria.aichat.data.repo.GlobalMemoryRepository
+import isomeria.aichat.data.repo.MemoryRepository
+import isomeria.aichat.data.settings.SettingsStore
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderModel
@@ -50,7 +60,20 @@ data class ContactForm(
     val contextTokens: Int = Contact.DEFAULT_CONTEXT_TOKENS,
     val splitReplies: Boolean = true,
     val autoMemory: Boolean = true,
+    val useGlobalMemory: Boolean = true,
+    val useReplyPreferences: Boolean = true,
 )
+
+/**
+ * 系统提示词（人设 + 全局记忆 + 记忆 + 回复要求 + 时间昵称）合计占多少上下文。
+ * 按这个联系人服务商的估算方式算，和发请求时扣预算的算法一样。
+ */
+data class PromptUsage(val tokens: Int, val budget: Int) {
+    val percent: Int get() = if (budget <= 0) 0 else (tokens * 100L / budget).toInt()
+
+    /** 超过上下文上限的一半时在编辑页提示 */
+    val overHalf: Boolean get() = tokens * 2L > budget
+}
 
 data class ContactEditState(
     val loaded: Boolean = false,
@@ -89,6 +112,11 @@ class ContactEditViewModel @Inject constructor(
     private val providers: ProviderRepository,
     private val files: FileStorage,
     @ApplicationScope private val appScope: CoroutineScope,
+    globals: GlobalMemoryRepository,
+    settings: SettingsStore,
+    memories: MemoryRepository,
+    private val contextBuilder: ContextBuilder,
+    private val clock: Clock,
 ) : ViewModel() {
     private val contactId = savedState.toRoute<ContactEditRoute>().contactId
     private var existing: Contact? = null
@@ -109,6 +137,29 @@ class ContactEditViewModel @Inject constructor(
         .distinctUntilChanged()
         .flatMapLatest { providers.observeModels(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 系统提示词合计占用；随表单、全局记忆、回复偏好、记忆和昵称变化 */
+    val promptUsage: StateFlow<PromptUsage?> = combine(
+        _state.map { it.form }.distinctUntilChanged(),
+        globals.tree,
+        combine(settings.replyPreferences, settings.nickname) { prefs, nick -> prefs to nick },
+        if (contactId == NEW_CONTACT) flowOf(emptyList()) else memories.observe(contactId),
+        providers.llmConfigs,
+    ) { form, tree, (prefs, nickname), memoryRows, configs ->
+        val estimator = TokenEstimator.forProtocol(configs.firstOrNull { it.id == form.providerId }?.provider ?: ProviderProtocol.OPENAI)
+        val contact = Contact(
+            name = form.name.trim(), avatarColor = 0, providerId = form.providerId, model = form.model,
+            systemPrompt = form.systemPrompt, contextTokens = form.contextTokens,
+            useGlobalMemory = form.useGlobalMemory, useReplyPreferences = form.useReplyPreferences, createdAt = 0, updatedAt = 0,
+        )
+        val chosen = MemoryPolicy.forRequest(memoryRows, MemoryPolicy.memoryBudget(form.contextTokens), estimator)
+        val promptGlobals = PromptGlobals(
+            globalMemory = if (form.useGlobalMemory) tree.entries() else emptyList(),
+            replyStyle = if (form.useReplyPreferences) prefs else null,
+        )
+        val prompt = contextBuilder.systemPrompt(contact, nickname, clock.now(), chosen, promptGlobals)
+        PromptUsage(prompt?.let(estimator::text) ?: 0, form.contextTokens)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {
         viewModelScope.launch {
@@ -137,6 +188,8 @@ class ContactEditViewModel @Inject constructor(
                         contextTokens = it.contextTokens,
                         splitReplies = it.splitReplies,
                         autoMemory = it.autoMemory,
+                        useGlobalMemory = it.useGlobalMemory,
+                        useReplyPreferences = it.useReplyPreferences,
                     )
                 } ?: ContactForm(avatarColor = randomAvatarColor())
             }
@@ -245,6 +298,8 @@ class ContactEditViewModel @Inject constructor(
                     contextTokens = form.contextTokens,
                     splitReplies = form.splitReplies,
                     autoMemory = form.autoMemory,
+                    useGlobalMemory = form.useGlobalMemory,
+                    useReplyPreferences = form.useReplyPreferences,
                 ),
             )
             old.id
@@ -262,6 +317,8 @@ class ContactEditViewModel @Inject constructor(
                 contextTokens = form.contextTokens,
                 splitReplies = form.splitReplies,
                 autoMemory = form.autoMemory,
+                useGlobalMemory = form.useGlobalMemory,
+                useReplyPreferences = form.useReplyPreferences,
                 createdAt = now,
                 updatedAt = now,
             ),

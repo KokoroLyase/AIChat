@@ -29,7 +29,11 @@ import isomeria.aichat.data.llm.*
 import isomeria.aichat.data.db.ProviderModel
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.data.repo.MemoryRepository
+import isomeria.aichat.data.repo.PromptGlobalsSource
 import isomeria.aichat.data.repo.ProviderRepository
+import isomeria.aichat.core.GlobalMemoryEntry
+import isomeria.aichat.core.PromptGlobals
+import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.data.repo.UsageRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -62,6 +66,7 @@ class MemoryEngineTest {
     private val fake = FakeProvider()
     private lateinit var engine: MemoryEngine
     private lateinit var providers: ProviderRepository
+    private lateinit var builder: ContextBuilder
     private var providerId = 0L
 
     private val cipher = object : SecretCipher {
@@ -94,7 +99,7 @@ class MemoryEngineTest {
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         providers = ProviderRepository(db, db.providerDao(), cipher, setOf(fake))
-        val builder = ContextBuilder(
+        builder = ContextBuilder(
             ContextLabels(
                 namePlaceholder = "{名称}",
                 personaPlaceholderPrefix = "{在这里写人设",
@@ -189,6 +194,44 @@ class MemoryEngineTest {
         fake.requests.clear()
         engine.autoRun(1)
         assertTrue(fake.requests.isEmpty())
+    }
+
+    // ---------- 0.5.0 全局内容 ----------
+
+    private fun engineWithGlobals(globals: PromptGlobals) = MemoryEngine(
+        db, providers, UsageRepository(db.usageDao()), builder,
+        MemoryLabels("总结 %1\$s 和 %2\$s", "合并 %1\$s", "对方", "[图片]"),
+        PromptGlobalsSource { globals },
+    ) { "阿哲" }
+
+    private fun globals(count: Int) = PromptGlobals(List(count) { GlobalMemoryEntry("类", "题", "全局记忆的内容甲乙丙丁") }, ReplyPreferences())
+
+    /** 判断何时总结时按聊天请求的系统提示词算（含全局内容）；总结请求本身不带全局内容 */
+    @Test
+    fun globalContent_countsTowardTrigger_butSummaryRequestExcludesIt() = runBlocking {
+        contact()
+        messages(20) // 280 token，没有全局内容时不到 80%
+        engineWithGlobals(PromptGlobals.NONE).autoRun(1)
+        assertTrue(fake.requests.isEmpty())
+
+        engineWithGlobals(globals(60)).autoRun(1) // 全局内容约 900 token，留给聊天的只剩下限 200
+        val request = fake.requests.single()
+        assertEquals(2, request.messages.size)
+        assertEquals("总结 小雨 和 阿哲", request.messages[0].plainText())
+        assertFalse(request.messages.any { it.plainText().contains("全局记忆的内容") })
+        assertEquals(1, db.memoryDao().listByContact(1).size)
+    }
+
+    /** 全局内容远超预算：留给聊天的预算是负数，仍按 200 下限判断，不出错也不反复总结 */
+    @Test
+    fun hugeGlobalContent_memoryStillWorks() = runBlocking {
+        contact()
+        messages(20)
+        val engine = engineWithGlobals(globals(5_000))
+        engine.autoRun(1)
+        assertEquals(1, fake.requests.size)
+        engine.autoRun(1) // 剩下的不到下限的 80%，不再总结
+        assertEquals(1, fake.requests.size)
     }
 
     @Test
