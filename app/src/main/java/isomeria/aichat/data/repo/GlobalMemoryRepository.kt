@@ -51,7 +51,7 @@ data class GlobalMemoryTree(
 
 /**
  * 「我 → 全局记忆」的增删改、排序，以及每次请求要带的全局内容。
- * 联系人开了「使用全局记忆」才带全局记忆，开了「使用回复偏好」才带回复要求。
+ * 联系人开了「使用全局记忆」才带全局记忆，开了「使用回复偏好」才带回复要求，开了主动聊天才带约定时间的写法。
  */
 @Singleton
 class GlobalMemoryRepository @Inject constructor(
@@ -69,6 +69,7 @@ class GlobalMemoryRepository @Inject constructor(
     override suspend fun forContact(contact: Contact): PromptGlobals = PromptGlobals(
         globalMemory = if (contact.useGlobalMemory) snapshot().entries() else emptyList(),
         replyStyle = if (contact.useReplyPreferences) preferences.replyPreferences() else null,
+        reminderHint = contact.proactiveEnabled,
     )
 
     // ---------- 类别 ----------

@@ -39,6 +39,8 @@ data class ContextLabels(
     val replyStyle: String = "",
     /** 条数范围。参数：最少、最多 */
     val countRange: String = "%1\$d～%2\$d",
+    /** 约定时间的写法（0.6.0）：只发给开启主动聊天的联系人 */
+    val reminderHint: String = "",
 )
 
 /** 全局记忆里要发出去的一条：已启用、所在的类别和主题。 */
@@ -47,10 +49,13 @@ data class GlobalMemoryEntry(val category: String, val topic: String, val conten
 /**
  * 系统提示词里由 App 统一加的内容（0.5.0）：联系人开启「使用全局记忆」时的全局记忆，
  * 开启「使用回复偏好」时的回复要求。两项都空时，系统提示词和 0.4.2 完全一样。
+ *
+ * 0.6.0：联系人开启主动聊天时，再加一段「约定时间怎么写」（[reminderHint]）；没开启时系统提示词和 0.5.0 完全一样。
  */
 data class PromptGlobals(
     val globalMemory: List<GlobalMemoryEntry> = emptyList(),
     val replyStyle: ReplyPreferences? = null,
+    val reminderHint: Boolean = false,
 ) {
     companion object {
         val NONE = PromptGlobals()
@@ -61,7 +66,7 @@ data class PromptGlobals(
  * 每次请求 = 系统提示词 + 记忆 + 预算内的聊天记录（由 [ContextWindow] 选出）。
  *
  * - 系统提示词里的 {名称} 换成联系人名称；模板里没改过的人设占位行去掉；人设、记忆、全局内容都为空时不发送
- * - 顺序：全局记忆 → 人设 → 长期记忆 → 回复偏好要求 → 当前日期、星期、时间和自己的昵称
+ * - 顺序：全局记忆 → 人设 → 长期记忆 → 回复偏好要求 → 约定时间的写法（开启主动聊天时） → 当前日期、星期、时间和自己的昵称
  * - 历史回复里的思考内容不回传
  * - 只有最近 [MAX_IMAGES] 张图片带原图，更早的替换为「[图片]」；模型不支持图片时全部替换
  * - 连续同一角色的消息合并成一条（文字和图片作为同一条消息的不同部分）
@@ -137,7 +142,8 @@ class ContextBuilder(
         val prompt = resolvePrompt(contact.systemPrompt, contact.name)
         val global = globalMemoryBlock(globals.globalMemory)
         val style = globals.replyStyle?.let(::replyStyleBlock).orEmpty()
-        if (prompt.isBlank() && memories.isEmpty() && global.isEmpty() && style.isEmpty()) return null
+        val reminder = if (globals.reminderHint) labels.reminderHint else ""
+        if (prompt.isBlank() && memories.isEmpty() && global.isEmpty() && style.isEmpty() && reminder.isEmpty()) return null
         val time = Instant.ofEpochMilli(now).atZone(zone)
         val extra = buildString {
             append(
@@ -152,7 +158,24 @@ class ContextBuilder(
             )
             if (nickname.isNotBlank()) append(labels.nicknameLine.format(nickname.trim()))
         }
-        return listOf(global, prompt, memoryBlock(memories), style, extra).filter { it.isNotEmpty() }.joinToString("\n\n")
+        return listOf(global, prompt, memoryBlock(memories), style, reminder, extra).filter { it.isNotEmpty() }.joinToString("\n\n")
+    }
+
+    /**
+     * 主动请求（0.6.0）：在拼好的消息后面追加一条只在这次请求里的 user 指令，不存库。
+     * 历史以助手消息结束或为空时单独成一条；以用户消息结束时（例如发送失败的消息）并进那一条，保持角色交替。
+     */
+    fun appendInstruction(messages: List<ChatMessage>, instruction: String): List<ChatMessage> {
+        val last = messages.lastOrNull()
+        if (last == null || last.role != ChatRole.USER) return messages + ChatMessage(ChatRole.USER, instruction)
+        val parts = last.parts.toMutableList()
+        val tail = parts.lastOrNull()
+        if (tail is ChatPart.Text) {
+            parts[parts.lastIndex] = ChatPart.Text(tail.text + "\n\n" + instruction)
+        } else {
+            parts += ChatPart.Text(instruction)
+        }
+        return messages.dropLast(1) + ChatMessage(ChatRole.USER, parts)
     }
 
     /** 全局记忆：按类别、主题分组，顺序和「我 → 全局记忆」里一样；没有已启用的条目时为空 */

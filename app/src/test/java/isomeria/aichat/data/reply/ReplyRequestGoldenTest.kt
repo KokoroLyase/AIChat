@@ -192,6 +192,35 @@ class ReplyRequestGoldenTest {
         assertEquals(GOLDEN_DEEPSEEK, requestBody(1))
     }
 
+    // ---------- 0.6.0：主动聊天关闭时，请求内容和 0.5.0 逐字一致 ----------
+
+    /** 期望值是在 0.6.0 改动请求构造之前（提交 7b3cd1c，只改了版本号），用同一套数据跑 0.5.0 的代码得到的 */
+    @Test
+    fun defaultsOn_proactiveOff_matches050() {
+        runBlocking { globalItem("住在杭州") }
+        assertEquals(GOLDEN_050_DEEPSEEK, requestBody(1))
+        assertEquals(GOLDEN_050_GENERIC, requestBody(2))
+        assertEquals(GOLDEN_050_EMPTY, requestBody(3))
+    }
+
+    @Test
+    fun proactiveOn_addsOnlyTheReminderHintBeforeTheTime_andOffReturnsTo050() = runBlocking {
+        globalItem("住在杭州")
+        for (id in listOf(1L, 2L, 3L)) db.contactDao().update(db.contactDao().get(id)!!.copy(proactiveEnabled = true))
+        val hint = ReplyHarness.REMINDER_HINT.replace("\"", "\\\"")
+        fun withHint(golden: String) = golden.replace("\\n\\n现在是 2026年11月1日", "\\n\\n$hint\\n\\n现在是 2026年11月1日")
+        assertEquals(withHint(GOLDEN_050_DEEPSEEK), requestBody(1))
+        assertEquals(withHint(GOLDEN_050_GENERIC), requestBody(2))
+        assertEquals(withHint(GOLDEN_050_EMPTY), requestBody(3))
+        // 全部 0.5.0 新能力关闭、只开主动聊天：没有人设的联系人也会有系统提示词（提示 + 时间）
+        harness.allOff(3)
+        assertEquals("${ReplyHarness.REMINDER_HINT}\n\n$time", systemOf(3))
+        for (id in listOf(1L, 2L, 3L)) db.contactDao().update(db.contactDao().get(id)!!.copy(proactiveEnabled = false))
+        assertEquals(GOLDEN_050_DEEPSEEK, requestBody(1))
+        assertEquals(GOLDEN_050_GENERIC, requestBody(2))
+        assertEquals(GOLDEN_EMPTY, requestBody(3))
+    }
+
     /** 全局记忆远超上下文上限：聊天记录被挤掉，但这次等待回复的消息一定带上，回复照常写入 */
     @Test
     fun hugeGlobalMemory_chatStillSendsWaitingMessage() = runBlocking {
@@ -208,6 +237,9 @@ class ReplyRequestGoldenTest {
         const val GOLDEN_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"你是小雨，正在用微信和对方聊天。\n想分几条发时，用空行隔开。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"在吗"},{"role":"assistant","content":"在呀\n\n怎么啦"},{"role":"user","content":"[图片]\n看看这张"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"enabled"},"reasoning_effort":"high"}"""
         const val GOLDEN_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"早"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""
         const val GOLDEN_EMPTY = """{"model":"gpt-x","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"temperature":1.3}"""
+        const val GOLDEN_050_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n你是小雨，正在用微信和对方聊天。\n想分几条发时，用空行隔开。\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"在吗"},{"role":"assistant","content":"在呀\n怎么啦"},{"role":"user","content":"[图片]\n看看这张"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"enabled"},"reasoning_effort":"high"}"""
+        const val GOLDEN_050_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"早"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""
+        const val GOLDEN_050_EMPTY = """{"model":"gpt-x","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"temperature":1.3}"""
     }
 }
 
@@ -242,9 +274,58 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             globalMemoryItem = "- %1\$s",
             replyStyle = "回复方式：每次 %1\$s 条，每条 %2\$d 字左右，用换行分隔。",
             countRange = "%1\$d～%2\$d",
+            reminderHint = REMINDER_HINT,
         ),
         zone,
     )
+
+    // ---------- 0.6.0 主动聊天 ----------
+
+    val control = RecordingControl()
+    var proactiveSettings = isomeria.aichat.core.ProactiveSettings()
+
+    /** 掷概率用的随机数：小于概率就触发。默认 0，只要概率大于 0 就触发 */
+    var roll = 0.0
+    val random = object : kotlin.random.Random() {
+        override fun nextBits(bitCount: Int) = 0
+        override fun nextDouble() = roll
+    }
+
+    val proactiveLabels = ProactiveLabels(
+        instruction = "【主动】现在是 %1\$s，%2\$s。不想找对方只输出 [SKIP]。",
+        reminderInstruction = "【约定】现在是 %1\$s。约定 %2\$s：%3\$s。",
+        time = "%1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d",
+        weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
+        sinceMinutes = "上一条消息在 %1\$d 分钟前",
+        sinceHours = "上一条消息在 %1\$d 小时前",
+        sinceDays = "上一条消息在 %1\$d 天前",
+        noHistory = "还没有聊过",
+        reminderNoNote = "按说好的做",
+        reminderKeyword = "提醒",
+    )
+
+    val reminders = ProactiveReminders(db, control, { zone }, proactiveLabels)
+
+    val proactive by lazy {
+        ProactiveEngine(
+            db = db,
+            providers = providers,
+            usage = UsageRepository(db.usageDao()),
+            nicknames = { nickname },
+            files = FileStorage(context),
+            contextBuilder = contextBuilder,
+            clock = Clock { now },
+            promptGlobals = GlobalMemoryRepository(db, { preferences }, Clock { now }),
+            preferences = { preferences },
+            settings = { proactiveSettings },
+            random = random,
+            activeChat = activeChat,
+            queue = queue,
+            reminders = reminders,
+            labels = proactiveLabels,
+            zone = { zone },
+        )
+    }
 
     private val cipher = object : SecretCipher {
         override fun encrypt(plain: String) = "enc:$plain"
@@ -267,12 +348,11 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         clock = Clock { now },
         promptGlobals = GlobalMemoryRepository(db, { preferences }, Clock { now }),
         preferences = { preferences },
-        random = object : kotlin.random.Random() {
-            override fun nextBits(bitCount: Int) = 0
-        },
+        random = random,
         sleeper = sleeper,
         delivery = delivery,
         queue = queue,
+        reminders = reminders,
     )
 
     var preferences = isomeria.aichat.core.RHYTHM_TEST_PREFERENCES
@@ -289,6 +369,10 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         db.messageDao().deleteByContact(contactId)
         db.messageDao().insertAll(before)
         return provider.requests.last()
+    }
+
+    companion object {
+        const val REMINDER_HINT = "约定时间：写 [提醒 年-月-日 时:分 事由]。"
     }
 
     /** 关掉这个联系人的全部 0.5.0 新能力 */
@@ -313,11 +397,22 @@ internal class RecordingQueue : ReplyQueue {
     override suspend fun isDelivering(contactId: Long) = false
 }
 
+/** 记录主动聊天的后台任务被要求对齐了几次 */
+internal class RecordingControl : ProactiveControl {
+    var syncs = 0
+    override suspend fun sync() {
+        syncs++
+    }
+}
+
 internal class RecordingProvider {
     val requests = mutableListOf<ChatRequest>()
     var lastProtocol = ""
     var reply = "好的\n\n马上来"
     var beforeReply: (suspend () -> Unit)? = null
+
+    /** 不为空时请求失败 */
+    var failure: Exception? = null
 
     fun forProtocol(protocol: String): LlmProvider = object : LlmProvider {
         override val id = protocol
@@ -328,6 +423,7 @@ internal class RecordingProvider {
             requests += request
             lastProtocol = protocol
             beforeReply?.invoke()
+            failure?.let { throw it }
             emit(ChatEvent.Content(reply))
             emit(ChatEvent.Usage(100, 10))
         }

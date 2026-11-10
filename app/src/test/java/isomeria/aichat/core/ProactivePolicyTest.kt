@@ -219,20 +219,21 @@ class ProactivePolicyTest {
     // ---------- 约定标记 ----------
 
     private val now = at(22, 0)
+    private val marker = ReminderMarker("提醒")
 
     @Test
     fun extractReminders_stripsTheMarkerLine_andParsesLocalTime() {
-        val (text, reminders) = ProactivePolicy.extractReminders("好的，明早叫你\n[提醒 2026-11-11 07:00 叫他起床]", now, zone)
+        val (text, reminders) = marker.extract("好的，明早叫你\n[提醒 2026-11-11 07:00 叫他起床]", now, zone)
         assertEquals("好的，明早叫你", text)
         assertEquals(listOf(ParsedReminder(at(7, 0, day = 11), "叫他起床")), reminders)
     }
 
     @Test
     fun extractReminders_acceptsFullWidthBracketsColonAndSingleDigits_andNoNote() {
-        val (text, reminders) = ProactivePolicy.extractReminders("行\n【提醒 2026-11-11 7：05】\n到时候喊你", now, zone)
+        val (text, reminders) = marker.extract("行\n【提醒 2026-11-11 7：05】\n到时候喊你", now, zone)
         assertEquals("行\n到时候喊你", text)
         assertEquals(listOf(ParsedReminder(at(7, 5, day = 11), "")), reminders)
-        val (inline, inlineReminders) = ProactivePolicy.extractReminders("好呀 [提醒 2026-11-10 23:30 提醒睡觉]", now, zone)
+        val (inline, inlineReminders) = marker.extract("好呀 [提醒 2026-11-10 23:30 提醒睡觉]", now, zone)
         assertEquals("好呀", inline)
         assertEquals(at(23, 30), inlineReminders.single().dueAt)
     }
@@ -240,14 +241,14 @@ class ProactivePolicyTest {
     @Test
     fun extractReminders_keepsParagraphBreaks_andSeveralMarkers() {
         val reply = "第一段\n\n第二段\n[提醒 2026-11-11 07:00 起床]\n[提醒 2026-11-11 15:00 开会]\n[提醒 2026-11-11 07:00 重复的]"
-        val (text, reminders) = ProactivePolicy.extractReminders(reply, now, zone)
+        val (text, reminders) = marker.extract(reply, now, zone)
         assertEquals("第一段\n\n第二段", text)
         assertEquals(listOf("起床", "开会"), reminders.map { it.note })
     }
 
     @Test
     fun extractReminders_pastTooFarOrImpossibleTimes_areRemovedButNotRecorded() {
-        for (marker in listOf(
+        for (written in listOf(
             "[提醒 2026-11-10 21:00 已经过去]",
             "[提醒 2026-11-10 22:00 就是现在]",
             "[提醒 2027-03-01 08:00 太远了]",
@@ -256,19 +257,28 @@ class ProactivePolicyTest {
             "[提醒 明早七点 没按格式写]",
             "[提醒]",
         )) {
-            val (text, reminders) = ProactivePolicy.extractReminders("好的\n$marker", now, zone)
-            assertEquals(marker, "好的", text)
-            assertTrue(marker, reminders.isEmpty())
+            val (text, reminders) = marker.extract("好的\n$written", now, zone)
+            assertEquals(written, "好的", text)
+            assertTrue(written, reminders.isEmpty())
         }
+    }
+
+    @Test
+    fun extractReminders_usesTheKeywordItWasGiven() {
+        val other = ReminderMarker("REMIND")
+        assertEquals("ok" to listOf(ParsedReminder(at(7, 0, day = 11), "wake")), other.extract("ok\n[REMIND 2026-11-11 07:00 wake]", now, zone))
+        assertEquals("好的\n[提醒 2026-11-11 07:00 起床]", other.extract("好的\n[提醒 2026-11-11 07:00 起床]", now, zone).first)
+        // 关键词为空时什么也不做
+        assertEquals("[ 2026-11-11 07:00 x]" to emptyList<ParsedReminder>(), ReminderMarker(" ").extract("[ 2026-11-11 07:00 x]", now, zone))
     }
 
     @Test
     fun extractReminders_leavesOrdinaryTextAlone() {
         for (reply in listOf("好的\n\n马上来", "记得提醒我带伞", "  前后空白保留  ", "[图片]\n看看", "")) {
-            assertEquals(reply to emptyList<ParsedReminder>(), ProactivePolicy.extractReminders(reply, now, zone))
+            assertEquals(reply to emptyList<ParsedReminder>(), marker.extract(reply, now, zone))
         }
         // 只有标记的回复：正文为空，约定照记
-        val (text, reminders) = ProactivePolicy.extractReminders("[提醒 2026-11-11 07:00 起床]", now, zone)
+        val (text, reminders) = marker.extract("[提醒 2026-11-11 07:00 起床]", now, zone)
         assertEquals("", text)
         assertEquals(1, reminders.size)
     }

@@ -123,9 +123,36 @@ object AppModule {
                 globalMemoryItem = res.getString(R.string.prompt_global_memory_item),
                 replyStyle = res.getString(R.string.prompt_reply_style),
                 countRange = res.getString(R.string.prompt_count_range),
+                reminderHint = res.getString(R.string.prompt_reminder_hint),
             ),
         )
     }
+
+    @Provides
+    @Singleton
+    fun proactiveLabels(@ApplicationContext context: Context): isomeria.aichat.data.reply.ProactiveLabels {
+        val res = context.resources
+        return isomeria.aichat.data.reply.ProactiveLabels(
+            instruction = res.getString(R.string.prompt_proactive_instruction),
+            reminderInstruction = res.getString(R.string.prompt_proactive_reminder),
+            time = res.getString(R.string.prompt_proactive_time),
+            weekdays = res.getStringArray(R.array.weekdays).toList(),
+            sinceMinutes = res.getString(R.string.prompt_proactive_since_minutes),
+            sinceHours = res.getString(R.string.prompt_proactive_since_hours),
+            sinceDays = res.getString(R.string.prompt_proactive_since_days),
+            noHistory = res.getString(R.string.prompt_proactive_no_history),
+            reminderNoNote = res.getString(R.string.prompt_proactive_reminder_no_note),
+            reminderKeyword = res.getString(R.string.prompt_reminder_keyword),
+        )
+    }
+
+    /** 每次用到时取手机当前的时区（用户可能中途改时区） */
+    @Provides
+    fun zone(): java.time.ZoneId = java.time.ZoneId.systemDefault()
+
+    /** 调度在下一批接上；这之前不注册任何后台任务 */
+    @Provides
+    fun proactiveControl(): isomeria.aichat.data.reply.ProactiveControl = isomeria.aichat.data.reply.ProactiveControl.NONE
 
     @Provides
     fun clock(): isomeria.aichat.core.Clock = isomeria.aichat.core.Clock.SYSTEM

@@ -175,30 +175,39 @@ object ProactivePolicy {
         val compact = Normalizer.normalize(text, Normalizer.Form.NFKC).filter { it.isLetterOrDigit() }.uppercase()
         return "SKIP" in compact
     }
+}
 
-    // ---------- 约定提醒的隐藏标记 ----------
-
-    private val reminderMarker = Regex("""[\[【]\s*提醒\s+(\d{4})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s+(\d{1,2})\s*[:：]\s*(\d{1,2})\s*([^\]】\n]*)[\]】]""")
+/**
+ * 约定提醒的隐藏标记：`[关键词 2026-11-11 07:00 叫他起床]`。关键词来自 strings.xml（和系统提示词里教模型写的一致），
+ * 方括号可以是半角或全角，冒号可以是半角或全角。
+ */
+class ReminderMarker(keyword: String) {
+    private val keyword = keyword.trim()
+    private val open = "[\\[\u3010]"
+    private val close = "[\\]\u3011]"
+    private val inside = "[^\\]\u3011\\n]*"
+    private val word = Regex.escape(this.keyword)
+    private val marker = Regex("$open\\s*$word\\s+(\\d{4})\\s*-\\s*(\\d{1,2})\\s*-\\s*(\\d{1,2})\\s+(\\d{1,2})\\s*[:\uFF1A]\\s*(\\d{1,2})\\s*($inside)$close")
 
     /** 没按格式写的标记（比如没有具体日期）也要去掉，不能显示给用户 */
-    private val looseMarker = Regex("""[\[【]\s*提醒[^\]】\n]*[\]】]""")
+    private val loose = Regex("$open\\s*$word$inside$close")
 
     /**
-     * 从回复里取出约定标记 `[提醒 2026-11-11 07:00 叫他起床]`，返回去掉标记后的正文和解析出的约定。
-     * 标记里的时间按手机当前时区理解；已经过去的、太远的、日期不存在的只去掉不记录。
+     * 从回复里取出约定标记，返回去掉标记后的正文和解析出的约定。
+     * 标记里的时间按 [zone] 理解；已经过去的、太远的、日期不存在的只去掉不记录。
      */
-    fun extractReminders(text: String, now: Long, zone: ZoneId = ZoneId.systemDefault()): Pair<String, List<ParsedReminder>> {
-        if ("提醒" !in text) return text to emptyList()
-        val reminders = reminderMarker.findAll(text).mapNotNull { match ->
+    fun extract(text: String, now: Long, zone: ZoneId = ZoneId.systemDefault()): Pair<String, List<ParsedReminder>> {
+        if (keyword.isEmpty() || keyword !in text) return text to emptyList()
+        val reminders = marker.findAll(text).mapNotNull { match ->
             val (year, month, day, hour, minute, note) = match.destructured
             val dueAt = try {
                 LocalDateTime.of(year.toInt(), month.toInt(), day.toInt(), hour.toInt(), minute.toInt()).atZone(zone).toInstant().toEpochMilli()
             } catch (_: DateTimeException) {
                 return@mapNotNull null
             }
-            if (dueAt <= now || dueAt - now > REMINDER_MAX_AHEAD_MILLIS) null else ParsedReminder(dueAt, note.trim())
+            if (dueAt <= now || dueAt - now > ProactivePolicy.REMINDER_MAX_AHEAD_MILLIS) null else ParsedReminder(dueAt, note.trim())
         }.distinctBy { it.dueAt }.toList()
-        val cleaned = text.replace(looseMarker, "").lines().map { it.trimEnd() }
+        val cleaned = text.replace(loose, "").lines().map { it.trimEnd() }
         // 标记原来单独占一行：去掉它留下的空行，但保留正文里原有的空行分段
         val original = text.lines()
         val kept = cleaned.filterIndexed { index, line -> line.isNotBlank() || original[index].isBlank() }

@@ -6,7 +6,6 @@ import isomeria.aichat.BuildConfig
 import isomeria.aichat.core.ContextBuilder
 import isomeria.aichat.core.ContextWindow
 import isomeria.aichat.core.MemoryPolicy
-import isomeria.aichat.core.ReplySplitter
 import isomeria.aichat.core.TokenEstimator
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.ContactDao
@@ -14,11 +13,8 @@ import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.ThinkingLevel
 import isomeria.aichat.data.db.UsagePurpose
 import isomeria.aichat.data.db.ConversationDao
-import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageDao
 import isomeria.aichat.data.db.MessageStatus
-import isomeria.aichat.data.db.MessageType
-import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.llm.ChatEvent
 import isomeria.aichat.data.llm.ChatRequest
 import isomeria.aichat.data.llm.LlmException
@@ -33,7 +29,6 @@ import isomeria.aichat.data.repo.FileStorage
 import isomeria.aichat.data.repo.PromptGlobalsSource
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.repo.UsageRepository
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -50,6 +45,8 @@ import javax.inject.Singleton
  *   拼上下文时把这次等待回复的用户消息排到最后，保证发给模型的最后一条是用户消息
  * - 失败（含 401/402/429/5xx/断网）时把这次等待回复的消息标记为失败，可手动重试
  * - 被取消（用户取消，或又发了新消息替换了任务）时什么也不写，由发起取消的一方处理状态
+ * - 0.6.0：联系人开启主动聊天时，回复里的约定标记不显示，约好的时间记下来，到点由主动聊天处理；
+ *   没开启时这一步什么也不做，回复和 0.5.0 一样
  */
 @Singleton
 class ReplyEngine @Inject constructor(
@@ -70,6 +67,7 @@ class ReplyEngine @Inject constructor(
     private val sleeper: Sleeper,
     private val delivery: DeliveryEngine,
     private val queue: ReplyQueue,
+    private val reminders: ProactiveReminders,
 ) {
     suspend fun run(contactId: Long) {
         // 上一轮已经生成的先发完：投递任务在发，这里只是等（到点时顺手送达，不会重复）
@@ -169,45 +167,29 @@ class ReplyEngine @Inject constructor(
             return
         }
 
-        val text = content.toString().trim()
+        val finishedAt = clock.now()
+        // 开了主动聊天的联系人：约定标记不显示，记下约好的时间（没开时原样返回）
+        val (text, parsed) = reminders.extract(contact, content.toString().trim(), finishedAt)
         if (text.isEmpty()) {
             fail(waiting, FailReason.EMPTY_REPLY)
             return
         }
-        val finishedAt = clock.now()
-        val replyPreferences = if (contact.useReplyPreferences) preferences.replyPreferences() else null
-        val parts = when {
-            replyPreferences != null -> ReplyRhythm.split(text, replyPreferences)
-            contact.splitReplies -> ReplySplitter.split(text).ifEmpty { listOf(text) }
-            else -> listOf(text)
-        }
-        val times = replyPreferences?.let { ReplyRhythm.schedule(parts, it, startedAt, finishedAt, random) }
-            ?: parts.indices.map { finishedAt + it * ReplySplitter.PART_INTERVAL_MILLIS }
-        val thinkingMillis = if (reasoning.isNotEmpty()) {
-            (if (firstContentAt > 0) firstContentAt else finishedAt) - startedAt
-        } else {
-            0L
-        }
-        val group = UUID.randomUUID().toString()
-        val rows = parts.mapIndexed { index, part ->
-            Message(
-                contactId = contactId,
-                role = Role.ASSISTANT,
-                type = MessageType.TEXT,
-                content = part,
-                reasoning = if (index == 0) reasoning.toString().trim().ifEmpty { null } else null,
-                reasoningMillis = if (index == 0) thinkingMillis else 0L,
-                status = MessageStatus.PENDING,
-                model = contact.model,
-                promptTokens = if (index == 0) promptTokens else 0,
-                completionTokens = if (index == 0) completionTokens else 0,
-                replyGroup = group,
-                createdAt = times[index],
-            )
-        }
+        val rows = ReplyComposer.rows(
+            contact = contact,
+            text = text,
+            reasoning = reasoning.toString(),
+            promptTokens = promptTokens,
+            completionTokens = completionTokens,
+            startedAt = startedAt,
+            firstContentAt = firstContentAt,
+            finishedAt = finishedAt,
+            preferences = if (contact.useReplyPreferences) preferences.replyPreferences() else null,
+            random = random,
+        )
         db.withTransaction {
             messageDao.insertAll(rows)
             messageDao.setStatus(waiting, MessageStatus.SUCCESS, 0)
+            reminders.save(contactId, parsed, finishedAt)
             // 服务商没有返回用量时用估算值
             usage.record(
                 contactId = contactId,
@@ -216,9 +198,10 @@ class ReplyEngine @Inject constructor(
                 completionTokens = completionTokens.takeIf { it > 0 } ?: estimator.text(content.toString() + reasoning),
             )
         }
-        debugLog("reply ok: parts=${parts.size} prompt=$promptTokens completion=$completionTokens")
+        debugLog("reply ok: parts=${rows.size} prompt=$promptTokens completion=$completionTokens")
         // 预览、未读、通知和记忆都在送达时处理
         queue.enqueueDelivery(contactId)
+        if (parsed.isNotEmpty()) reminders.schedule()
     }
 
     /** 任务被系统中断后重新调度：不再自动重试，标记失败 */
