@@ -12,6 +12,7 @@ import isomeria.aichat.data.db.ConversationDao
 import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.MessageDao
 import isomeria.aichat.data.db.UsageDao
+import isomeria.aichat.data.reply.ProactiveControl
 import isomeria.aichat.data.reply.ReplyControl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,7 @@ class ContactRepository @Inject constructor(
     private val files: FileStorage,
     private val pinyin: PinyinConverter,
     private val replyScheduler: ReplyControl,
+    private val proactive: ProactiveControl = ProactiveControl.NONE,
 ) {
     fun observeContacts(): Flow<List<Contact>> = contactDao.observeAll()
 
@@ -44,11 +46,16 @@ class ContactRepository @Inject constructor(
     suspend fun get(id: Long): Contact? = contactDao.get(id)
 
     /** 新建联系人，同时建好它的会话 */
-    suspend fun create(contact: Contact): Long = db.withTransaction {
-        val now = System.currentTimeMillis()
-        val id = contactDao.insert(contact.copy(id = 0, createdAt = now, updatedAt = now))
-        conversationDao.upsert(Conversation(contactId = id))
-        id
+    suspend fun create(contact: Contact): Long {
+        val id = db.withTransaction {
+            val now = System.currentTimeMillis()
+            val id = contactDao.insert(contact.copy(id = 0, createdAt = now, updatedAt = now))
+            conversationDao.upsert(Conversation(contactId = id))
+            id
+        }
+        // 主动聊天的开关可能变了：有人开启就注册周期检查，全部关闭就取消
+        proactive.sync()
+        return id
     }
 
     suspend fun update(contact: Contact) {
@@ -64,6 +71,7 @@ class ContactRepository @Inject constructor(
             if (!contact.proactiveEnabled) db.proactiveDao().deleteRemindersOf(contact.id)
         }
         if (old?.avatarPath != null && old.avatarPath != contact.avatarPath) files.delete(old.avatarPath)
+        proactive.sync()
     }
 
     /** 删除联系人，同时删除聊天记录、记忆、头像、聊天图片和聊天背景；用量并到「已删除的联系人」，总量不变 */
@@ -86,5 +94,6 @@ class ContactRepository @Inject constructor(
         files.delete(contact.avatarPath)
         files.delete(background)
         images.forEach(files::delete)
+        proactive.sync()
     }
 }

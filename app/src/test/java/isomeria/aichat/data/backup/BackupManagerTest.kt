@@ -533,6 +533,25 @@ class BackupManagerTest {
         }
     }
 
+    /** 恢复后开启主动聊天的联系人可能变了：按恢复后的数据重新注册或取消后台任务 */
+    @Test
+    fun restore_resyncsProactiveBackgroundTasks_afterBothModes() = runBlocking {
+        var syncs = 0
+        val control = object : isomeria.aichat.data.reply.ProactiveControl {
+            override suspend fun sync() {
+                syncs++
+            }
+        }
+        val withControl = BackupManager(context, db, files, cipher, settings, replies, control)
+        seedProactive()
+        val zip = export(password = null)
+        assertEquals("导出不动后台任务", 0, syncs)
+        withControl.restore(withControl.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(1, syncs)
+        withControl.restore(withControl.inspect(export(password = null)), RestoreMode.MERGE, null)
+        assertEquals(2, syncs)
+    }
+
     @Test
     fun crafted_proactiveSettings_areNormalized() = runBlocking {
         val zip = writeZip(

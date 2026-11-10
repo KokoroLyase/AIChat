@@ -3,7 +3,8 @@
     <string name="tools_running">正在生成本地虚构数据…</string>
     <string name="tools_seeded">完成：联系人 %1$d，消息 %2$d 条</string>
     <string name="tools_failed">本地测试工具失败</string>
-    <string name="tools_usage">参数 action=seed|crash|native_crash|anr|search，count=1..50000</string>
+    <string name="tools_usage">参数 action=seed|crash|native_crash|anr|search|proactive_run|proactive_state，count=1..50000</string>
+    <string name="tools_proactive_result">主动聊天：%1$s</string>
     <string name="tools_anr">本地 ANR 测试：1 秒后主线程阻塞 30 秒。</string>
     <string name="tools_search_result">直接查询计时（不含防抖和绘制）：\n%1$s</string>
     <string name="tools_snapshot_watch">已准备：下次恢复写好快照后，临时禁止删除。测试后需恢复 backups 目录权限。</string>

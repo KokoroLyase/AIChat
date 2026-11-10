@@ -126,6 +126,7 @@ class BackupManager @Inject constructor(
     private val cipher: SecretCipher,
     private val settings: BackupSettingsAccess,
     private val replies: ReplyControl,
+    private val proactive: isomeria.aichat.data.reply.ProactiveControl = isomeria.aichat.data.reply.ProactiveControl.NONE,
 ) {
     private val json = BackupFormat.json
     private val migrations = BackupMigrations()
@@ -223,6 +224,8 @@ class BackupManager @Inject constructor(
                 // apply includes post-transaction settings writes and any required rollback.
                 val snapshotDeleted = !snapshotFile.exists() || snapshotFile.delete()
                 val temporaryDeleted = discardPreview(preview)
+                // 恢复后开启主动聊天的联系人可能变了（0.5.0 及更早的备份里都是关闭）：按恢复后的数据注册或取消后台任务
+                proactive.sync()
                 summary.copy(cleanupPending = !snapshotDeleted || !temporaryDeleted)
             } }
         } } finally { discardPreview(preview) }

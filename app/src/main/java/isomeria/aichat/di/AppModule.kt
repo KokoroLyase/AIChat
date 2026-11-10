@@ -150,9 +150,6 @@ object AppModule {
     @Provides
     fun zone(): java.time.ZoneId = java.time.ZoneId.systemDefault()
 
-    /** 调度在下一批接上；这之前不注册任何后台任务 */
-    @Provides
-    fun proactiveControl(): isomeria.aichat.data.reply.ProactiveControl = isomeria.aichat.data.reply.ProactiveControl.NONE
 
     @Provides
     fun clock(): isomeria.aichat.core.Clock = isomeria.aichat.core.Clock.SYSTEM
@@ -209,7 +206,11 @@ abstract class BindingsModule {
 
     @Binds abstract fun replyPreferencesSource(impl: SettingsStore): isomeria.aichat.core.ReplyPreferencesSource
 
+    @Binds abstract fun proactiveSettingsSource(impl: SettingsStore): isomeria.aichat.core.ProactiveSettingsSource
+
     @Binds abstract fun replyControl(impl: ReplyScheduler): ReplyControl
+
+    @Binds abstract fun proactiveControl(impl: isomeria.aichat.data.reply.ProactiveScheduler): isomeria.aichat.data.reply.ProactiveControl
 
     @Binds abstract fun replyQueue(impl: ReplyScheduler): ReplyQueue
 

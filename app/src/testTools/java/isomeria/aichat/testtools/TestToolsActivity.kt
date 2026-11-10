@@ -31,6 +31,8 @@ class TestToolsActivity : ComponentActivity() {
     @Inject lateinit var files: isomeria.aichat.data.repo.FileStorage
     @Inject lateinit var settings: isomeria.aichat.data.settings.SettingsStore
     @Inject lateinit var providers: isomeria.aichat.data.repo.ProviderRepository
+    @Inject lateinit var proactive: isomeria.aichat.data.reply.ProactiveEngine
+    @Inject lateinit var proactiveScheduler: isomeria.aichat.data.reply.ProactiveScheduler
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -106,6 +108,32 @@ class TestToolsActivity : ComponentActivity() {
                         }.joinToString("\n")
                     }
                     text.text = getString(R.string.tools_search_result, measurements)
+                } catch (_: Exception) { text.setText(R.string.tools_failed) }
+            }
+            // 主动聊天「立即运行一次」：不掷概率、不看最短间隔，其余跳过条件和每日次数照常。只在 debug / perf 包里有。
+            // 会按联系人的配置调用模型：测试时服务商必须指向本机模拟接口
+            "proactive_run" -> lifecycleScope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        val run = proactive.run(force = !intent.getBooleanExtra("roll", false), remindersOnly = intent.getBooleanExtra("reminders", false))
+                        val state = db.proactiveDao().state()
+                        "ran=${run.ran}; " + run.attempts.joinToString { (id, a) -> "$id:${a.outcome}${a.block?.let { b -> "/$b" } ?: ""}" } +
+                            "; used=${state?.used ?: 0}; scheduled=${proactiveScheduler.isCheckScheduled()}; reminder=${proactiveScheduler.isReminderScheduled()}"
+                    }
+                    text.text = getString(R.string.tools_proactive_result, result)
+                    android.util.Log.i("TestTools", "proactive_run $result")
+                } catch (_: Exception) { text.setText(R.string.tools_failed) }
+            }
+            // 只看状态，不运行
+            "proactive_state" -> lifecycleScope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        val state = db.proactiveDao().state()
+                        "enabled=${db.contactDao().proactiveCount()}; used=${state?.used ?: 0}; lastRunAt=${state?.lastRunAt ?: 0}; " +
+                            "reminders=${db.proactiveDao().reminderCount()}; scheduled=${proactiveScheduler.isCheckScheduled()}; reminder=${proactiveScheduler.isReminderScheduled()}"
+                    }
+                    text.text = getString(R.string.tools_proactive_result, result)
+                    android.util.Log.i("TestTools", "proactive_state $result")
                 } catch (_: Exception) { text.setText(R.string.tools_failed) }
             }
             "seed" -> lifecycleScope.launch {
