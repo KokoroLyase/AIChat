@@ -20,6 +20,7 @@ import isomeria.aichat.data.repo.MemoryRepository
 import isomeria.aichat.data.settings.SettingsStore
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
+import isomeria.aichat.data.db.ProactiveFrequency
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderModel
@@ -62,6 +63,9 @@ data class ContactForm(
     val autoMemory: Boolean = true,
     val useGlobalMemory: Boolean = true,
     val useReplyPreferences: Boolean = true,
+    /** 主动聊天（0.6.0）：默认关闭 */
+    val proactiveEnabled: Boolean = false,
+    val proactiveFrequency: ProactiveFrequency = ProactiveFrequency.MEDIUM,
 )
 
 /**
@@ -113,7 +117,7 @@ class ContactEditViewModel @Inject constructor(
     private val files: FileStorage,
     @ApplicationScope private val appScope: CoroutineScope,
     globals: GlobalMemoryRepository,
-    settings: SettingsStore,
+    private val settings: SettingsStore,
     memories: MemoryRepository,
     private val contextBuilder: ContextBuilder,
     private val clock: Clock,
@@ -150,12 +154,14 @@ class ContactEditViewModel @Inject constructor(
         val contact = Contact(
             name = form.name.trim(), avatarColor = 0, providerId = form.providerId, model = form.model,
             systemPrompt = form.systemPrompt, contextTokens = form.contextTokens,
-            useGlobalMemory = form.useGlobalMemory, useReplyPreferences = form.useReplyPreferences, createdAt = 0, updatedAt = 0,
+            useGlobalMemory = form.useGlobalMemory, useReplyPreferences = form.useReplyPreferences,
+            proactiveEnabled = form.proactiveEnabled, createdAt = 0, updatedAt = 0,
         )
         val chosen = MemoryPolicy.forRequest(memoryRows, MemoryPolicy.memoryBudget(form.contextTokens), estimator)
         val promptGlobals = PromptGlobals(
             globalMemory = if (form.useGlobalMemory) tree.entries() else emptyList(),
             replyStyle = if (form.useReplyPreferences) prefs else null,
+            reminderHint = form.proactiveEnabled,
         )
         val prompt = contextBuilder.systemPrompt(contact, nickname, clock.now(), chosen, promptGlobals)
         PromptUsage(prompt?.let(estimator::text) ?: 0, form.contextTokens)
@@ -190,6 +196,8 @@ class ContactEditViewModel @Inject constructor(
                         autoMemory = it.autoMemory,
                         useGlobalMemory = it.useGlobalMemory,
                         useReplyPreferences = it.useReplyPreferences,
+                        proactiveEnabled = it.proactiveEnabled,
+                        proactiveFrequency = it.proactiveFrequency,
                     )
                 } ?: ContactForm(avatarColor = randomAvatarColor())
             }
@@ -211,6 +219,14 @@ class ContactEditViewModel @Inject constructor(
 
     fun finishContextInput() {
         _state.update { state -> parseContextInput(state.contextInput)?.let { state.copy(contextInput = it.toString()) } ?: state }
+    }
+
+    /** 第一次开启主动聊天前要先看说明（会自动消耗 API 额度），看过一次就不再弹 */
+    val needsProactiveIntro: Boolean get() = !settings.proactiveIntroShown
+
+    fun confirmProactiveIntro() {
+        settings.proactiveIntroShown = true
+        update { it.copy(proactiveEnabled = true) }
     }
 
     fun setName(name: String) = update { it.copy(name = name.take(Contact.NAME_MAX_LENGTH)) }
@@ -300,6 +316,8 @@ class ContactEditViewModel @Inject constructor(
                     autoMemory = form.autoMemory,
                     useGlobalMemory = form.useGlobalMemory,
                     useReplyPreferences = form.useReplyPreferences,
+                    proactiveEnabled = form.proactiveEnabled,
+                    proactiveFrequency = form.proactiveFrequency,
                 ),
             )
             old.id
@@ -319,6 +337,8 @@ class ContactEditViewModel @Inject constructor(
                 autoMemory = form.autoMemory,
                 useGlobalMemory = form.useGlobalMemory,
                 useReplyPreferences = form.useReplyPreferences,
+                proactiveEnabled = form.proactiveEnabled,
+                proactiveFrequency = form.proactiveFrequency,
                 createdAt = now,
                 updatedAt = now,
             ),

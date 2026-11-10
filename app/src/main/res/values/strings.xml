@@ -640,11 +640,59 @@
     <string name="prompt_reply_style">回复方式：像真人在手机上发消息一样，每次回复发 %1$s 条，每条 %2$d 字左右。每条消息单独写一行，条与条之间只用换行分隔，不要空行，也不要给消息编号。</string>
     <string name="prompt_count_range">%1$d～%2$d</string>
 
+    <!-- 0.6.0 主动聊天：界面 -->
+    <string name="me_proactive">主动聊天</string>
+    <string name="contact_proactive">主动聊天</string>
+    <string name="contact_proactive_frequency">主动频率</string>
+    <string name="contact_proactive_hint">开启后，这个联系人会在你没有操作时自己来找你：自动调用模型，消耗 API 额度。免打扰时段、每日上限和运行状态在「我 → 主动聊天」。</string>
+    <string name="contact_proactive_intro_title">开启主动聊天</string>
+    <string name="contact_proactive_intro">开启后，这个联系人会在你没有操作时自动调用模型：把人设、记忆和最近的聊天记录发给它所用的服务商，由模型决定要不要找你。\n\n这会自动消耗 API 额度，模型决定不发、请求失败也各算一次调用。默认每天最多 20 次、23:00～7:00 不打扰，可以在「我 → 主动聊天」调整。\n\n主动消息靠系统后台任务触发，不保证准时；系统限制后台时可能很晚才来，或者不来。保存后生效。</string>
+    <string name="contact_proactive_intro_confirm">开启</string>
+    <string name="proactive_frequency_low">偶尔</string>
+    <string name="proactive_frequency_medium">适中</string>
+    <string name="proactive_frequency_high">频繁</string>
+    <string name="proactive_title">主动聊天</string>
+    <string name="proactive_notice">开启主动聊天的联系人会在你没有操作时自动调用模型、消耗 API 额度。在联系人的「朋友资料」里逐个开启，默认都是关闭。</string>
+    <string name="proactive_status">运行状态</string>
+    <string name="proactive_used_today">今日已用</string>
+    <string name="proactive_used_value" tools:ignore="PluralsCandidate">%1$d / %2$d 次</string>
+    <string name="proactive_last_run">最近检查</string>
+    <string name="proactive_never_run">还没有运行过</string>
+    <string name="proactive_task">后台任务</string>
+    <string name="proactive_task_on">已注册</string>
+    <string name="proactive_task_off">未注册</string>
+    <string name="proactive_notify_off">新消息通知没有开启，主动消息来了不会提醒。点这里打开</string>
+    <string name="proactive_status_hint">没有联系人开启时不注册后台任务。主动消息靠系统后台任务触发，大约每 15 分钟检查一次，不保证准时；系统限制后台或 App 被强制停止后，可能很久不运行，回到 App 时会补查一次。在「我 → 通用设置」关闭电池优化、在系统设置里允许自启动，可以减少被限制的情况。</string>
+    <string name="proactive_quiet">免打扰时段</string>
+    <string name="proactive_quiet_start">开始</string>
+    <string name="proactive_quiet_end">结束</string>
+    <string name="proactive_time_value">%1$02d:%2$02d</string>
+    <string name="proactive_quiet_hint">这段时间里联系人不会自己找上门，也不调用模型；结束早于开始表示到第二天。你和联系人约好时间的提醒（比如「明早 7 点叫我」）不受它限制。它和聊天信息里的「消息免打扰」是两个设置：那个只是不发通知，联系人照常会主动发消息。</string>
+    <string name="proactive_limit">每日调用上限</string>
+    <string name="proactive_limit_value" tools:ignore="PluralsCandidate">%1$d 次</string>
+    <string name="proactive_limit_hint">所有联系人合计。模型决定不发、请求失败、约好时间的提醒也各算一次。到上限后当天不再调用，第二天恢复。</string>
+    <string name="proactive_contacts">已开启的联系人</string>
+    <string name="proactive_contacts_empty">还没有联系人开启主动聊天</string>
+    <string name="proactive_contacts_hint" tools:ignore="PluralsCandidate">连续 %1$d 次主动找你都没有得到回复，这个联系人会暂停，你再发消息后恢复。</string>
+    <string name="proactive_contact_line">%1$s · %2$s</string>
+    <string name="proactive_contact_last">上次主动请求：%1$s</string>
+    <string name="proactive_contact_reminder">约好的提醒：%1$s</string>
+    <string name="proactive_state_ok">正常</string>
+    <string name="proactive_state_quiet">现在是免打扰时段</string>
+    <string name="proactive_state_quota">今天的次数已用完</string>
+    <string name="proactive_state_paused" tools:ignore="PluralsCandidate">已暂停：连续 %1$d 次没有回复，你发消息后恢复</string>
+    <string name="proactive_state_busy">正在等回复或接收消息</string>
+    <string name="proactive_state_viewing">你正在看这个聊天</string>
+    <string name="proactive_state_no_key">无法运行：没有可用的 API Key</string>
+    <string name="proactive_state_invalid">无法运行：模型配置无效</string>
+    <string name="usage_detail_proactive">输入 %1$s · 输出 %2$s · 其中主动聊天 %3$s</string>
+    <string name="usage_detail_memory_proactive">输入 %1$s · 输出 %2$s · 其中记忆 %3$s、主动聊天 %4$s</string>
+
     <!-- 0.6.0 主动聊天：发给模型的文字 -->
     <!-- 约定标记的关键词：App 按「[关键词 年-月-日 时:分 事由]」解析，必须和下面 prompt_reminder_hint 里教模型写的一致 -->
     <string name="prompt_reminder_keyword">提醒</string>
     <!-- 只发给开启主动聊天的联系人，写在系统提示词里；方括号里的格式是 App 解析约定时间用的 -->
-    <string name="prompt_reminder_hint">约定时间：如果对方让你在某个时间叫他、提醒他或联系他，在回复的最后另起一行写 [提醒 年-月-日 时:分 事由]，例如 [提醒 2026-11-11 07:00 叫他起床]，时间用 24 小时制。这一行对方看不到，到时间后你会收到提示，再主动给对方发消息。没有这类约定时不要写。</string>
+    <string name="prompt_reminder_hint" tools:ignore="TypographyDashes">约定时间：如果对方让你在某个时间叫他、提醒他或联系他，在回复的最后另起一行写 [提醒 年-月-日 时:分 事由]，例如 [提醒 2026-11-11 07:00 叫他起床]，时间用 24 小时制。这一行对方看不到，到时间后你会收到提示，再主动给对方发消息。没有这类约定时不要写。</string>
     <!-- 主动请求末尾只在这一次请求里的 user 指令，不存库。参数：现在的时间、距上一条消息多久 -->
     <string name="prompt_proactive_instruction">（这是 App 的提示，不是对方发来的消息，对方看不到。）现在是 %1$s，%2$s，对方没有发新消息。请结合你的人设、你们之前的聊天和现在的时间，决定要不要主动给对方发消息。要发的话，直接写出要发的内容，像平时聊天一样自然，不要提到这条提示；如果现在不合适，或者没有想说的，只输出 [SKIP]，不要输出别的。</string>
     <!-- 参数：现在的时间、约定的时间、事由 -->

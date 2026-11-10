@@ -85,6 +85,7 @@ import kotlinx.serialization.Serializable
 /** [itemId] 为 [NEW_GLOBAL_ITEM] 时是在 [topicId] 下新加一条 */
 @Serializable data class GlobalMemoryItemRoute(val topicId: Long, val itemId: Long = NEW_GLOBAL_ITEM)
 @Serializable data object ReplyPreferencesRoute
+@Serializable data object ProactiveRoute
 @Serializable data object SearchRoute
 @Serializable data class ChatInfoRoute(val contactId: Long)
 
@@ -135,6 +136,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenSettings = { nav.navigate(SettingsSectionRoute(it.name)) },
                 onOpenGlobalMemory = { nav.navigate(GlobalMemoryRoute) },
                 onOpenReplyPreferences = { nav.navigate(ReplyPreferencesRoute) },
+                onOpenProactive = { nav.navigate(ProactiveRoute) },
             )
         }
         page<GlobalMemoryRoute>(nav) {
@@ -156,6 +158,12 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
         }
         page<GlobalMemoryItemRoute>(nav) { GlobalMemoryItemScreen(onBack = nav::popBackStackSafely) }
         page<ReplyPreferencesRoute>(nav) { ReplyPreferencesScreen(onBack = nav::popBackStackSafely) }
+        page<ProactiveRoute>(nav) {
+            isomeria.aichat.feature.proactive.ProactiveScreen(
+                onBack = nav::popBackStackSafely,
+                onOpenContact = { nav.navigate(ContactDetailRoute(it)) },
+            )
+        }
         page<SettingsSectionRoute>(nav) { entry ->
             SettingsSectionScreen(
                 section = SettingsSection.valueOf(entry.toRoute<SettingsSectionRoute>().section),

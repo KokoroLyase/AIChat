@@ -238,15 +238,16 @@ private fun UsageRows(rows: List<UsageRowItem>, onOpen: ((UsageRowItem) -> Unit)
 }
 
 @Composable
-private fun usageDetail(total: UsageTotal): String = if (total.memoryTokens > 0) {
-    stringResource(
-        R.string.usage_detail_memory,
-        number(total.promptTokens),
-        number(total.completionTokens),
-        number(total.memoryTokens),
-    )
-} else {
-    stringResource(R.string.usage_detail, number(total.promptTokens), number(total.completionTokens))
+private fun usageDetail(total: UsageTotal): String {
+    val input = number(total.promptTokens)
+    val output = number(total.completionTokens)
+    return when {
+        total.memoryTokens > 0 && total.proactiveTokens > 0 ->
+            stringResource(R.string.usage_detail_memory_proactive, input, output, number(total.memoryTokens), number(total.proactiveTokens))
+        total.memoryTokens > 0 -> stringResource(R.string.usage_detail_memory, input, output, number(total.memoryTokens))
+        total.proactiveTokens > 0 -> stringResource(R.string.usage_detail_proactive, input, output, number(total.proactiveTokens))
+        else -> stringResource(R.string.usage_detail, input, output)
+    }
 }
 
 private fun number(value: Long): String = String.format(Locale.ROOT, "%,d", value)

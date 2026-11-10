@@ -65,6 +65,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import isomeria.aichat.R
 import isomeria.aichat.core.ContextBudgetSteps
+import isomeria.aichat.data.db.ProactiveFrequency
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderModel
@@ -91,7 +92,7 @@ import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.launch
 
-/** 联系人编辑：头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文预算、全局记忆、回复偏好、分条显示、自动记忆。 */
+/** 联系人编辑：头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文预算、全局记忆、回复偏好、分条显示、自动记忆、主动聊天。 */
 @Composable
 fun ContactEditScreen(
     onBack: () -> Unit,
@@ -115,6 +116,9 @@ fun ContactEditScreen(
     var showModelSheet by remember { mutableStateOf(false) }
     var showDiscard by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
+    var showProactiveIntro by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     val pickAvatar = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) viewModel.pickAvatar(uri)
@@ -227,6 +231,17 @@ fun ContactEditScreen(
             )
             FootnoteText(stringResource(R.string.contact_auto_memory_hint))
 
+            GroupSpacer()
+            ProactiveRows(
+                enabled = form.proactiveEnabled,
+                frequency = form.proactiveFrequency,
+                // 第一次开启先看说明；关掉、或以后再开都直接生效
+                onEnabled = { on ->
+                    if (on && viewModel.needsProactiveIntro) showProactiveIntro = true else viewModel.update { it.copy(proactiveEnabled = on) }
+                },
+                onFrequency = { value -> viewModel.update { it.copy(proactiveFrequency = value) } },
+            )
+
             if (!state.isNew) {
                 GroupSpacer()
                 Box(
@@ -271,6 +286,22 @@ fun ContactEditScreen(
     }
     state.cropSource?.let { bitmap ->
         AvatarCropDialog(bitmap, onDismiss = viewModel::cancelCrop, onCropped = viewModel::applyCrop)
+    }
+    if (showProactiveIntro) {
+        WeDialog(
+            title = stringResource(R.string.contact_proactive_intro_title),
+            message = stringResource(R.string.contact_proactive_intro),
+            confirmText = stringResource(R.string.contact_proactive_intro_confirm),
+            onDismiss = { showProactiveIntro = false },
+            onConfirm = {
+                showProactiveIntro = false
+                viewModel.confirmProactiveIntro()
+                // 主动消息靠通知才看得到：这时就申请通知权限（之前可能还没申请过，或者已经被拒绝）
+                val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (!granted) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            },
+        )
     }
     if (showDiscard) {
         WeDialog(
@@ -330,6 +361,40 @@ internal fun GlobalSwitchRows(form: ContactForm, update: ((ContactForm) -> Conta
         },
     )
     FootnoteText(stringResource(R.string.contact_use_reply_preferences_hint) + stringResource(if (form.useReplyPreferences) R.string.contact_split_hint_overridden else R.string.contact_split_hint))
+}
+
+/**
+ * 主动聊天（0.6.0）：开关默认关闭；开启后显示频率（偶尔 / 适中 / 频繁，默认适中）。
+ * 免打扰时段、每日上限和运行状态是全局的，在「我 → 主动聊天」。
+ */
+@Composable
+internal fun ProactiveRows(
+    enabled: Boolean,
+    frequency: ProactiveFrequency,
+    onEnabled: (Boolean) -> Unit,
+    onFrequency: (ProactiveFrequency) -> Unit,
+) {
+    WeListRow(
+        title = stringResource(R.string.contact_proactive),
+        showArrow = false,
+        showDivider = enabled,
+        trailing = { WeSwitch(enabled, onEnabled, label = stringResource(R.string.contact_proactive)) },
+    )
+    if (enabled) {
+        // 字放大后三个选项和标题一行放不下：选项换到标题下面一行
+        isomeria.aichat.feature.replyprefs.StackingRow(stringResource(R.string.contact_proactive_frequency)) {
+            WeSegmented(
+                options = listOf(
+                    ProactiveFrequency.LOW to stringResource(R.string.proactive_frequency_low),
+                    ProactiveFrequency.MEDIUM to stringResource(R.string.proactive_frequency_medium),
+                    ProactiveFrequency.HIGH to stringResource(R.string.proactive_frequency_high),
+                ),
+                selected = frequency,
+                onSelect = onFrequency,
+            )
+        }
+    }
+    FootnoteText(stringResource(R.string.contact_proactive_hint))
 }
 
 /**

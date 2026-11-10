@@ -186,7 +186,7 @@ fun ReplyPreferencesContent(
  * 标题在左，「− 值 +」在右；字放大后一行放不下时，控件换到标题下面一行，不裁字。
  */
 @Composable
-private fun StepperRow(
+internal fun StepperRow(
     title: String,
     valueText: String,
     range: IntRange,
@@ -195,10 +195,7 @@ private fun StepperRow(
     onValue: (Int) -> Unit,
 ) {
     val colors = WeTheme.colors
-    val d = WeTheme.dimens
-    Layout(
-        content = {
-            Text(title, style = WeTheme.typography.listTitle, color = colors.textPrimary)
+    StackingRow(title, showDivider) {
             Row(
                 Modifier.drawBehind {
                     val minimum = 48.dp.toPx()
@@ -217,6 +214,21 @@ private fun StepperRow(
                 )
                 StepButton("+", stringResource(R.string.reply_pref_increase, title), value < range.last) { onValue(value + 1) }
             }
+    }
+}
+
+/**
+ * 标题在左、控件在右的一行；字放大后一行放不下时，控件换到标题下面一行（靠右），不裁字、不挤掉标题。
+ * 回复偏好的加减行、主动聊天的状态行和频率行共用。
+ */
+@Composable
+internal fun StackingRow(title: String, showDivider: Boolean = false, control: @Composable () -> Unit) {
+    val colors = WeTheme.colors
+    val d = WeTheme.dimens
+    Layout(
+        content = {
+            Text(title, style = WeTheme.typography.listTitle, color = colors.textPrimary)
+            Box { control() }
         },
         modifier = Modifier
             .fillMaxWidth()
@@ -231,8 +243,8 @@ private fun StepperRow(
             .padding(horizontal = d.horizontalPadding, vertical = 4.dp),
     ) { measurables, constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val titlePlaceable = measurables[0].measure(loose)
         val control = measurables[1].measure(loose)
+        val titlePlaceable = measurables[0].measure(loose)
         val gap = 8.dp.roundToPx()
         val stacked = titlePlaceable.width + control.width + gap > constraints.maxWidth
         val height = maxOf(

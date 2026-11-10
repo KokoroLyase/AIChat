@@ -741,6 +741,80 @@ class ScreenshotTest {
     @Test fun restoreOverwriteClearDark() = restoreGlobalShot("65-restore-overwrite-clear", true, state = overwriteState(choice = false, keep = false))
     @Test fun restoreOverwriteKeepLarge() = restoreGlobalShot("65-restore-overwrite-keep-large", true, 1.6f, overwriteState(choice = false, keep = true))
 
+    // ---------- 0.6.0 主动聊天 ----------
+
+    private val proactiveContacts = listOf(
+        isomeria.aichat.feature.proactive.ProactiveContactStatus(1, "小雨", ProactiveFrequency.MEDIUM, null, "今天 12:05", "明天 07:00"),
+        isomeria.aichat.feature.proactive.ProactiveContactStatus(2, "阿哲", ProactiveFrequency.HIGH, isomeria.aichat.core.ProactiveBlock.PAUSED, "昨天 21:40"),
+        isomeria.aichat.feature.proactive.ProactiveContactStatus(3, "名字特别特别长的一位联系人朋友", ProactiveFrequency.LOW, isomeria.aichat.core.ProactiveBlock.NO_KEY),
+    )
+    private val proactiveState = isomeria.aichat.feature.proactive.ProactiveScreenState(
+        loaded = true, usedToday = 3, lastRun = "15:30", scheduled = true, canNotify = true, contacts = proactiveContacts,
+    )
+    private val proactiveEmpty = isomeria.aichat.feature.proactive.ProactiveScreenState(
+        loaded = true, settings = isomeria.aichat.core.ProactiveSettings(quietEnabled = false, dailyLimit = 5), canNotify = false,
+    )
+    @Composable private fun ProactivePage(state: isomeria.aichat.feature.proactive.ProactiveScreenState = proactiveState) =
+        isomeria.aichat.feature.proactive.ProactiveContent(state, {}, {}, {}, {})
+    @Test fun proactiveLight() = shot("66-proactive", false) { ProactivePage() }
+    @Test fun proactiveDark() = shot("66-proactive", true) { ProactivePage() }
+    @Test fun proactiveLarge() = large("66-proactive-large", false) { ProactivePage() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun proactiveNarrow() = large("66-proactive-narrow", true) { ProactivePage() }
+    @Test fun proactiveEmptyLight() = shot("66-proactive-empty", false) { ProactivePage(proactiveEmpty) }
+    @Test fun proactiveEmptyDark() = shot("66-proactive-empty", true) { ProactivePage(proactiveEmpty) }
+    /** 页面较长：滚到底看联系人状态和恢复默认 */
+    private fun proactiveBottom(name: String, dark: Boolean, big: Boolean) {
+        if (big) large(name, dark) { ProactivePage() } else shot(name, dark) { ProactivePage() }
+        compose.onNodeWithText(org.robolectric.RuntimeEnvironment.getApplication().getString(isomeria.aichat.R.string.reply_pref_reset)).performScrollTo()
+        compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun proactiveBottomLight() = proactiveBottom("66-proactive-bottom", false, big = false)
+    @Test fun proactiveBottomLarge() = proactiveBottom("66-proactive-bottom-large", true, big = true)
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun proactiveBottomNarrow() = proactiveBottom("66-proactive-bottom-narrow", false, big = true)
+
+    @Composable private fun ContactProactive() = Column {
+        GroupSpacer()
+        isomeria.aichat.feature.contactedit.ProactiveRows(false, ProactiveFrequency.MEDIUM, {}, {})
+        GroupSpacer()
+        isomeria.aichat.feature.contactedit.ProactiveRows(true, ProactiveFrequency.MEDIUM, {}, {})
+        GroupSpacer()
+        isomeria.aichat.feature.contactedit.ProactiveRows(true, ProactiveFrequency.HIGH, {}, {})
+    }
+    @Test fun contactProactiveLight() = shot("67-contact-proactive", false) { ContactProactive() }
+    @Test fun contactProactiveDark() = shot("67-contact-proactive", true) { ContactProactive() }
+    @Test fun contactProactiveLarge() = large("67-contact-proactive-large", false) { ContactProactive() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contactProactiveNarrow() = large("67-contact-proactive-narrow", true) { ContactProactive() }
+    @Composable private fun ProactiveIntro() = WeDialog(
+        title = androidx.compose.ui.res.stringResource(isomeria.aichat.R.string.contact_proactive_intro_title),
+        message = androidx.compose.ui.res.stringResource(isomeria.aichat.R.string.contact_proactive_intro),
+        confirmText = androidx.compose.ui.res.stringResource(isomeria.aichat.R.string.contact_proactive_intro_confirm),
+        onDismiss = {}, onConfirm = {},
+    )
+    @Test fun proactiveIntroLight() = updateShot("67-contact-proactive-intro", false) { ProactiveIntro() }
+    @Test fun proactiveIntroDark() = updateShot("67-contact-proactive-intro", true) { ProactiveIntro() }
+    @Test fun proactiveIntroLarge() {
+        compose.setContent { AIChatTheme(darkTheme = false, fontScale = 2.5f) { Me(); ProactiveIntro() } }
+        captureScreenRoboImage("screenshots/67-contact-proactive-intro-large-light.png")
+    }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun proactiveIntroNarrow() {
+        compose.setContent { AIChatTheme(darkTheme = true, fontScale = 2.5f) { Me(); ProactiveIntro() } }
+        captureScreenRoboImage("screenshots/67-contact-proactive-intro-narrow-dark.png")
+    }
+
+    private val usageProactive = isomeria.aichat.feature.usage.UsageState(
+        loaded = true,
+        total = isomeria.aichat.core.UsageTotal(0, promptTokens = 58_320, completionTokens = 9_140, memoryTokens = 1_850, requests = 86, proactiveTokens = 6_420),
+        rows = listOf(
+            isomeria.aichat.feature.usage.UsageRowItem(3, "今天", isomeria.aichat.core.UsageTotal(3, promptTokens = 12_400, completionTokens = 2_100, requests = 18, proactiveTokens = 4_300)),
+            isomeria.aichat.feature.usage.UsageRowItem(2, "昨天", isomeria.aichat.core.UsageTotal(2, promptTokens = 21_500, completionTokens = 3_300, memoryTokens = 1_850, requests = 31, proactiveTokens = 2_120)),
+            isomeria.aichat.feature.usage.UsageRowItem(1, "10月30日", isomeria.aichat.core.UsageTotal(1, promptTokens = 24_420, completionTokens = 3_740, requests = 37)),
+        ),
+    )
+    @Test fun usageProactiveLight() = shot("68-usage-proactive", false) { UsageContent(usageProactive, {}, {}, {}, {}) }
+    @Test fun usageProactiveDark() = shot("68-usage-proactive", true) { UsageContent(usageProactive, {}, {}, {}, {}) }
+    @Test fun usageProactiveLarge() = large("68-usage-proactive-large", false) { UsageContent(usageProactive, {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun usageProactiveNarrow() = large("68-usage-proactive-narrow", true) { UsageContent(usageProactive, {}, {}, {}, {}) }
+
     // ---------- 0.4.2「我」页：四个入口，各进一栏设置页 ----------
 
     private val settingsSample = SettingsUiState(hasKey = true, canNotify = false, newerVersion = "0.4.3")

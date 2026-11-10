@@ -20,6 +20,8 @@ data class UsageTotal(
     /** 其中记忆总结用掉的 token */
     val memoryTokens: Long = 0,
     val requests: Int = 0,
+    /** 其中主动聊天用掉的 token（0.6.0；含模型决定不发的那些请求） */
+    val proactiveTokens: Long = 0,
 ) {
     val totalTokens: Long get() = promptTokens + completionTokens
 }
@@ -53,5 +55,6 @@ object UsageStats {
         completionTokens = rows.sumOf { it.completionTokens },
         memoryTokens = rows.filter { it.purpose == UsagePurpose.MEMORY }.sumOf { it.promptTokens + it.completionTokens },
         requests = rows.sumOf { it.requests },
+        proactiveTokens = rows.filter { it.purpose == UsagePurpose.PROACTIVE }.sumOf { it.promptTokens + it.completionTokens },
     )
 }

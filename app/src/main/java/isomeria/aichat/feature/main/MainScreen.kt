@@ -53,6 +53,7 @@ fun MainScreen(
     onOpenSettings: (isomeria.aichat.feature.settings.SettingsSection) -> Unit,
     onOpenGlobalMemory: () -> Unit = {},
     onOpenReplyPreferences: () -> Unit = {},
+    onOpenProactive: () -> Unit = {},
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val unread by viewModel.totalUnread.collectAsStateWithLifecycle()
@@ -87,6 +88,7 @@ fun MainScreen(
                     onOpenSettings = onOpenSettings,
                     onOpenGlobalMemory = onOpenGlobalMemory,
                     onOpenReplyPreferences = onOpenReplyPreferences,
+                    onOpenProactive = onOpenProactive,
                 )
             }
         }
