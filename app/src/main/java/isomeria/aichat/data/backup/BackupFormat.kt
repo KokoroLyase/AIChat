@@ -1,10 +1,13 @@
 package isomeria.aichat.data.backup
 
+import isomeria.aichat.core.ProactiveSettings
 import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.data.db.Capability
 import isomeria.aichat.data.db.Contact
+import isomeria.aichat.data.db.MessageOrigin
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
+import isomeria.aichat.data.db.ProactiveFrequency
 import isomeria.aichat.data.db.ProviderKind
 import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.db.ThinkingLevel
@@ -17,7 +20,8 @@ import kotlinx.serialization.json.Json
  *
  *   manifest.json   App 版本、数据格式版本、导出时间
  *   data.json       联系人、会话、消息、服务商配置（每个服务商各自的模型和可选的 Key）、记忆、用量、
- *                   全局记忆（v5 起）和设置
+ *                   全局记忆（v5 起）和设置；v6 起联系人带主动聊天开关和频率、消息带来源、设置带主动聊天的
+ *                   免打扰时段和每日上限。今日已用次数、暂停计数和约定提醒是设备状态，不导出
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
  *   background/…    聊天背景（v4 起）
@@ -29,7 +33,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 5
+    const val VERSION = 6
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -101,6 +105,9 @@ data class ContactDto(
     /** 使用全局记忆、使用回复偏好（v5 起；旧备份迁移后默认开启） */
     val useGlobalMemory: Boolean = true,
     val useReplyPreferences: Boolean = true,
+    /** 主动聊天开关和频率（v6 起；旧备份迁移后关闭、适中） */
+    val proactiveEnabled: Boolean = false,
+    val proactiveFrequency: ProactiveFrequency = ProactiveFrequency.MEDIUM,
 )
 
 @Serializable
@@ -141,6 +148,8 @@ data class MessageDto(
     val completionTokens: Int = 0,
     val replyGroup: String? = null,
     val createdAt: Long,
+    /** 来源（v6 起；旧备份里都是普通消息） */
+    val origin: MessageOrigin = MessageOrigin.NORMAL,
 )
 
 @Serializable
@@ -230,6 +239,15 @@ data class ReplyPreferencesDto(
     val maxIntervalSeconds: Int = ReplyPreferences.DEFAULT_MAX_INTERVAL,
 )
 
+/** 主动聊天的全局设置（v6 起）。缺字段时用默认值 */
+@Serializable
+data class ProactiveSettingsDto(
+    val quietEnabled: Boolean = true,
+    val quietStartMinutes: Int = ProactiveSettings.DEFAULT_QUIET_START,
+    val quietEndMinutes: Int = ProactiveSettings.DEFAULT_QUIET_END,
+    val dailyLimit: Int = ProactiveSettings.DEFAULT_DAILY_LIMIT,
+)
+
 /** 一天、一个联系人的用量。contactId 为 0 时是已删除联系人的合计 */
 @Serializable
 data class UsageDto(
@@ -274,4 +292,6 @@ data class SettingsDto(
     val autoCheckUpdate: Boolean? = null,
     /** 回复偏好（v5 起）；没有时恢复保留本机的 */
     val replyPreferences: ReplyPreferencesDto? = null,
+    /** 主动聊天的免打扰时段和每日上限（v6 起）；没有时恢复保留本机的 */
+    val proactive: ProactiveSettingsDto? = null,
 )

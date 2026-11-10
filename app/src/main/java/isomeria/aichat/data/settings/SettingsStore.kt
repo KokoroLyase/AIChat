@@ -6,6 +6,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import isomeria.aichat.core.ProactiveSettings
+import isomeria.aichat.core.ProactiveSettingsSource
 import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.core.ReplyPreferencesSource
 import isomeria.aichat.data.memory.NicknameSource
@@ -27,7 +29,8 @@ enum class FontSize(val scale: Float) {
  * 设置项，存在 MMKV（腾讯开源的键值存储）。每项都以 StateFlow 暴露，界面直接订阅。
  */
 @Singleton
-class SettingsStore @Inject constructor(@ApplicationContext context: Context) : UpdatePrefs, NicknameSource, ReplyPreferencesSource {
+class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
+    UpdatePrefs, NicknameSource, ReplyPreferencesSource, ProactiveSettingsSource {
     private val mmkv: MMKV
 
     init {
@@ -87,6 +90,35 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) : 
         mmkv.encode(KEY_REPLY_MAX_INTERVAL, next.maxIntervalSeconds)
         _replyPreferences.value = next
     }
+
+    private val _proactiveSettings = MutableStateFlow(
+        ProactiveSettings(
+            quietEnabled = mmkv.decodeBool(KEY_PROACTIVE_QUIET, true),
+            quietStartMinutes = mmkv.decodeInt(KEY_PROACTIVE_QUIET_START, ProactiveSettings.DEFAULT_QUIET_START),
+            quietEndMinutes = mmkv.decodeInt(KEY_PROACTIVE_QUIET_END, ProactiveSettings.DEFAULT_QUIET_END),
+            dailyLimit = mmkv.decodeInt(KEY_PROACTIVE_LIMIT, ProactiveSettings.DEFAULT_DAILY_LIMIT),
+        ).normalized(),
+    )
+    /** 主动聊天的全局设置（0.6.0）：免打扰时段和每日调用上限 */
+    val proactiveSettings: StateFlow<ProactiveSettings> = _proactiveSettings.asStateFlow()
+
+    override fun proactiveSettings(): ProactiveSettings = _proactiveSettings.value
+
+    fun setProactiveSettings(value: ProactiveSettings) {
+        val next = value.normalized()
+        mmkv.encode(KEY_PROACTIVE_QUIET, next.quietEnabled)
+        mmkv.encode(KEY_PROACTIVE_QUIET_START, next.quietStartMinutes)
+        mmkv.encode(KEY_PROACTIVE_QUIET_END, next.quietEndMinutes)
+        mmkv.encode(KEY_PROACTIVE_LIMIT, next.dailyLimit)
+        _proactiveSettings.value = next
+    }
+
+    /** 第一次开启主动聊天时的说明（会自动消耗 API 额度）是否已经看过；和设备有关，不随备份 */
+    var proactiveIntroShown: Boolean
+        get() = mmkv.decodeBool(KEY_PROACTIVE_INTRO, false)
+        set(value) {
+            mmkv.encode(KEY_PROACTIVE_INTRO, value)
+        }
 
     /** 是否已经申请过通知权限（第一次发送消息时申请一次） */
     var notificationPermissionAsked: Boolean
@@ -184,5 +216,10 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) : 
         const val KEY_REPLY_STRIP = "reply_strip_punctuation"
         const val KEY_REPLY_MIN_INTERVAL = "reply_min_interval"
         const val KEY_REPLY_MAX_INTERVAL = "reply_max_interval"
+        const val KEY_PROACTIVE_QUIET = "proactive_quiet_enabled"
+        const val KEY_PROACTIVE_QUIET_START = "proactive_quiet_start"
+        const val KEY_PROACTIVE_QUIET_END = "proactive_quiet_end"
+        const val KEY_PROACTIVE_LIMIT = "proactive_daily_limit"
+        const val KEY_PROACTIVE_INTRO = "proactive_intro_shown"
     }
 }

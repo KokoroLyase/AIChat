@@ -13,6 +13,7 @@ import isomeria.aichat.data.db.MIGRATION_1_2
 import isomeria.aichat.data.db.MIGRATION_2_3
 import isomeria.aichat.data.db.MIGRATION_3_4
 import isomeria.aichat.data.db.MIGRATION_4_5
+import isomeria.aichat.data.db.MIGRATION_5_6
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -144,6 +145,55 @@ class DatabaseTest {
             db.query("SELECT (SELECT COUNT(*) FROM global_memory_topic) + (SELECT COUNT(*) FROM global_memory_item)").use { c ->
                 assertTrue(c.moveToFirst())
                 assertEquals(0, c.getInt(0))
+            }
+        }
+    }
+
+    @Test
+    fun migrate5To6_proactiveOffForExistingContacts_messagesNormal_newTablesWork() {
+        helper.createDatabase("migration-v5-test", 5).use { db ->
+            db.execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK')")
+            db.execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption,useGlobalMemory,useReplyPreferences) VALUES(7,'甲',0,1,'m','OFF',1.3,'人设',4000,1,1,1,1,'off',0,1),(8,'乙',0,1,'m','OFF',0.5,'',6000,0,0,2,2,'off',1,0)")
+            db.execSQL("INSERT INTO conversation(contactId,pinned,unreadCount,markedUnread,draft,lastMessageTime,lastMessagePreview,memoryCursor,memoryStart,muted,backgroundPath) VALUES(7,1,3,0,'草稿',9,'预览',5,2,1,'/bg/7.jpg')")
+            db.execSQL("INSERT INTO message(id,contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,replyGroup,createdAt) VALUES(1,7,'USER','TEXT','在吗',0,0,0,'SUCCESS',0,0,0,NULL,8),(2,7,'ASSISTANT','TEXT','在',0,0,0,'PENDING',0,7,3,'g',9)")
+        }
+        helper.runMigrationsAndValidate("migration-v5-test", 6, true, MIGRATION_5_6).use { db ->
+            db.query("SELECT id, proactiveEnabled, proactiveFrequency, useGlobalMemory, useReplyPreferences, systemPrompt FROM contact ORDER BY id").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(listOf(7L, 0L, 0L, 1L), listOf(c.getLong(0), c.getLong(1), c.getLong(3), c.getLong(4)))
+                assertEquals("MEDIUM", c.getString(2))
+                assertEquals("人设", c.getString(5))
+                assertTrue(c.moveToNext())
+                assertEquals(listOf(8L, 0L, 1L, 0L), listOf(c.getLong(0), c.getLong(1), c.getLong(3), c.getLong(4)))
+                assertEquals("MEDIUM", c.getString(2))
+            }
+            db.query("SELECT origin, status FROM message ORDER BY id").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("NORMAL", c.getString(0))
+                assertTrue(c.moveToNext())
+                assertEquals("NORMAL", c.getString(0))
+                assertEquals("PENDING", c.getString(1))
+            }
+            db.query("SELECT proactiveUnanswered, lastProactiveAt, muted, backgroundPath, draft FROM conversation WHERE contactId=7").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(0, c.getInt(0))
+                assertEquals(0L, c.getLong(1))
+                assertEquals(1, c.getInt(2))
+                assertEquals("/bg/7.jpg", c.getString(3))
+                assertEquals("草稿", c.getString(4))
+            }
+            db.query("SELECT (SELECT COUNT(*) FROM proactive_state) + (SELECT COUNT(*) FROM proactive_reminder)").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(0, c.getInt(0))
+            }
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL("INSERT INTO proactive_state(id,day,used,lastRunAt) VALUES(1,20000,3,5)")
+            db.execSQL("INSERT INTO proactive_reminder(contactId,dueAt,note,createdAt) VALUES(8,500,'叫他起床',1)")
+            db.execSQL("DELETE FROM contact WHERE id=8")
+            db.query("SELECT (SELECT COUNT(*) FROM proactive_reminder), (SELECT used FROM proactive_state WHERE id=1)").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(0, c.getInt(0))
+                assertEquals(3, c.getInt(1))
             }
         }
     }

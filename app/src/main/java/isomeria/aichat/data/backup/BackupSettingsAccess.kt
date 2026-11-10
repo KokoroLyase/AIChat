@@ -1,5 +1,6 @@
 package isomeria.aichat.data.backup
 
+import isomeria.aichat.core.ProactiveSettings
 import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.data.settings.FontSize
 import isomeria.aichat.data.settings.SettingsStore
@@ -18,6 +19,8 @@ data class AppSettingsSnapshot(
     val autoCheckUpdate: Boolean,
     /** 回复偏好（0.5.0） */
     val replyPreferences: ReplyPreferences = ReplyPreferences(),
+    /** 主动聊天的免打扰时段和每日上限（0.6.0）；今日已用次数是设备状态，不在这里 */
+    val proactive: ProactiveSettings = ProactiveSettings(),
 )
 
 /** 导出和恢复读写设置的入口；单元测试里换成内存实现（MMKV 需要原生库）。 */
@@ -36,6 +39,7 @@ class SettingsStoreBackupAccess @Inject constructor(private val store: SettingsS
         notifyPreview = store.notifyPreview.value,
         autoCheckUpdate = store.autoCheckUpdate,
         replyPreferences = store.replyPreferences.value,
+        proactive = store.proactiveSettings.value,
     )
 
     override fun write(snapshot: AppSettingsSnapshot) {
@@ -47,5 +51,6 @@ class SettingsStoreBackupAccess @Inject constructor(private val store: SettingsS
         store.setNotifyPreview(snapshot.notifyPreview)
         store.setAutoCheckUpdate(snapshot.autoCheckUpdate)
         store.setReplyPreferences(snapshot.replyPreferences)
+        store.setProactiveSettings(snapshot.proactive)
     }
 }

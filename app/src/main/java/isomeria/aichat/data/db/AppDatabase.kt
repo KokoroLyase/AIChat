@@ -19,8 +19,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         GlobalMemoryCategory::class,
         GlobalMemoryTopic::class,
         GlobalMemoryItem::class,
+        ProactiveState::class,
+        ProactiveReminder::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -34,6 +36,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun memoryDao(): MemoryDao
     abstract fun usageDao(): UsageDao
     abstract fun globalMemoryDao(): GlobalMemoryDao
+    abstract fun proactiveDao(): ProactiveDao
 
     companion object {
         const val NAME = "aichat.db"

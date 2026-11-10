@@ -27,8 +27,17 @@ enum class ProviderKind { LLM, TTS, ASR }
 /** 模型能力：接口报告支持 / 不支持，或接口没说（由用户在设置里标记）。 */
 enum class Capability { YES, NO, UNKNOWN }
 
-/** 用量的用途：聊天回复，或自动总结记忆。 */
-enum class UsagePurpose { CHAT, MEMORY }
+/** 用量的用途：聊天回复、自动总结记忆，或联系人主动聊天（0.6.0；含 [SKIP] 和失败的请求）。 */
+enum class UsagePurpose { CHAT, MEMORY, PROACTIVE }
+
+/**
+ * 消息来源（0.6.0）：普通消息（用户发的、对用户消息的回复），或联系人主动发来的。
+ * 主动消息没有对应的用户消息，不能「重新生成」；其他地方（显示、预览、未读、通知、搜索、上下文、记忆、导出）和普通回复一样。
+ */
+enum class MessageOrigin { NORMAL, PROACTIVE }
+
+/** 主动聊天的频率（0.6.0）：偶尔 / 适中 / 频繁。 */
+enum class ProactiveFrequency { LOW, MEDIUM, HIGH }
 
 /** 联系人。一个联系人对应一个会话。 */
 @Entity(tableName = "contact")
@@ -61,6 +70,9 @@ data class Contact(
     @ColumnInfo(defaultValue = "1") val useGlobalMemory: Boolean = true,
     /** 使用回复偏好（0.5.0）：新旧联系人默认开启；关闭时回到 [splitReplies] 的旧行为 */
     @ColumnInfo(defaultValue = "1") val useReplyPreferences: Boolean = true,
+    /** 主动聊天（0.6.0）：新旧联系人默认关闭，用户手动开启后才会在没有操作时调用模型 */
+    @ColumnInfo(defaultValue = "0") val proactiveEnabled: Boolean = false,
+    @ColumnInfo(defaultValue = "'MEDIUM'") val proactiveFrequency: ProactiveFrequency = ProactiveFrequency.MEDIUM,
 ) {
     companion object {
         /** DeepSeek 官方对「通用对话」建议的温度 */
@@ -106,6 +118,10 @@ data class Conversation(
     @ColumnInfo(defaultValue = "0") val muted: Boolean = false,
     /** 当前聊天背景：应用私有目录 files/background 里的图片；null 用默认背景。只在本机显示，不进模型请求 */
     val backgroundPath: String? = null,
+    /** 连续几次主动发送没有得到回复（0.6.0）；到上限后暂停，用户再发言时清零。设备状态，不随备份 */
+    @ColumnInfo(defaultValue = "0") val proactiveUnanswered: Int = 0,
+    /** 最近一次为这个联系人发起主动请求的时间（含 [SKIP] 和失败）；0 表示没有。设备状态，不随备份 */
+    @ColumnInfo(defaultValue = "0") val lastProactiveAt: Long = 0,
 )
 
 @Entity(
@@ -143,7 +159,56 @@ data class Message(
     /** 同一次回复拆出的多条消息共用一个分组，用于「重新生成」和上下文拼装 */
     val replyGroup: String? = null,
     val createdAt: Long,
+    /** 来源（0.6.0）：联系人主动发来的是 PROACTIVE */
+    @ColumnInfo(defaultValue = "'NORMAL'") val origin: MessageOrigin = MessageOrigin.NORMAL,
 )
+
+/**
+ * 主动聊天的设备状态（0.6.0），只有一行：今日已用的调用次数和最近一次检查的时间。
+ * 不随备份导出，覆盖恢复也不动它。
+ */
+@Entity(tableName = "proactive_state")
+data class ProactiveState(
+    @PrimaryKey val id: Int = ID,
+    /** [used] 是哪一天的（本地日期的 epochDay）；换了一天就从 0 算 */
+    val day: Long = 0,
+    val used: Int = 0,
+    /** 最近一次检查（周期任务、回到前台或约定提醒）的时间；0 表示还没有运行过 */
+    val lastRunAt: Long = 0,
+) {
+    companion object {
+        const val ID = 1
+    }
+}
+
+/**
+ * 用户和联系人约好的时间（0.6.0）：开启主动聊天的联系人在回复里用隐藏标记记下，到点后发起一次主动请求。
+ * 触发后删除；关闭主动聊天、清空或删除聊天、删除联系人时一起删除。设备状态，不随备份。
+ */
+@Entity(
+    tableName = "proactive_reminder",
+    foreignKeys = [
+        ForeignKey(
+            entity = Contact::class,
+            parentColumns = ["id"],
+            childColumns = ["contactId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["contactId"]), Index(value = ["dueAt"])],
+)
+data class ProactiveReminder(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val contactId: Long,
+    val dueAt: Long,
+    /** 约定的事由，模型写的一句话 */
+    val note: String = "",
+    val createdAt: Long,
+) {
+    companion object {
+        const val NOTE_MAX_LENGTH = 100
+    }
+}
 
 /** 服务商配置。API Key 经 Android Keystore 加密后存放，不明文落盘。 */
 @Entity(tableName = "provider_config")

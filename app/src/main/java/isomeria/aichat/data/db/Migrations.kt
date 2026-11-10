@@ -4,6 +4,46 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
+ * v5 → v6（0.6.0）：联系人加主动聊天开关（新旧联系人都默认关闭，用户决定）和频率（默认适中）；
+ * 消息加来源（旧消息都是普通消息）；会话加连续未回复次数和最近一次主动请求时间；
+ * 新建主动聊天状态表（今日已用、最近运行时间）和约定提醒表。迁移后没有任何联系人开启，不会有后台模型调用。
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE contact ADD COLUMN proactiveEnabled INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE contact ADD COLUMN proactiveFrequency TEXT NOT NULL DEFAULT 'MEDIUM'")
+        db.execSQL("ALTER TABLE message ADD COLUMN origin TEXT NOT NULL DEFAULT 'NORMAL'")
+        db.execSQL("ALTER TABLE conversation ADD COLUMN proactiveUnanswered INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE conversation ADD COLUMN lastProactiveAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS proactive_state (
+                id INTEGER NOT NULL,
+                day INTEGER NOT NULL,
+                used INTEGER NOT NULL,
+                lastRunAt INTEGER NOT NULL,
+                PRIMARY KEY (id)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS proactive_reminder (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                contactId INTEGER NOT NULL,
+                dueAt INTEGER NOT NULL,
+                note TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                FOREIGN KEY (contactId) REFERENCES contact (id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_proactive_reminder_contactId ON proactive_reminder (contactId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_proactive_reminder_dueAt ON proactive_reminder (dueAt)")
+    }
+}
+
+/**
  * v4 → v5（0.5.0）：联系人加「使用全局记忆」「使用回复偏好」，旧联系人也默认开启（用户决定）；
  * 新建全局记忆的类别、主题、条目三张表。分条显示 splitReplies 原样保留。
  */

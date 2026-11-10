@@ -8,6 +8,7 @@ import isomeria.aichat.R
 import isomeria.aichat.data.crypto.SecretCipher
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.core.MemoryPolicy
+import isomeria.aichat.core.ProactiveSettings
 import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Conversation
@@ -582,6 +583,8 @@ class BackupManager @Inject constructor(
         messageDao.deleteAll()
         memoryDao.deleteAll()
         usageDao.deleteAll()
+        // 约定提醒跟着本机的聊天走，不在备份里；今日已用次数（proactive_state）是设备状态，覆盖恢复不动它
+        db.proactiveDao().deleteAllReminders()
         conversationDao.deleteAll()
         contactDao.deleteAll()
         // 用户选了保留本机的全局记忆时不动它，备份里的全局记忆不导入
@@ -804,6 +807,7 @@ class BackupManager @Inject constructor(
                 notifyPreview = dto.notifyPreview ?: current.notifyPreview,
                 autoCheckUpdate = dto.autoCheckUpdate ?: current.autoCheckUpdate,
                 replyPreferences = dto.replyPreferences?.toModel() ?: current.replyPreferences,
+                proactive = dto.proactive?.toModel() ?: current.proactive,
             )
             RestoreMode.MERGE -> current.copy(
                 nickname = current.nickname.ifBlank { dto.nickname.orEmpty() },
@@ -830,6 +834,7 @@ class BackupManager @Inject constructor(
         splitReplies = splitReplies, autoMemory = autoMemory, createdAt = createdAt, updatedAt = updatedAt,
         thinkingOption = thinkingOption, memoryModel = memoryModel, memoryThinkingOption = memoryThinkingOption,
         useGlobalMemory = useGlobalMemory, useReplyPreferences = useReplyPreferences,
+        proactiveEnabled = proactiveEnabled, proactiveFrequency = proactiveFrequency,
     )
 
     private fun ContactDto.toEntity(providerId: Long, avatarPath: String?) = Contact(
@@ -839,7 +844,10 @@ class BackupManager @Inject constructor(
         splitReplies = splitReplies, autoMemory = autoMemory, createdAt = createdAt, updatedAt = updatedAt,
         thinkingOption = thinkingOption, memoryModel = memoryModel, memoryThinkingOption = memoryThinkingOption,
         useGlobalMemory = useGlobalMemory, useReplyPreferences = useReplyPreferences,
+        proactiveEnabled = proactiveEnabled, proactiveFrequency = proactiveFrequency,
     )
+
+    // 会话的连续未回复次数和最近一次主动请求时间是设备状态：不导出，恢复出来的会话从 0 开始
 
     private fun Conversation.toDto(background: String?) = ConversationDto(
         contactId = contactId, pinned = pinned, unreadCount = unreadCount, markedUnread = markedUnread,
@@ -883,6 +891,10 @@ class BackupManager @Inject constructor(
         waitSeconds, targetLength, minCount, maxCount, stripPunctuation, minIntervalSeconds, maxIntervalSeconds,
     ).normalized()
 
+    private fun ProactiveSettings.toDto() = ProactiveSettingsDto(quietEnabled, quietStartMinutes, quietEndMinutes, dailyLimit)
+
+    private fun ProactiveSettingsDto.toModel() = ProactiveSettings(quietEnabled, quietStartMinutes, quietEndMinutes, dailyLimit).normalized()
+
     private fun UsageDaily.toDto() = UsageDto(
         day = day, contactId = contactId, purpose = purpose, promptTokens = promptTokens,
         completionTokens = completionTokens, requests = requests,
@@ -897,7 +909,7 @@ class BackupManager @Inject constructor(
         id = id, contactId = contactId, role = role, type = type, content = content, image = image,
         imageWidth = imageWidth, imageHeight = imageHeight, reasoning = reasoning, reasoningMillis = reasoningMillis,
         status = status, errorCode = errorCode, model = model, promptTokens = promptTokens,
-        completionTokens = completionTokens, replyGroup = replyGroup, createdAt = createdAt,
+        completionTokens = completionTokens, replyGroup = replyGroup, createdAt = createdAt, origin = origin,
     )
 
     /** 导出时还在等待回复的消息：恢复后标记为失败，可以点击重试；待投递的按已送达（导出时已经这样写，这里再兜一次） */
@@ -913,7 +925,7 @@ class BackupManager @Inject constructor(
             },
             errorCode = if (sending) FailReason.INTERRUPTED.code else errorCode,
             model = model, promptTokens = promptTokens, completionTokens = completionTokens,
-            replyGroup = replyGroup, createdAt = createdAt,
+            replyGroup = replyGroup, createdAt = createdAt, origin = origin,
         )
     }
 
@@ -945,6 +957,7 @@ class BackupManager @Inject constructor(
         themeMode = themeMode.name, fontSize = fontSize.name, nickname = nickname, avatar = avatar,
         notifyEnabled = notifyEnabled, notifyPreview = notifyPreview, autoCheckUpdate = autoCheckUpdate,
         replyPreferences = replyPreferences.toDto(),
+        proactive = proactive.toDto(),
     )
 
     /** 读取时限制大小，防止异常文件把内存或存储撑满 */

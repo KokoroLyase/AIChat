@@ -193,6 +193,33 @@ class BackupFormatTest {
     }
 
     @Test
+    fun v5ToV6_proactiveOff_messagesNormal_noProactiveSettings() {
+        val v5 = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"contacts": [{"id": 1, "name": "a", "avatarColor": 0, "providerId": 1, "model": "m", "temperature": 1.3, "useGlobalMemory": false, "createdAt": 1, "updatedAt": 1, "proactiveEnabled": true}],
+                "messages": [{"id": 1, "contactId": 1, "role": "ASSISTANT", "type": "TEXT", "content": "hi", "status": "SUCCESS", "createdAt": 5, "origin": "PROACTIVE"}],
+                "settings": {"nickname": "n", "replyPreferences": {"waitSeconds": 9}, "proactive": {"dailyLimit": 99}}}""",
+        ) as JsonObject
+        val migrated = BackupMigrations().migrate(v5, from = 5)
+        val data = BackupFormat.json.decodeFromJsonElement(BackupData.serializer(), migrated)
+        val contact = data.contacts.single()
+        assertFalse("旧备份的联系人主动聊天关闭", contact.proactiveEnabled)
+        assertEquals(isomeria.aichat.data.db.ProactiveFrequency.MEDIUM, contact.proactiveFrequency)
+        assertFalse("0.5.0 的开关原样保留", contact.useGlobalMemory)
+        assertEquals(isomeria.aichat.data.db.MessageOrigin.NORMAL, data.messages.single().origin)
+        assertEquals(null, data.settings.proactive)
+        assertEquals(9, data.settings.replyPreferences!!.waitSeconds)
+        // 迁移步骤显式写入，不依赖反序列化的默认值
+        assertEquals("false", migrated["contacts"]!!.jsonArray[0].jsonObject["proactiveEnabled"]!!.jsonPrimitive.content)
+        assertEquals("NORMAL", migrated["messages"]!!.jsonArray[0].jsonObject["origin"]!!.jsonPrimitive.content)
+        assertEquals(JsonObject(emptyMap()), BackupMigrations.v5ToV6(JsonObject(emptyMap())))
+        // 从 v1 一路迁移上来也是关闭
+        val v1 = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"contacts": [{"id": 1, "name": "a", "avatarColor": 0, "providerId": 1, "model": "m", "temperature": 1.3, "contextCount": 20, "createdAt": 1, "updatedAt": 1}]}""",
+        ) as JsonObject
+        assertFalse(BackupFormat.json.decodeFromJsonElement(BackupData.serializer(), BackupMigrations().migrate(v1, from = 1)).contacts.single().proactiveEnabled)
+    }
+
+    @Test
     fun mediaNamePattern_acceptsBackgroundDir() {
         assertTrue(BackupFormat.mediaNamePattern.matches("background/abc-1.jpg"))
         assertTrue(!BackupFormat.mediaNamePattern.matches("background/../x.jpg"))

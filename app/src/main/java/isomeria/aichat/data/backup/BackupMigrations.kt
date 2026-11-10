@@ -52,6 +52,7 @@ class BackupMigrations(
             2 to { data -> v2ToV3(data) },
             3 to { data -> v3ToV4(data) },
             4 to { data -> v4ToV5(data) },
+            5 to { data -> v5ToV6(data) },
         )
 
         /**
@@ -115,6 +116,24 @@ class BackupMigrations(
                     JsonObject(it.jsonObject + ("useGlobalMemory" to JsonPrimitive(true)) + ("useReplyPreferences" to JsonPrimitive(true)))
                 })),
             )
+        }
+
+        /**
+         * 与 Room v5→v6 的默认值一致：旧联系人的主动聊天关闭（用户决定，恢复旧备份后没有任何后台模型调用）、
+         * 频率适中；旧消息都是普通消息。旧备份里没有主动聊天的全局设置，恢复时保留本机的。
+         */
+        fun v5ToV6(data: JsonObject): JsonObject {
+            val result = data.toMutableMap()
+            data.arrayOf("contacts")?.let { contacts ->
+                result["contacts"] = JsonArray(contacts.map {
+                    JsonObject(it.jsonObject + ("proactiveEnabled" to JsonPrimitive(false)) + ("proactiveFrequency" to JsonPrimitive("MEDIUM")))
+                })
+            }
+            data.arrayOf("messages")?.let { messages ->
+                result["messages"] = JsonArray(messages.map { JsonObject(it.jsonObject + ("origin" to JsonPrimitive("NORMAL"))) })
+            }
+            (data["settings"] as? JsonObject)?.let { settings -> result["settings"] = JsonObject(settings - "proactive") }
+            return JsonObject(result)
         }
 
         private fun migrateProvider(provider: JsonObject): JsonObject {

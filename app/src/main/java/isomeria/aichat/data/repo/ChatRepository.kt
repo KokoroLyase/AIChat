@@ -104,6 +104,8 @@ class ChatRepository @Inject constructor(
             val last = rows.last()
             conversationDao.setLastMessage(contactId, last.createdAt, previewOf(last))
             conversationDao.markRead(contactId)
+            // 用户发言了：连续没回复的主动消息清零，暂停的主动聊天恢复
+            conversationDao.clearProactiveUnanswered(contactId)
         }
     }
 
@@ -145,6 +147,8 @@ class ChatRepository @Inject constructor(
         db.withTransaction {
             messageDao.deleteByContact(contactId)
             conversationDao.reset(contactId)
+            // 约好的提醒是聊天里说的，聊天删了就不再提醒
+            db.proactiveDao().deleteRemindersOf(contactId)
         }
         images.forEach(files::delete)
         files.delete(background)
@@ -160,6 +164,7 @@ class ChatRepository @Inject constructor(
             ensureConversation(contactId)
             messageDao.deleteByContact(contactId)
             conversationDao.clearHistory(contactId)
+            db.proactiveDao().deleteRemindersOf(contactId)
         }
         images.forEach(files::delete)
         notifier.cancelReply(contactId)
@@ -174,6 +179,7 @@ class ChatRepository @Inject constructor(
         db.withTransaction {
             messageDao.deleteAll()
             conversationDao.resetAll()
+            db.proactiveDao().deleteAllReminders()
         }
         images.forEach(files::delete)
         contacts.forEach(notifier::cancelReply)

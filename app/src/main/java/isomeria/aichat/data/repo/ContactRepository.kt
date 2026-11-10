@@ -60,6 +60,8 @@ class ContactRepository @Inject constructor(
                 val start = conversationDao.get(contact.id)?.memoryStart ?: 0L
                 conversationDao.setMemoryRange(contact.id, null, start)
             }
+            // 关掉主动聊天：约好的提醒一起去掉，之后不会再为它调用模型
+            if (!contact.proactiveEnabled) db.proactiveDao().deleteRemindersOf(contact.id)
         }
         if (old?.avatarPath != null && old.avatarPath != contact.avatarPath) files.delete(old.avatarPath)
     }
@@ -75,6 +77,7 @@ class ContactRepository @Inject constructor(
             // 外键也会级联删除，这里显式删一遍，不依赖 PRAGMA foreign_keys
             messageDao.deleteByContact(id)
             memoryDao.deleteByContact(id)
+            db.proactiveDao().deleteRemindersOf(id)
             conversationDao.reset(id)
             usageDao.mergeIntoDeleted(id)
             usageDao.deleteByContact(id)

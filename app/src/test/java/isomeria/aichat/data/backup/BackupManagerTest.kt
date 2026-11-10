@@ -5,6 +5,7 @@ import androidx.room.Room
 import isomeria.aichat.data.crypto.SecretCipher
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.llm.*
+import isomeria.aichat.core.ProactiveSettings
 import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Capability
@@ -14,8 +15,12 @@ import isomeria.aichat.data.db.GlobalMemoryTopic
 import isomeria.aichat.data.db.Conversation
 import isomeria.aichat.data.db.Memory
 import isomeria.aichat.data.db.Message
+import isomeria.aichat.data.db.MessageOrigin
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
+import isomeria.aichat.data.db.ProactiveFrequency
+import isomeria.aichat.data.db.ProactiveReminder
+import isomeria.aichat.data.db.ProactiveState
 import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderKind
 import isomeria.aichat.data.db.ProviderModel
@@ -216,7 +221,7 @@ class BackupManagerTest {
         db.contactDao().update(db.contactDao().get(2)!!.copy(memoryModel = "local", memoryThinkingOption = "native", thinkingOption = "on"))
         val before = dump()
         val zip = export(password = "pw123456")
-        assertEquals(5, backup.inspect(zip).manifest.formatVersion)
+        assertEquals(6, backup.inspect(zip).manifest.formatVersion)
         scramble()
         backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(before, dump())
@@ -421,6 +426,121 @@ class BackupManagerTest {
             assertTrue(mode.name, contacts.all { it.useGlobalMemory && it.useReplyPreferences })
             assertTrue(mode.name, db.conversationDao().get(1)!!.muted)
         }
+    }
+
+    // ---------- 0.6.0 主动聊天 ----------
+
+    private val customProactive = ProactiveSettings(quietEnabled = false, quietStartMinutes = 22 * 60, quietEndMinutes = 8 * 60 + 30, dailyLimit = 5)
+
+    /** 本机开了主动聊天、发过主动消息、有暂停计数、今日额度和约定提醒 */
+    private suspend fun seedProactive() {
+        seed()
+        db.contactDao().update(db.contactDao().get(1)!!.copy(proactiveEnabled = true, proactiveFrequency = ProactiveFrequency.HIGH))
+        db.messageDao().insert(
+            text(contactId = 1, content = "在忙吗", createdAt = 5_500).copy(role = Role.ASSISTANT, replyGroup = "p1", origin = MessageOrigin.PROACTIVE),
+        )
+        db.conversationDao().addProactiveSent(1, 5_500)
+        db.conversationDao().addProactiveSent(1, 5_600)
+        db.proactiveDao().saveState(ProactiveState(day = 20_000, used = 4, lastRunAt = 5_600))
+        db.proactiveDao().insertReminder(ProactiveReminder(contactId = 1, dueAt = 99_000, note = "叫他起床", createdAt = 5_000))
+        db.usageDao().add(20_000, 1, UsagePurpose.PROACTIVE, 30, 3)
+        settings.value = settings.value.copy(proactive = customProactive)
+    }
+
+    @Test
+    fun proactive_exportCarriesSwitchFrequencyOriginAndSettings_butNoDeviceState() = runBlocking {
+        seedProactive()
+        val zip = export(password = null)
+        val data = backup.inspect(zip).data
+        assertEquals(listOf(true to ProactiveFrequency.HIGH, false to ProactiveFrequency.MEDIUM), data.contacts.map { it.proactiveEnabled to it.proactiveFrequency })
+        assertEquals(MessageOrigin.PROACTIVE, data.messages.single { it.content == "在忙吗" }.origin)
+        assertTrue(data.messages.filter { it.content != "在忙吗" }.all { it.origin == MessageOrigin.NORMAL })
+        assertEquals(ProactiveSettingsDto(false, 22 * 60, 8 * 60 + 30, 5), data.settings.proactive)
+        assertTrue(data.usage.any { it.purpose == UsagePurpose.PROACTIVE && it.promptTokens == 30L })
+        val raw = ZipFile(zip).use { z -> z.getInputStream(z.getEntry(BackupFormat.DATA)).readBytes().toString(Charsets.UTF_8) }
+        for (deviceOnly in listOf("proactiveUnanswered", "lastProactiveAt", "叫他起床", "lastRunAt", "dueAt")) {
+            assertFalse("设备状态不该出现在导出文件里：$deviceOnly", raw.contains(deviceOnly))
+        }
+    }
+
+    @Test
+    fun proactive_overwrite_restoresSwitchAndSettings_resetsPauseAndReminders_keepsTodaysQuota() = runBlocking {
+        seedProactive()
+        val zip = export(password = null)
+        // 导出之后本机又变了：关掉开关、改了设置、今天用掉更多、又约了一个提醒
+        db.contactDao().update(db.contactDao().get(1)!!.copy(proactiveEnabled = false, proactiveFrequency = ProactiveFrequency.LOW))
+        settings.value = settings.value.copy(proactive = ProactiveSettings())
+        db.proactiveDao().saveState(ProactiveState(day = 20_001, used = 9, lastRunAt = 8_000))
+        db.proactiveDao().insertReminder(ProactiveReminder(contactId = 2, dueAt = 77_000, note = "本机后来约的", createdAt = 7_000))
+
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+
+        val contact = db.contactDao().get(1)!!
+        assertTrue(contact.proactiveEnabled)
+        assertEquals(ProactiveFrequency.HIGH, contact.proactiveFrequency)
+        assertFalse(db.contactDao().get(2)!!.proactiveEnabled)
+        assertEquals(MessageOrigin.PROACTIVE, db.messageDao().listByContact(1).single { it.content == "在忙吗" }.origin)
+        assertEquals(customProactive, settings.value.proactive)
+        // 暂停计数和最近主动时间从 0 开始；约定提醒不随备份，本机的也清掉（聊天已被覆盖）
+        db.conversationDao().get(1)!!.let { assertEquals(0, it.proactiveUnanswered); assertEquals(0L, it.lastProactiveAt) }
+        assertEquals(0, db.proactiveDao().reminderCount())
+        // 今日已用是这台手机的状态，不被备份改回去
+        assertEquals(ProactiveState(day = 20_001, used = 9, lastRunAt = 8_000), db.proactiveDao().state())
+    }
+
+    @Test
+    fun proactive_merge_keepsLocalSwitchPauseQuotaRemindersAndSettings() = runBlocking {
+        seedProactive()
+        val zip = export(password = null)
+        db.contactDao().update(db.contactDao().get(1)!!.copy(proactiveEnabled = false))
+        settings.value = settings.value.copy(proactive = ProactiveSettings(dailyLimit = 3))
+        val state = db.proactiveDao().state()
+
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+
+        assertFalse("同一个联系人保留本机的开关", db.contactDao().get(1)!!.proactiveEnabled)
+        assertEquals(ProactiveSettings(dailyLimit = 3), settings.value.proactive)
+        assertEquals(2, db.conversationDao().get(1)!!.proactiveUnanswered)
+        assertEquals(state, db.proactiveDao().state())
+        assertEquals("叫他起床", db.proactiveDao().remindersOf(1).single().note)
+        assertEquals(1, db.messageDao().listByContact(1).count { it.origin == MessageOrigin.PROACTIVE })
+    }
+
+    /** 0.5.0 及更早的备份：即使文件里写着开启，迁移后也是关闭，消息都是普通消息，主动聊天设置保留本机的 */
+    @Test
+    fun v5Backup_proactiveStaysOff_evenIfTheFileClaimsOtherwise() = runBlocking {
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.5.0","appVersionCode":500,"formatVersion":5,"exportedAt":1}""",
+            BackupFormat.DATA to """
+                {"contacts":[{"id":1,"name":"旧","avatarColor":0,"providerId":1,"model":"m","temperature":1.3,"createdAt":1,"updatedAt":1,
+                              "proactiveEnabled":true,"proactiveFrequency":"HIGH"}],
+                 "conversations":[{"contactId":1}],
+                 "messages":[{"id":1,"contactId":1,"role":"ASSISTANT","type":"TEXT","content":"hi","status":"SUCCESS","createdAt":5,"origin":"PROACTIVE"}],
+                 "settings":{"nickname":"n","proactive":{"quietEnabled":false,"dailyLimit":200}}}
+            """.trimIndent(),
+        )
+        settings.value = settings.value.copy(proactive = customProactive)
+        for (mode in RestoreMode.entries) {
+            db.messageDao().deleteAll()
+            db.contactDao().deleteAll()
+            backup.restore(backup.inspect(zip), mode, null)
+            val contact = db.contactDao().listAll().single()
+            assertFalse(mode.name, contact.proactiveEnabled)
+            assertEquals(mode.name, ProactiveFrequency.MEDIUM, contact.proactiveFrequency)
+            assertEquals(mode.name, 0, db.contactDao().proactiveCount())
+            assertEquals(mode.name, MessageOrigin.NORMAL, db.messageDao().listAll().single().origin)
+            assertEquals(mode.name, customProactive, settings.value.proactive)
+        }
+    }
+
+    @Test
+    fun crafted_proactiveSettings_areNormalized() = runBlocking {
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.6.0","appVersionCode":600,"formatVersion":6,"exportedAt":1}""",
+            BackupFormat.DATA to """{"settings":{"proactive":{"quietEnabled":true,"quietStartMinutes":-45,"quietEndMinutes":5000,"dailyLimit":0}}}""",
+        )
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(ProactiveSettings(true, 23 * 60, 11 * 60, 1), settings.value.proactive)
     }
 
     @Test
@@ -807,7 +927,7 @@ class BackupManagerTest {
         assertTrue(preview.decryptedTemporary)
         assertTrue(preview.file.canonicalPath.startsWith(files.restoreCacheDir.canonicalPath + File.separator))
         assertTrue(preview.file.isFile)
-        assertEquals(5, preview.manifest.formatVersion)
+        assertEquals(6, preview.manifest.formatVersion)
         val result = backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(expected, dump())
         assertFalse(result.cleanupPending)

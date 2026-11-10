@@ -51,6 +51,16 @@ interface ContactDao {
     /** 「我 → 回复偏好」里一键全部开启或关闭 */
     @Query("UPDATE contact SET useReplyPreferences = :on")
     suspend fun setUseReplyPreferencesForAll(on: Boolean)
+
+    /** 开启主动聊天的联系人数；为 0 时不注册任何后台任务 */
+    @Query("SELECT COUNT(*) FROM contact WHERE proactiveEnabled = 1")
+    suspend fun proactiveCount(): Int
+
+    @Query("SELECT * FROM contact WHERE proactiveEnabled = 1 ORDER BY id")
+    suspend fun proactiveContacts(): List<Contact>
+
+    @Query("SELECT * FROM contact WHERE proactiveEnabled = 1 ORDER BY name")
+    fun observeProactiveContacts(): Flow<List<Contact>>
 }
 
 @Dao
@@ -133,7 +143,7 @@ interface ConversationDao {
     @Query(
         """
         UPDATE conversation SET pinned = 0, unreadCount = 0, markedUnread = 0, draft = '',
-               lastMessageTime = 0, lastMessagePreview = '', backgroundPath = NULL
+               lastMessageTime = 0, lastMessagePreview = '', backgroundPath = NULL, proactiveUnanswered = 0
         WHERE contactId = :contactId
         """,
     )
@@ -142,7 +152,7 @@ interface ConversationDao {
     /** 清空聊天记录：会话留在列表里（置顶、草稿、免打扰和聊天背景保留），只清掉预览和未读 */
     @Query(
         """
-        UPDATE conversation SET unreadCount = 0, markedUnread = 0, lastMessagePreview = ''
+        UPDATE conversation SET unreadCount = 0, markedUnread = 0, lastMessagePreview = '', proactiveUnanswered = 0
         WHERE contactId = :contactId
         """,
     )
@@ -152,10 +162,22 @@ interface ConversationDao {
     @Query(
         """
         UPDATE conversation SET pinned = 0, unreadCount = 0, markedUnread = 0, draft = '',
-               lastMessageTime = 0, lastMessagePreview = ''
+               lastMessageTime = 0, lastMessagePreview = '', proactiveUnanswered = 0
         """,
     )
     suspend fun resetAll()
+
+    /** 一次主动发送已经生成：连续未回复次数 +1，记下时间 */
+    @Query("UPDATE conversation SET proactiveUnanswered = proactiveUnanswered + 1, lastProactiveAt = :time WHERE contactId = :contactId")
+    suspend fun addProactiveSent(contactId: Long, time: Long)
+
+    /** 发起过一次主动请求（[SKIP]、失败或被放弃也算）：只记时间，不算一次发送 */
+    @Query("UPDATE conversation SET lastProactiveAt = :time WHERE contactId = :contactId")
+    suspend fun setLastProactiveAt(contactId: Long, time: Long)
+
+    /** 用户发言了：主动聊天从暂停中恢复 */
+    @Query("UPDATE conversation SET proactiveUnanswered = 0 WHERE contactId = :contactId")
+    suspend fun clearProactiveUnanswered(contactId: Long)
 }
 
 @Dao
@@ -515,6 +537,51 @@ interface UsageDao {
 
     @Query("DELETE FROM usage_daily")
     suspend fun deleteAll()
+}
+
+/** 主动聊天（0.6.0）的设备状态和约定提醒。 */
+@Dao
+interface ProactiveDao {
+    @Query("SELECT * FROM proactive_state WHERE id = 1")
+    suspend fun state(): ProactiveState?
+
+    @Query("SELECT * FROM proactive_state WHERE id = 1")
+    fun observeState(): Flow<ProactiveState?>
+
+    @Upsert
+    suspend fun saveState(state: ProactiveState)
+
+    @Insert
+    suspend fun insertReminder(reminder: ProactiveReminder): Long
+
+    /** 到点的约定提醒，早的在前 */
+    @Query("SELECT * FROM proactive_reminder WHERE dueAt <= :now ORDER BY dueAt, id")
+    suspend fun dueReminders(now: Long): List<ProactiveReminder>
+
+    @Query("SELECT MIN(dueAt) FROM proactive_reminder")
+    suspend fun nextReminderAt(): Long?
+
+    @Query("SELECT * FROM proactive_reminder WHERE contactId = :contactId ORDER BY dueAt, id")
+    suspend fun remindersOf(contactId: Long): List<ProactiveReminder>
+
+    @Query("SELECT * FROM proactive_reminder ORDER BY dueAt, id")
+    fun observeReminders(): Flow<List<ProactiveReminder>>
+
+    @Query("SELECT COUNT(*) FROM proactive_reminder")
+    suspend fun reminderCount(): Int
+
+    @Query("DELETE FROM proactive_reminder WHERE id = :id")
+    suspend fun deleteReminder(id: Long)
+
+    @Query("DELETE FROM proactive_reminder WHERE contactId = :contactId")
+    suspend fun deleteRemindersOf(contactId: Long)
+
+    /** 关闭主动聊天的联系人不再保留约定提醒 */
+    @Query("DELETE FROM proactive_reminder WHERE contactId IN (SELECT id FROM contact WHERE proactiveEnabled = 0)")
+    suspend fun deleteRemindersOfDisabled()
+
+    @Query("DELETE FROM proactive_reminder")
+    suspend fun deleteAllReminders()
 }
 
 /**

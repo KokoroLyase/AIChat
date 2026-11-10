@@ -72,7 +72,7 @@ class MigrationTest {
     private fun JsonObject.sql(key: String) = this[key]!!.jsonPrimitive.content
 
     private fun open(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
         .allowMainThreadQueries()
         .build()
         .also { room = it }
@@ -304,6 +304,82 @@ class MigrationTest {
         // 新建的联系人同样默认开启
         val id = db.contactDao().insert(Contact(name = "新", avatarColor = 0, providerId = 1, model = "m", createdAt = 1, updatedAt = 1))
         db.contactDao().get(id)!!.let { assertTrue(it.useGlobalMemory && it.useReplyPreferences) }
+    }
+
+    /** 0.6.0：升级后主动聊天对已有联系人和新联系人都关闭，旧消息是普通消息，没有暂停状态、额度记录和约定提醒 */
+    @Test
+    fun v5ToV6_proactiveOffForOldAndNewContacts_oldMessagesAreNormal_otherFieldsKept() = runBlocking {
+        createV1(version = 5) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com','encrypted','',1,'deepseek','DEEPSEEK')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,thinkingOption,memoryModel,memoryThinkingOption,useGlobalMemory,useReplyPreferences) VALUES(8,'甲',1,1,'m','OFF',0.4,'人设',6000,1,1,10,20,'high',NULL,'off',0,1),(9,'乙',1,1,'m','OFF',1.3,'',4000,0,0,11,21,NULL,'mm','high',1,0)")
+            execSQL("INSERT INTO conversation(contactId,pinned,unreadCount,markedUnread,draft,lastMessageTime,lastMessagePreview,memoryCursor,memoryStart,muted,backgroundPath) VALUES(8,1,4,1,'草稿',99,'预览',50,7,1,'/bg/8.jpg')")
+            execSQL("INSERT INTO message(id,contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,replyGroup,createdAt) VALUES(1,8,'USER','TEXT','在吗',0,0,0,'SUCCESS',0,0,0,NULL,90),(2,8,'ASSISTANT','TEXT','在',0,0,0,'PENDING',0,7,3,'g',99)")
+            execSQL("INSERT INTO usage_daily(day,contactId,purpose,promptTokens,completionTokens,requests) VALUES(20000,8,'CHAT',7,3,1)")
+        }
+        val db = open()
+        val contacts = db.contactDao().listAll()
+        assertTrue("已有联系人的主动聊天默认关闭", contacts.none { it.proactiveEnabled })
+        assertTrue(contacts.all { it.proactiveFrequency == ProactiveFrequency.MEDIUM })
+        assertEquals(0, db.contactDao().proactiveCount())
+        // 0.5.0 的两个开关和请求相关字段原样保留
+        assertEquals(listOf(false, true), contacts.map { it.useGlobalMemory })
+        assertEquals(listOf(true, false), contacts.map { it.useReplyPreferences })
+        assertEquals(0.4f, contacts[0].temperature)
+        assertEquals("high", contacts[0].thinkingOption)
+        val messages = db.messageDao().listByContact(8)
+        assertTrue(messages.all { it.origin == MessageOrigin.NORMAL })
+        assertEquals(listOf(MessageStatus.SUCCESS, MessageStatus.PENDING), messages.map { it.status })
+        db.conversationDao().get(8)!!.let {
+            assertEquals(0, it.proactiveUnanswered)
+            assertEquals(0L, it.lastProactiveAt)
+            assertTrue(it.muted)
+            assertEquals("/bg/8.jpg", it.backgroundPath)
+            assertEquals("草稿", it.draft)
+        }
+        assertEquals(UsagePurpose.CHAT, db.usageDao().listAll().single().purpose)
+        // 新表：没有状态行、没有提醒；可读写，删除联系人时提醒一起删
+        val proactive = db.proactiveDao()
+        assertNull(proactive.state())
+        assertNull(proactive.nextReminderAt())
+        proactive.saveState(ProactiveState(day = 20000, used = 3, lastRunAt = 5))
+        proactive.saveState(ProactiveState(day = 20001, used = 1, lastRunAt = 6))
+        assertEquals(ProactiveState(day = 20001, used = 1, lastRunAt = 6), proactive.state())
+        proactive.insertReminder(ProactiveReminder(contactId = 9, dueAt = 500, note = "叫他起床", createdAt = 1))
+        assertEquals(500L, proactive.nextReminderAt())
+        db.contactDao().delete(9)
+        assertNull(proactive.nextReminderAt())
+        // 新建的联系人同样默认关闭；用量可以记主动聊天
+        val id = db.contactDao().insert(Contact(name = "新", avatarColor = 0, providerId = 1, model = "m", createdAt = 1, updatedAt = 1))
+        assertFalse(db.contactDao().get(id)!!.proactiveEnabled)
+        db.usageDao().add(20001, 8, UsagePurpose.PROACTIVE, 5, 2)
+        assertEquals(listOf(UsagePurpose.CHAT, UsagePurpose.PROACTIVE), db.usageDao().listAll().map { it.purpose })
+    }
+
+    /** 清空或删除聊天时连续未回复次数清零；用户发言用的清零和主动发送的计数互不影响别的字段 */
+    @Test
+    fun proactiveCounters_incrementResetAndClearWithHistory() = runBlocking {
+        createV1(version = 5) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption,useGlobalMemory,useReplyPreferences) VALUES(8,'甲',1,1,'m','OFF',1.3,'',4000,1,1,10,20,'off',1,1),(9,'乙',1,1,'m','OFF',1.3,'',4000,1,1,10,20,'off',1,1)")
+            execSQL("INSERT INTO conversation(contactId,pinned,unreadCount,markedUnread,draft,lastMessageTime,lastMessagePreview,memoryStart,muted) VALUES(8,1,4,0,'草稿',99,'预览',0,1),(9,1,4,0,'',99,'预览',0,0)")
+        }
+        val db = open()
+        val dao = db.conversationDao()
+        dao.addProactiveSent(8, 100)
+        dao.addProactiveSent(8, 200)
+        dao.setLastProactiveAt(9, 300)
+        dao.get(8)!!.let { assertEquals(2, it.proactiveUnanswered); assertEquals(200L, it.lastProactiveAt); assertEquals(4, it.unreadCount) }
+        dao.get(9)!!.let { assertEquals(0, it.proactiveUnanswered); assertEquals(300L, it.lastProactiveAt) }
+        dao.clearProactiveUnanswered(8)
+        dao.get(8)!!.let { assertEquals(0, it.proactiveUnanswered); assertEquals(200L, it.lastProactiveAt); assertEquals("草稿", it.draft); assertTrue(it.muted) }
+        dao.addProactiveSent(8, 400)
+        dao.addProactiveSent(9, 400)
+        dao.clearHistory(8)
+        dao.reset(9)
+        assertEquals(listOf(0, 0), dao.listAll().map { it.proactiveUnanswered })
+        dao.addProactiveSent(8, 500)
+        dao.resetAll()
+        assertEquals(0, dao.get(8)!!.proactiveUnanswered)
     }
 
     @Test
