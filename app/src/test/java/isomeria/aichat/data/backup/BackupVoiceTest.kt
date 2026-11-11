@@ -185,6 +185,28 @@ class BackupVoiceTest {
         assertEquals(VoiceSettings(ReplyType.TEXT, VoiceSource.provider(tts), VoiceSource.provider(asrNow.id)), settings.v.voice)
     }
 
+    /** 0.7.1：本机来源原样导出和恢复（不改数据格式）；离线识别模型和系统音色不进备份 */
+    @Test
+    fun localSources_roundTripUnchanged_modelFilesNotExported() = runBlocking {
+        seed()
+        settings.v = settings.v.copy(voice = VoiceSettings(ReplyType.VOICE, VoiceSource.of(VoiceSource.SYSTEM_TTS), VoiceSource.of(VoiceSource.OFFLINE_ASR)))
+        val model = File(context.filesDir, "asr-models/x/model.int8.onnx").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(64) { 9 }) }
+        try {
+            val zip = export()
+            ZipFile(zip).use { z ->
+                assertTrue("模型文件不进备份", z.entries().toList().none { it.name.contains("asr-models") || it.name.endsWith(".onnx") })
+            }
+            assertEquals(7, backup.inspect(zip).manifest.formatVersion)
+            assertEquals(VoiceSettingsDto(ReplyType.VOICE, "local:system-tts", "local:offline-asr"), backup.inspect(zip).data.settings.voice)
+            settings.v = settings.v.copy(voice = VoiceSettings())
+            backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+            assertEquals(VoiceSettings(ReplyType.VOICE, "local:system-tts", "local:offline-asr"), settings.v.voice)
+            assertTrue("覆盖恢复不动模型文件", model.isFile)
+        } finally {
+            File(context.filesDir, "asr-models").deleteRecursively()
+        }
+    }
+
     /** zip 里缺了语音文件：联系人的语音按文字恢复（转写文字还在），用户的语音留着、没有文件 */
     @Test
     fun missingVoiceFile_contactVoiceBecomesText() = runBlocking {
