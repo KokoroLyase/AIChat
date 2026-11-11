@@ -212,7 +212,7 @@ class ScreenshotTest {
     @Test fun exportPlainCompletedLight() = backupDialogShot("43-export-completed-plain", false) { ExportSample(ExportUiState(result = ExportSummary(2, 1000, 2, false, encrypted = false))) }
     @Test fun exportLargeLight() = large("43-export-large", false) { ExportSample(ExportUiState(hasApiKey = true, includeKey = true, password = "123", confirm = "", errorRes = isomeria.aichat.R.string.export_password_mismatch)) }
     @Test fun exportLargeDark() = large("43-export-large", true) { ExportSample(ExportUiState()) }
-    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789, backgrounds = 860000, voice = 2400000))
+    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789, backgrounds = 860000, voice = 2400000, asrModels = 239549735))
     @Test fun storageLight() = shot("42-storage", false) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageDark() = shot("42-storage", true) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageLoading() = shot("42-storage-loading", false) { StorageContent(StorageState(), {}, {}, {}, {}, {}, {}) }
@@ -923,6 +923,44 @@ class ScreenshotTest {
     }
     @Test fun voiceSettingsLocalDark() = shot("69-voice-settings-local", true) {
         isomeria.aichat.feature.voice.VoiceSettingsContent(voiceSettingsSample.copy(ttsName = null, ttsLocal = isomeria.aichat.core.VoiceSource.SYSTEM_TTS), {}, {}, {})
+    }
+
+    // ---------- 0.7.1 离线识别（本机） ----------
+
+    private fun asrState(model: isomeria.aichat.data.voice.ModelState, work: isomeria.aichat.data.voice.ModelDownloadWork = isomeria.aichat.data.voice.ModelDownloadWork.NONE, inUse: Boolean = false, supported: Boolean = true) =
+        isomeria.aichat.feature.voice.OfflineAsrUiState(supported, model, work, inUse)
+    @Composable private fun OfflineAsrPage(state: isomeria.aichat.feature.voice.OfflineAsrUiState = asrState(isomeria.aichat.data.voice.ModelState.Missing)) =
+        isomeria.aichat.feature.voice.OfflineAsrContent(state, {}, isomeria.aichat.feature.voice.OfflineAsrActions())
+    @Test fun offlineAsrLight() = shot("79-offline-asr", false) { OfflineAsrPage() }
+    @Test fun offlineAsrDark() = shot("79-offline-asr", true) { OfflineAsrPage() }
+    @Test fun offlineAsrLarge() = large("79-offline-asr-large", false) { OfflineAsrPage() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun offlineAsrNarrow() = large("79-offline-asr-narrow", true) { OfflineAsrPage() }
+    @Test fun offlineAsrDownloadingLight() = shot("79-offline-asr-downloading", false) {
+        OfflineAsrPage(asrState(isomeria.aichat.data.voice.ModelState.Downloading(96_000_000), isomeria.aichat.data.voice.ModelDownloadWork.RUNNING))
+    }
+    @Test fun offlineAsrFailedDark() = shot("79-offline-asr-failed", true) {
+        OfflineAsrPage(asrState(isomeria.aichat.data.voice.ModelState.Failed(isomeria.aichat.data.voice.ModelFailure.NETWORK, 120_000_000)))
+    }
+    @Test fun offlineAsrInstalledLight() = shot("79-offline-asr-installed", false) { OfflineAsrPage(asrState(isomeria.aichat.data.voice.ModelState.Installed, inUse = true)) }
+    @Test fun offlineAsrInstalledLarge() = large("79-offline-asr-installed-large", true) { OfflineAsrPage(asrState(isomeria.aichat.data.voice.ModelState.Installed, inUse = true)) }
+    @Test fun offlineAsrUnsupportedLight() = shot("79-offline-asr-unsupported", false) { OfflineAsrPage(asrState(isomeria.aichat.data.voice.ModelState.Missing, supported = false)) }
+    @Test fun offlineAsrDownloadDialog() {
+        compose.setContent {
+            AIChatTheme(darkTheme = false) {
+                isomeria.aichat.feature.voice.OfflineAsrContent(asrState(isomeria.aichat.data.voice.ModelState.Missing), {}, isomeria.aichat.feature.voice.OfflineAsrActions(metered = { true }))
+            }
+        }
+        compose.onNodeWithText("下载模型").performClick()
+        compose.waitForIdle()
+        captureScreenRoboImage("screenshots/79-offline-asr-download-dialog-light.png")
+    }
+    @Test fun licensesLight() = shot("80-licenses", false) { isomeria.aichat.feature.settings.LicensesScreen {} }
+    @Test fun licensesLarge() = large("80-licenses-large", true) { isomeria.aichat.feature.settings.LicensesScreen {} }
+    @Test fun voiceProvidersAsrLocalDark() = shot("70-voice-providers-asr-local", true) {
+        isomeria.aichat.feature.voice.VoiceProviderListContent(
+            isomeria.aichat.data.db.ProviderKind.ASR,
+            isomeria.aichat.data.repo.VoiceProviders(emptyList(), null, isomeria.aichat.core.VoiceSource.OFFLINE_ASR), {}, {}, {},
+        )
     }
 
     // ---------- 0.7.0 语音条和长按菜单 ----------

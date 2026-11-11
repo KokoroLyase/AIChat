@@ -31,6 +31,10 @@ private val libraries = listOf(
     Library("Coil", "Coil Contributors", "Apache License 2.0"),
     Library("MMKV", "Tencent", "BSD 3-Clause License"),
     Library("Unicode Emoji (emoji-test.txt)", "Unicode, Inc.", "Unicode License v3"),
+    // 0.7.1 离线识别：引擎随安装包；模型由用户在 App 内从魔搭社区下载，App 不内置、不转发
+    Library("sherpa-onnx", "k2-fsa (Next-gen Kaldi)", "Apache License 2.0"),
+    Library("ONNX Runtime", "Microsoft Corporation", "MIT License"),
+    Library("SenseVoice Small (offline ASR model, downloaded on demand)", "Alibaba Group, Tongyi Lab (FunASR); sherpa-onnx conversion by k2-fsa", "FunASR Model Open Source License v1.1"),
 )
 
 @Composable

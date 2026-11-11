@@ -243,7 +243,6 @@ fun VoiceProviderListContent(
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
             // 0.7.1：本机来源（系统语音合成、离线识别），没有 Key 和地址，单独一组放在服务商前面
-            if (kind == ProviderKind.TTS) {
             SectionHeader(stringResource(R.string.voice_local_group))
             Row(
                 Modifier
@@ -269,9 +268,6 @@ fun VoiceProviderListContent(
                 Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
             }
             SectionHeader(stringResource(R.string.voice_providers_group))
-            } else {
-                GroupSpacer()
-            }
             if (state.providers.isEmpty()) FootnoteText(stringResource(R.string.voice_providers_empty))
             state.providers.forEachIndexed { index, provider ->
                 Row(

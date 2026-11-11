@@ -65,7 +65,16 @@ class ReplyNotifier @Inject constructor(
             description = context.getString(R.string.notification_channel_playback_desc)
             setShowBadge(false)
         }
-        manager.createNotificationChannels(listOf(messages, receiving, playback))
+        // 0.7.1：下载离线识别模型时的进度通知
+        val download = NotificationChannel(
+            CHANNEL_MODEL_DOWNLOAD,
+            context.getString(R.string.notification_channel_model_download),
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = context.getString(R.string.notification_channel_model_download_desc)
+            setShowBadge(false)
+        }
+        manager.createNotificationChannels(listOf(messages, receiving, playback, download))
     }
 
     fun canNotify(): Boolean =
@@ -119,6 +128,19 @@ class ReplyNotifier @Inject constructor(
             .build()
         return ForegroundInfo(RECEIVING_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
+
+    /** 下载离线识别模型时的常驻通知（0.7.1），带进度；点开回到 App */
+    fun modelDownloadNotification(percent: Int): android.app.Notification =
+        NotificationCompat.Builder(context, CHANNEL_MODEL_DOWNLOAD)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(BRAND_COLOR)
+            .setContentTitle(context.getString(R.string.notification_model_download))
+            .setProgress(100, percent.coerceIn(0, 100), false)
+            .setOngoing(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(openAppIntent())
+            .build()
 
     /** 后台播放语音时的常驻通知（0.7.0）：不含联系人和消息内容，带「停止」 */
     fun playbackNotification(stop: PendingIntent): android.app.Notification =
@@ -178,9 +200,12 @@ class ReplyNotifier @Inject constructor(
         const val CHANNEL_MESSAGES = "messages"
         const val CHANNEL_RECEIVING = "receiving"
         const val CHANNEL_PLAYBACK = "voice_playback"
+        const val CHANNEL_MODEL_DOWNLOAD = "model_download"
         const val ACTION_OPEN_CHAT = "isomeria.aichat.action.OPEN_CHAT"
         const val EXTRA_CONTACT_ID = "contact_id"
         private const val RECEIVING_ID = 1
+        /** 2 是后台播放（VoicePlaybackService）；回复通知从 1000 起 */
+        const val MODEL_DOWNLOAD_ID = 3
         private const val MESSAGE_ID_BASE = 1000
         private const val BRAND_COLOR = 0xFF07C160.toInt()
 

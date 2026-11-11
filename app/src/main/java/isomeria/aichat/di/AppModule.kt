@@ -225,6 +225,8 @@ abstract class BindingsModule {
 
     @Binds abstract fun offlineAsr(impl: isomeria.aichat.data.voice.SherpaOfflineAsrEngine): isomeria.aichat.data.voice.OfflineAsrEngine
 
+    @Binds abstract fun modelDownloads(impl: isomeria.aichat.data.voice.OfflineModelDownloads): isomeria.aichat.data.voice.ModelDownloadControl
+
     @Binds abstract fun replyControl(impl: ReplyScheduler): ReplyControl
 
     @Binds abstract fun proactiveControl(impl: isomeria.aichat.data.reply.ProactiveScheduler): isomeria.aichat.data.reply.ProactiveControl

@@ -33,8 +33,10 @@ data class ModelFile(val name: String, val bytes: Long, val sha256: String)
 object OfflineAsrModel {
     const val ID = "sense-voice-zh-en-ja-ko-yue-2024-07-17-int8"
 
-    /** 应用私有目录下的位置；不在导出的媒体目录里，不随备份 */
-    const val DIR = "asr-models/$ID"
+    /** 应用私有目录下放离线识别模型的目录（存储空间页按它统计）；不在导出的媒体目录里，不随备份 */
+    const val ROOT = "asr-models"
+
+    const val DIR = "$ROOT/$ID"
 
     const val BASE_URL = "https://www.modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/"
 
