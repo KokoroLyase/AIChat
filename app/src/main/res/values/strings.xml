@@ -62,6 +62,7 @@
     <string name="chat_thinking_done">已深度思考（用时 %1$d 秒）</string>
     <string name="chat_menu_regenerate">重新生成</string>
     <string name="chat_menu_cancel_reply">取消回复</string>
+    <string name="chat_menu_more">更多操作</string>
     <string name="chat_delete_message_confirm">删除这条消息？</string>
     <string name="chat_resend_title">重发该消息？</string>
     <string name="chat_config_title">模型参数待修正</string>
@@ -873,4 +874,21 @@
     <string name="voice_mic_denied_message">按住说话和录音转文字需要麦克风权限，可以在系统设置里为智信打开。</string>
     <string name="error_asr_failed">语音识别失败，这条语音没有发给联系人。可以重发，再识别一次。</string>
     <string name="error_asr_unavailable">还没有设置语音识别服务，或它没有 API Key，这条语音没有发给联系人。</string>
+    <!-- 0.7.0 语音消息：语音条和播放 -->
+    <string name="voice_bubble_desc">语音，%1$d 秒</string>
+    <string name="voice_state_playing">正在播放</string>
+    <string name="voice_state_unplayed">未听</string>
+    <string name="voice_action_play">播放</string>
+    <string name="voice_stop">停止</string>
+    <string name="voice_menu_earpiece">听筒播放</string>
+    <string name="voice_menu_background">后台播放</string>
+    <string name="voice_menu_to_text">转文字</string>
+    <string name="voice_menu_hide_text">取消转文字</string>
+    <string name="voice_menu_continuous">连续朗读</string>
+    <string name="voice_file_missing">语音文件已经不在了，可以转文字查看</string>
+    <string name="voice_file_missing_no_text">语音文件已经不在了</string>
+    <string name="voice_text_desc">语音转写：%1$s</string>
+    <string name="notification_channel_playback">语音播放</string>
+    <string name="notification_channel_playback_desc">后台播放语音时显示，放完自动消失</string>
+    <string name="notification_playback">正在后台播放语音</string>
 </resources>

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,11 +59,13 @@ fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
     val gap = with(LocalDensity.current) { 6.dp.roundToPx() }
     val provider = remember(gap) { AboveAnchorProvider(gap) }
     WePopup(provider, onDismiss) {
-        Row(
+        // 一行最多 5 项，多了换行（语音消息的菜单最多 8 项）
+        FlowRow(
             Modifier
                 .clip(RoundedCornerShape(dimens.popupCorner))
                 .background(colors.popupBackground)
                 .padding(horizontal = 4.dp, vertical = 4.dp),
+            maxItemsInEachRow = BUBBLE_MENU_PER_ROW,
         ) {
             items.forEach { item ->
                 Column(
@@ -86,6 +89,8 @@ fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
         }
     }
 }
+
+private const val BUBBLE_MENU_PER_ROW = 5
 
 /**
  * 在按压位置弹出的竖向菜单（聊天列表长按）。[pressOffset] 是相对锚点左上角的按压位置。

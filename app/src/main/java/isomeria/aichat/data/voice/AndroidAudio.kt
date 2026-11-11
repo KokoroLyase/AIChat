@@ -250,3 +250,83 @@ class AndroidAudioCodec @Inject constructor() : AudioCodec {
         }
     }
 }
+
+/**
+ * 用 MediaPlayer 放本机的语音文件。放之前申请短暂的音频焦点（别的 App 的音乐会暂停或压低），被打断时停下；
+ * 听筒播放时把通话设备设成听筒，放完恢复。在主线程上调用。
+ */
+@Singleton
+class AndroidVoicePlayer @Inject constructor(@ApplicationContext context: Context) : VoicePlayer {
+    private val audio = context.getSystemService(android.media.AudioManager::class.java)
+    private var player: android.media.MediaPlayer? = null
+    private var focus: android.media.AudioFocusRequest? = null
+    private var communication = false
+    private var onEnd: ((Boolean) -> Unit)? = null
+
+    override fun play(file: File, route: AudioRoute, onEnd: (completed: Boolean) -> Unit) {
+        stop()
+        val attributes = android.media.AudioAttributes.Builder()
+            .setUsage(if (route == AudioRoute.EARPIECE) android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION else android.media.AudioAttributes.USAGE_MEDIA)
+            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+        val request = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            .setAudioAttributes(attributes)
+            .setOnAudioFocusChangeListener { change ->
+                if (change == android.media.AudioManager.AUDIOFOCUS_LOSS || change == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) end(false)
+            }
+            .build()
+        if (audio.requestAudioFocus(request) != android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            onEnd(false)
+            return
+        }
+        focus = request
+        this.onEnd = onEnd
+        if (route == AudioRoute.EARPIECE) {
+            communication = true
+            audio.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+            audio.availableCommunicationDevices
+                .firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
+                ?.let { audio.setCommunicationDevice(it) }
+        }
+        val media = android.media.MediaPlayer()
+        try {
+            media.setAudioAttributes(attributes)
+            media.setDataSource(file.absolutePath)
+            media.setOnCompletionListener { end(true) }
+            media.setOnErrorListener { _, _, _ -> end(false); true }
+            media.prepare()
+            media.start()
+            player = media
+        } catch (e: Exception) {
+            media.release()
+            end(false)
+        }
+    }
+
+    override fun stop() {
+        onEnd = null
+        release()
+    }
+
+    private fun end(completed: Boolean) {
+        val callback = onEnd
+        onEnd = null
+        release()
+        callback?.invoke(completed)
+    }
+
+    private fun release() {
+        player?.let {
+            runCatching { it.stop() }
+            it.release()
+        }
+        player = null
+        focus?.let { audio.abandonAudioFocusRequest(it) }
+        focus = null
+        if (communication) {
+            communication = false
+            audio.clearCommunicationDevice()
+            audio.mode = android.media.AudioManager.MODE_NORMAL
+        }
+    }
+}

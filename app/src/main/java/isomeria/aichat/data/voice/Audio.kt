@@ -36,3 +36,23 @@ interface AudioCodec {
     /** 音频时长（毫秒）；读不出时为 0 */
     fun durationMillis(file: File): Long
 }
+
+/** 播放走哪里：扬声器（默认）或听筒 */
+enum class AudioRoute { SPEAKER, EARPIECE }
+
+/**
+ * 播放语音（0.7.0）。一次只放一段，开始新的一段前先停掉上一段。真实实现用 MediaPlayer，JVM 测试换成假实现。
+ * [onEnd] 在播完（true）或出错、被别的声音打断（false）时回调一次；调用 [stop] 停下的不回调。
+ */
+interface VoicePlayer {
+    fun play(file: File, route: AudioRoute, onEnd: (completed: Boolean) -> Unit)
+
+    fun stop()
+}
+
+/** 后台播放（离开聊天页、回到桌面后接着放）时的前台服务；真实实现见 VoicePlaybackService */
+interface BackgroundPlaybackHost {
+    fun start()
+
+    fun stop()
+}

@@ -65,6 +65,33 @@ internal val sampleRows: List<ChatRow> = listOf(
     ChatRow.Item(msg(6, Role.USER, "好呀，周末一起看", status = MessageStatus.FAILED)),
 )
 
+private fun voice(id: Long, role: Role, seconds: Int, text: String, played: Boolean = true, showText: Boolean = false, status: MessageStatus = MessageStatus.SUCCESS) =
+    Message(
+        id = id,
+        contactId = 1,
+        role = role,
+        type = MessageType.VOICE,
+        content = text,
+        voicePath = "voice/$id.m4a",
+        voiceMillis = seconds * 1_000L,
+        voicePlayed = played,
+        voiceShowText = showText,
+        status = status,
+        errorCode = if (status == MessageStatus.FAILED) FailReason.ASR_FAILED.code else 0,
+        createdAt = id,
+    )
+
+/** 语音消息（0.7.0）：自己的转了文字、对方没听过（红点）、正在播放、长语音转了文字、正在识别、识别失败 */
+internal val voiceRows: List<ChatRow> = listOf(
+    ChatRow.TimeBar("21:30", "t0"),
+    ChatRow.Item(voice(11, Role.USER, 6, "今天下雨了，你那边呢", showText = true)),
+    ChatRow.Item(voice(12, Role.ASSISTANT, 3, "这边也在下", played = false)),
+    ChatRow.Item(voice(13, Role.ASSISTANT, 15, "我刚到家，衣服都淋湿了")),
+    ChatRow.Item(voice(14, Role.ASSISTANT, 42, "你记得带伞呀，明天好像还要下一整天，出门前看看天气预报，别又淋湿了。", showText = true)),
+    ChatRow.Item(voice(15, Role.USER, 2, "", status = MessageStatus.FAILED)),
+    ChatRow.Item(voice(16, Role.USER, 9, "", status = MessageStatus.SENDING)),
+)
+
 private val noActions = MessageActions({}, {}, {}, {}, {}, {}, {})
 
 /** 聊天页的静态外观：顶栏、消息、输入栏。Compose Preview 和截图测试共用。 */
@@ -79,6 +106,9 @@ internal fun ChatPageSample(
     recording: isomeria.aichat.ui.components.RecordingUi? = null,
     transcribing: Boolean = false,
     rows: List<ChatRow> = sampleRows,
+    /** 正在播放的语音、打开长按菜单的消息 */
+    playingId: Long? = null,
+    menuOpenId: Long? = null,
 ) {
     Column(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) {
         WeTopBar(
@@ -107,6 +137,8 @@ internal fun ChatPageSample(
                     myAvatarPath = null,
                     waitingReply = typing,
                     actions = noActions,
+                    playingId = playingId,
+                    menuOpenId = menuOpenId,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

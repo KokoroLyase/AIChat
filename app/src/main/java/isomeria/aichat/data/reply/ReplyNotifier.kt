@@ -56,7 +56,16 @@ class ReplyNotifier @Inject constructor(
             description = context.getString(R.string.notification_channel_receiving_desc)
             setShowBadge(false)
         }
-        manager.createNotificationChannels(listOf(messages, receiving))
+        // 0.7.0：后台播放语音时的常驻通知
+        val playback = NotificationChannel(
+            CHANNEL_PLAYBACK,
+            context.getString(R.string.notification_channel_playback),
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = context.getString(R.string.notification_channel_playback_desc)
+            setShowBadge(false)
+        }
+        manager.createNotificationChannels(listOf(messages, receiving, playback))
     }
 
     fun canNotify(): Boolean =
@@ -111,6 +120,19 @@ class ReplyNotifier @Inject constructor(
         return ForegroundInfo(RECEIVING_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
+    /** 后台播放语音时的常驻通知（0.7.0）：不含联系人和消息内容，带「停止」 */
+    fun playbackNotification(stop: PendingIntent): android.app.Notification =
+        NotificationCompat.Builder(context, CHANNEL_PLAYBACK)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(BRAND_COLOR)
+            .setContentTitle(context.getString(R.string.notification_playback))
+            .setOngoing(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(openAppIntent())
+            .addAction(0, context.getString(R.string.voice_stop), stop)
+            .build()
+
     private fun openChatIntent(contactId: Long): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             action = ACTION_OPEN_CHAT
@@ -155,6 +177,7 @@ class ReplyNotifier @Inject constructor(
     companion object {
         const val CHANNEL_MESSAGES = "messages"
         const val CHANNEL_RECEIVING = "receiving"
+        const val CHANNEL_PLAYBACK = "voice_playback"
         const val ACTION_OPEN_CHAT = "isomeria.aichat.action.OPEN_CHAT"
         const val EXTRA_CONTACT_ID = "contact_id"
         private const val RECEIVING_ID = 1

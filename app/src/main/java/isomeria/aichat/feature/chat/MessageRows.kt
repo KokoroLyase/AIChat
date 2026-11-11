@@ -23,6 +23,10 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.PhoneInTalk
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +56,9 @@ import isomeria.aichat.data.db.Role
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.MenuItem
 import isomeria.aichat.ui.components.TextBubble
+import isomeria.aichat.ui.components.UnplayedDot
+import isomeria.aichat.ui.components.VoiceBubble
+import isomeria.aichat.data.voice.PlayMode
 import isomeria.aichat.ui.components.WeBubbleMenu
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.theme.WeTheme
@@ -117,6 +124,12 @@ data class MessageActions(
     val onFailedClick: (Message) -> Unit,
     val onImageClick: (String) -> Unit,
     val onAvatarClick: () -> Unit,
+    /** 点语音条：播放或停止（0.7.0） */
+    val onVoiceClick: (Message) -> Unit = {},
+    /** 长按菜单里的听筒播放、后台播放、连续朗读 */
+    val onVoicePlay: (Message, PlayMode) -> Unit = { _, _ -> },
+    /** 转文字 / 取消转文字 */
+    val onVoiceShowText: (Message, Boolean) -> Unit = { _, _ -> },
 )
 
 /**
@@ -136,16 +149,34 @@ fun MessageRow(
     waitingReply: Boolean,
     maxBubbleWidth: Dp,
     actions: MessageActions,
+    playing: Boolean = false,
+    menuInitiallyOpen: Boolean = false,
 ) {
     val dimens = WeTheme.dimens
     val sent = message.role == Role.USER
-    var menuOpen by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(menuInitiallyOpen) }
 
+    val voice = message.type == MessageType.VOICE
+    // 语音转写的文字：用户的语音识别成功前为空
+    val hasText = message.content.isNotBlank()
     val menuItems = buildList {
-        if (message.type == MessageType.TEXT) {
+        if (message.type == MessageType.TEXT || (voice && hasText)) {
             add(MenuItem(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy) { actions.onCopy(message.content) })
         }
         add(MenuItem(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline) { actions.onDelete(message) })
+        if (voice) {
+            add(MenuItem(stringResource(R.string.voice_menu_earpiece), Icons.Outlined.PhoneInTalk) { actions.onVoicePlay(message, PlayMode.EARPIECE) })
+            add(MenuItem(stringResource(R.string.voice_menu_background), Icons.Outlined.Headphones) { actions.onVoicePlay(message, PlayMode.BACKGROUND) })
+            if (hasText) {
+                add(
+                    MenuItem(
+                        stringResource(if (message.voiceShowText) R.string.voice_menu_hide_text else R.string.voice_menu_to_text),
+                        Icons.Outlined.TextFields,
+                    ) { actions.onVoiceShowText(message, !message.voiceShowText) },
+                )
+            }
+            add(MenuItem(stringResource(R.string.voice_menu_continuous), Icons.AutoMirrored.Outlined.PlaylistPlay) { actions.onVoicePlay(message, PlayMode.CONTINUOUS) })
+        }
         if (canRegenerate) {
             add(MenuItem(stringResource(R.string.chat_menu_regenerate), Icons.Outlined.Refresh, actions.onRegenerate))
         }
@@ -203,14 +234,18 @@ fun MessageRow(
                         onClick = { message.imagePath?.let(actions.onImageClick) },
                         onLongClick = { menuOpen = true },
                     )
-                    MessageType.VOICE -> TextBubble(
-                        text = message.content,
+                    MessageType.VOICE -> VoiceMessage(
+                        message = message,
                         sent = sent,
+                        playing = playing,
+                        onClick = { actions.onVoiceClick(message) },
                         onLongClick = { menuOpen = true },
+                        onToText = { actions.onVoiceShowText(message, true) },
                     )
                 }
                 if (menuOpen) WeBubbleMenu(menuItems) { menuOpen = false }
             }
+            if (voice) VoiceTranscript(message, sent) { menuOpen = true }
         }
 
         if (sent) {
@@ -218,6 +253,75 @@ fun MessageRow(
             Avatar(myAvatarPath, myName, myAvatarColor, dimens.chatAvatar)
         } else {
             Spacer(Modifier.width(dimens.bubbleOppositeMinGap - dimens.chatAvatarEdge))
+        }
+    }
+}
+
+/**
+ * 语音消息（0.7.0）：语音条；对方没听过的旁边有红点；有转写文字、还没展开时旁边有「转文字」。
+ * 自己的语音在识别出文字前不显示「转文字」（下面显示「正在识别…」）。
+ */
+@Composable
+private fun VoiceMessage(message: Message, sent: Boolean, playing: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onToText: () -> Unit) {
+    val unplayed = !sent && !message.voicePlayed
+    val toText = @Composable {
+        if (message.content.isNotBlank() && !message.voiceShowText) {
+            Text(
+                stringResource(R.string.voice_menu_to_text),
+                style = WeTheme.typography.small,
+                color = WeTheme.colors.link,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onToText)
+                    .padding(horizontal = 6.dp, vertical = 10.dp),
+            )
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (sent) toText()
+        VoiceBubble(
+            millis = message.voiceMillis,
+            sent = sent,
+            playing = playing,
+            unplayed = unplayed,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (!sent) {
+            if (unplayed) {
+                Spacer(Modifier.width(6.dp))
+                UnplayedDot()
+            }
+            toText()
+        }
+    }
+}
+
+/** 语音下面：展开的转写文字，或自己的语音正在识别 */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun VoiceTranscript(message: Message, sent: Boolean, onLongClick: () -> Unit) {
+    val colors = WeTheme.colors
+    val dimens = WeTheme.dimens
+    val side = Modifier.padding(start = if (sent) 0.dp else dimens.bubbleTailWidth, end = if (sent) dimens.bubbleTailWidth else 0.dp, top = 4.dp)
+    when {
+        message.voiceShowText && message.content.isNotBlank() -> {
+            val description = stringResource(R.string.voice_text_desc, message.content)
+            Text(
+                message.content,
+                style = WeTheme.typography.message,
+                color = if (sent) colors.bubbleSentText else colors.bubbleReceivedText,
+                modifier = side
+                    .clip(RoundedCornerShape(dimens.bubbleCorner))
+                    .background(if (sent) colors.bubbleSent else colors.bubbleReceived)
+                    .combinedClickable(onClick = {}, onLongClick = onLongClick)
+                    .semantics { contentDescription = description }
+                    .padding(horizontal = dimens.bubblePaddingHorizontal, vertical = dimens.bubblePaddingVertical),
+            )
+        }
+        sent && message.content.isBlank() && message.status == MessageStatus.SENDING -> {
+            Text(stringResource(R.string.voice_transcribing), style = WeTheme.typography.small, color = colors.textSecondary, modifier = side)
         }
     }
 }

@@ -92,6 +92,8 @@ sealed interface ChatEvent {
     /** 录音转文字的结果，放进输入框 */
     data class VoiceText(val text: String) : ChatEvent
     data object VoiceTextFailed : ChatEvent
+    /** 语音文件不在了（例如恢复的备份里缺了这个文件）；[hasText] 时提示可以转文字 */
+    data class VoiceFileMissing(val hasText: Boolean) : ChatEvent
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -108,6 +110,7 @@ class ChatViewModel @Inject constructor(
     @ApplicationScope private val appScope: CoroutineScope,
     private val recorder: isomeria.aichat.data.voice.VoiceRecorder,
     private val voices: isomeria.aichat.data.repo.VoiceRepository,
+    private val playback: isomeria.aichat.data.voice.VoicePlayback,
 ) : ViewModel() {
     private val route = savedState.toRoute<ChatRoute>()
     val contactId: Long = route.contactId
@@ -216,6 +219,8 @@ class ChatViewModel @Inject constructor(
 
     fun onHidden() {
         activeChat.leave(contactId)
+        // 离开聊天页或回到桌面：语音停下（后台播放的除外）
+        playback.leaveChat(contactId)
     }
 
     fun markRead() {
@@ -267,7 +272,35 @@ class ChatViewModel @Inject constructor(
     }
 
     fun delete(messageId: Long) {
+        playback.onDeleted(messageId)
         appScope.launch { chats.deleteMessage(messageId) }
+    }
+
+    // ---------- 语音播放（0.7.0） ----------
+
+    /** 这个聊天里正在放的语音 */
+    val playingId: StateFlow<Long?> = playback.state
+        .map { it?.takeIf { state -> state.contactId == contactId }?.messageId }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun toggleVoice(message: Message) {
+        if (!playback.toggle(message)) voiceMissing(message)
+    }
+
+    fun playVoice(message: Message, mode: isomeria.aichat.data.voice.PlayMode) {
+        if (!playback.play(message, mode)) voiceMissing(message)
+    }
+
+    /** 转文字（也算听过，红点去掉）或取消转文字 */
+    fun setVoiceShowText(message: Message, show: Boolean) {
+        appScope.launch {
+            chats.setVoiceShowText(message.id, show)
+            if (show && !message.voicePlayed) chats.markVoicePlayed(message.id)
+        }
+    }
+
+    private fun voiceMissing(message: Message) {
+        viewModelScope.launch { events.send(ChatEvent.VoiceFileMissing(message.content.isNotBlank())) }
     }
 
     /** 表情面板「最近使用」，最近的在前 */

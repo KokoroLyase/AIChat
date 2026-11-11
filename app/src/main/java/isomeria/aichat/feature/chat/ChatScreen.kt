@@ -157,6 +157,7 @@ fun ChatScreen(
     val recording by viewModel.recording.collectAsStateWithLifecycle()
     val transcribing by viewModel.transcribing.collectAsStateWithLifecycle()
     val asrAvailable by viewModel.asrAvailable.collectAsStateWithLifecycle()
+    val playingId by viewModel.playingId.collectAsStateWithLifecycle()
     var showAsrSetup by remember { mutableStateOf(false) }
     var voiceIntroName by remember { mutableStateOf<String?>(null) }
     var showMicDenied by remember { mutableStateOf(false) }
@@ -288,6 +289,11 @@ fun ChatScreen(
                 ChatEvent.VoiceTooShort -> Toast.makeText(context, R.string.voice_too_short, Toast.LENGTH_SHORT).show()
                 ChatEvent.MicUnavailable -> Toast.makeText(context, R.string.voice_mic_unavailable, Toast.LENGTH_SHORT).show()
                 ChatEvent.VoiceTextFailed -> Toast.makeText(context, R.string.voice_transcribe_failed, Toast.LENGTH_SHORT).show()
+                is ChatEvent.VoiceFileMissing -> Toast.makeText(
+                    context,
+                    if (event.hasText) R.string.voice_file_missing else R.string.voice_file_missing_no_text,
+                    Toast.LENGTH_SHORT,
+                ).show()
                 is ChatEvent.VoiceText -> {
                     // 识别结果放进输入框光标处，用户改完再发
                     val (text, cursor) = TextEditing.insert(input.text, input.selection.start, input.selection.end, event.text)
@@ -450,6 +456,9 @@ fun ChatScreen(
             onFailedClick = { failedDialog = it },
             onImageClick = onOpenImage,
             onAvatarClick = { contact?.let { onOpenContact(it.id) } },
+            onVoiceClick = viewModel::toggleVoice,
+            onVoicePlay = viewModel::playVoice,
+            onVoiceShowText = viewModel::setVoiceShowText,
         )
         Box(Modifier.weight(1f)) {
         background?.let { ChatBackground(it, Modifier.matchParentSize()) }
@@ -462,6 +471,7 @@ fun ChatScreen(
             myAvatarPath = state.myAvatarPath,
             waitingReply = waiting,
             actions = actions,
+            playingId = playingId,
             listState = listState,
             onBackgroundClick = ::closePanels,
             highlightId = highlightId,
@@ -698,6 +708,9 @@ fun ChatMessageList(
     highlightId: Long? = null,
     highlightAlpha: () -> Float = { 0f },
     pagingRows: LazyPagingItems<ChatRow>? = null,
+    playingId: Long? = null,
+    /** 截图用：打开这条消息的长按菜单 */
+    menuOpenId: Long? = null,
 ) {
     val defaultName = stringResource(R.string.default_nickname)
     val highlightColor = WeTheme.colors.messageHighlight
@@ -742,6 +755,8 @@ fun ChatMessageList(
                         waitingReply = waitingReply,
                         maxBubbleWidth = 1000.dp,
                         actions = actions,
+                        playing = row.message.id == playingId,
+                        menuInitiallyOpen = row.message.id == menuOpenId,
                     )
                 }
             }

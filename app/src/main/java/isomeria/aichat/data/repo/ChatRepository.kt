@@ -35,7 +35,7 @@ class ChatRepository @Inject constructor(
     private val replyScheduler: ReplyQueue,
     private val notifier: ReplyNotifications,
     private val previews: MessagePreviewer = MessagePreviewer.PLAIN,
-) {
+) : isomeria.aichat.data.voice.VoiceQueueSource {
     private val paging = ChatPaging(db)
     private val messageActions = ChatMessageActions(db)
     suspend fun chatEntry(contactId: Long, focusId: Long): ChatEntry = paging.entry(contactId, focusId)
@@ -104,15 +104,15 @@ class ChatRepository @Inject constructor(
     }
 
     /** 点开播放过（或转了文字）：红点去掉 */
-    suspend fun markVoicePlayed(id: Long) = messageDao.setVoicePlayed(id)
+    override suspend fun markVoicePlayed(id: Long) = messageDao.setVoicePlayed(id)
 
     /** 「转文字」/「取消转文字」 */
     suspend fun setVoiceShowText(id: Long, show: Boolean) = messageDao.setVoiceShowText(id, show)
 
     /** 连续朗读、依次播放：某条之后的语音消息 */
-    suspend fun voiceAfter(message: Message): List<Message> = messageDao.voiceAfter(message.contactId, message.createdAt, message.id)
+    override suspend fun voiceAfter(message: Message): List<Message> = messageDao.voiceAfter(message.contactId, message.createdAt, message.id)
 
-    suspend fun message(id: Long): Message? = messageDao.get(id)
+    override suspend fun message(id: Long): Message? = messageDao.get(id)
 
     /** 一次可选多张，每张单独成一条消息 */
     suspend fun sendImages(contactId: Long, uris: List<Uri>): Int = StorageOperations.gate.activity { sendImagesProtected(contactId, uris) }

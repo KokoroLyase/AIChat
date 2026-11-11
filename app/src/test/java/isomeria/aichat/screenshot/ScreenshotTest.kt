@@ -894,4 +894,26 @@ class ScreenshotTest {
     @Test fun recordingMicDark() = shot("73-recording-mic", true) { ChatPageSample(recording = rec(toggled = true, mode = isomeria.aichat.ui.components.RecordMode.TO_TEXT)) }
     @Test fun recordingLarge() = large("73-recording-large", false) { ChatPageSample(voiceMode = true, recording = rec(toggled = true)) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun recordingNarrow() = large("73-recording-narrow", true) { ChatPageSample(voiceMode = true, recording = rec(toggled = true)) }
+
+    // ---------- 0.7.0 语音条和长按菜单 ----------
+
+    @Test fun voiceBubblesLight() = shot("74-chat-voice", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.voiceRows, playingId = 13) }
+    @Test fun voiceBubblesDark() = shot("74-chat-voice", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.voiceRows, playingId = 13) }
+    @Test fun voiceBubblesLarge() = large("74-chat-voice-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.voiceRows, playingId = 13) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun voiceBubblesNarrow() = shot("74-chat-voice-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.voiceRows, playingId = 13) }
+
+    private fun voiceMenuShot(name: String, dark: Boolean, scale: Float = 1f, id: Long = 13) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark, fontScale = scale) {
+                Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) {
+                    ChatPageSample(rows = isomeria.aichat.feature.chat.voiceRows, menuOpenId = id)
+                }
+            }
+        }
+        captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun voiceMenuLight() = voiceMenuShot("75-voice-menu", false)
+    @Test fun voiceMenuDark() = voiceMenuShot("75-voice-menu", true, id = 14)
+    @Test fun voiceMenuLarge() = voiceMenuShot("75-voice-menu-large", false, scale = 1.6f)
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun voiceMenuNarrow() = voiceMenuShot("75-voice-menu-narrow", true)
 }
