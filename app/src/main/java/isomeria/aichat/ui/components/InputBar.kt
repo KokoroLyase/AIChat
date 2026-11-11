@@ -75,8 +75,8 @@ fun ChatInputBar(
     onSend: () -> Unit,
     onInputFocused: () -> Unit,
     focusRequester: FocusRequester,
-    voice: VoiceInputActions = VoiceInputActions(),
     modifier: Modifier = Modifier,
+    voice: VoiceInputActions = VoiceInputActions(),
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens

@@ -801,7 +801,6 @@
     <string name="voice_reply_follow">跟随</string>
     <string name="voice_reply_text">文字</string>
     <string name="voice_reply_voice">语音</string>
-    <string name="voice_reply_global">使用全局设置</string>
     <string name="voice_reply_global_value">使用全局设置（%1$s）</string>
     <string name="voice_reply_type_note">联系人回复你时发文字还是语音。跟随：你发文字就回文字，你发语音就回语音；语音：总是回语音，主动聊天的消息也是；文字：总是回文字。联系人可以在「朋友资料」里单独设置。语音回复要先在下面设置语音合成，没设置或合成失败时回文字。</string>
     <string name="voice_tts_source">语音合成</string>
