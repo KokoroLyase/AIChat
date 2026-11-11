@@ -834,4 +834,48 @@ class ScreenshotTest {
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun settingsDataNarrow() = large("56-settings-data-narrow", false) { SettingsPage(SettingsSection.DATA) }
 
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun chatBackgroundNarrow() = large("53-chat-background-narrow", true) { ChatPageSample(background = stripes) }
+
+    // ---------- 0.7.0 语音消息 ----------
+
+    private val voiceSettingsSample = isomeria.aichat.feature.voice.VoiceSettingsUiState(
+        isomeria.aichat.core.VoiceSettings(isomeria.aichat.data.db.ReplyType.FOLLOW), ttsName = "Xiaomi MiMo", asrName = null,
+    )
+    @Composable private fun VoiceSettingsPage() = isomeria.aichat.feature.voice.VoiceSettingsContent(voiceSettingsSample, {}, {}, {})
+    @Test fun voiceSettingsLight() = shot("69-voice-settings", false) { VoiceSettingsPage() }
+    @Test fun voiceSettingsDark() = shot("69-voice-settings", true) { VoiceSettingsPage() }
+    @Test fun voiceSettingsLarge() = large("69-voice-settings-large", false) { VoiceSettingsPage() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun voiceSettingsNarrow() = large("69-voice-settings-narrow", true) { VoiceSettingsPage() }
+    @Test fun settingsModelsVoiceLight() = shot("69-settings-models-voice", false) {
+        SettingsSectionContent(SettingsSection.MODELS, settingsSample.copy(ttsName = "Xiaomi MiMo", asrName = "硅基流动"), {}, SettingsNavigation(), SettingsActions())
+    }
+
+    @Composable private fun VoiceProvidersPage() = isomeria.aichat.feature.voice.VoiceProviderListContent(
+        isomeria.aichat.data.db.ProviderKind.TTS,
+        isomeria.aichat.data.repo.VoiceProviders(isomeria.aichat.feature.voice.previewVoiceProviders, 2), {}, {}, {},
+    )
+    @Test fun voiceProvidersLight() = shot("70-voice-providers", false) { VoiceProvidersPage() }
+    @Test fun voiceProvidersDark() = shot("70-voice-providers", true) { VoiceProvidersPage() }
+    @Test fun voiceProvidersLarge() = large("70-voice-providers-large", false) { VoiceProvidersPage() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun voiceProvidersNarrow() = large("70-voice-providers-narrow", true) { VoiceProvidersPage() }
+    @Test fun voiceProvidersEmptyLight() = shot("70-voice-providers-empty", false) {
+        isomeria.aichat.feature.voice.VoiceProviderListContent(isomeria.aichat.data.db.ProviderKind.ASR, isomeria.aichat.data.repo.VoiceProviders(emptyList(), null), {}, {}, {})
+    }
+
+    private val voiceEditSample = isomeria.aichat.feature.voice.VoiceProviderEditState(
+        loaded = true, kind = isomeria.aichat.data.db.ProviderKind.TTS, providerId = 2, presetId = "mimo",
+        protocol = isomeria.aichat.data.voice.VoiceProtocol.CHAT_AUDIO, name = "Xiaomi MiMo", baseUrl = "https://api.xiaomimimo.com/v1",
+        savedKeyMasked = "sk-o••••••3f9c", model = "mimo-v2.5-tts", voice = "mimo_default", use = true,
+    )
+    private val voiceEditCustom = isomeria.aichat.feature.voice.VoiceProviderEditState(
+        loaded = true, kind = isomeria.aichat.data.db.ProviderKind.ASR, protocol = isomeria.aichat.data.voice.VoiceProtocol.OPENAI_AUDIO,
+        name = "自定义", baseUrl = "", model = "", errorRes = isomeria.aichat.R.string.voice_model_required,
+    )
+    @Composable private fun VoiceEditPage(state: isomeria.aichat.feature.voice.VoiceProviderEditState = voiceEditSample) =
+        isomeria.aichat.feature.voice.VoiceProviderEditContent(state, {}, isomeria.aichat.feature.voice.VoiceProviderEditActions())
+    @Test fun voiceEditLight() = shot("71-voice-provider-edit", false) { VoiceEditPage() }
+    @Test fun voiceEditDark() = shot("71-voice-provider-edit", true) { VoiceEditPage() }
+    @Test fun voiceEditLarge() = large("71-voice-provider-edit-large", false) { VoiceEditPage() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun voiceEditNarrow() = large("71-voice-provider-edit-narrow", true) { VoiceEditPage() }
+    @Test fun voiceEditCustomLight() = shot("71-voice-provider-edit-custom", false) { VoiceEditPage(voiceEditCustom) }
+    @Test fun voiceEditCustomDark() = shot("71-voice-provider-edit-custom", true) { VoiceEditPage(voiceEditCustom) }
 }

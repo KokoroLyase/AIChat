@@ -16,6 +16,8 @@ data class VoiceSettings(
 
 interface VoiceSettingsSource {
     fun voiceSettings(): VoiceSettings
+
+    fun setVoiceSettings(value: VoiceSettings)
 }
 
 /**

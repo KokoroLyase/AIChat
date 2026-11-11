@@ -71,7 +71,15 @@ class SettingsViewModel @Inject constructor(
     private val updates: UpdateChecker,
     @ApplicationScope private val appScope: CoroutineScope,
     providers: ProviderRepository,
+    voices: isomeria.aichat.data.repo.VoiceRepository,
 ) : ViewModel() {
+    /** 正在用的语音合成、识别服务商的名称 */
+    val voiceNames: StateFlow<Pair<String?, String?>> = kotlinx.coroutines.flow.combine(
+        voices.observe(isomeria.aichat.data.db.ProviderKind.TTS, settings.voiceSettings),
+        voices.observe(isomeria.aichat.data.db.ProviderKind.ASR, settings.voiceSettings),
+    ) { tts, asr -> tts.providers.firstOrNull { it.id == tts.selectedId }?.name to asr.providers.firstOrNull { it.id == asr.selectedId }?.name }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null to null)
+
     val themeMode = settings.themeMode
     val autoCheckUpdate = settings.autoCheckUpdateFlow
 
@@ -121,6 +129,8 @@ data class SettingsNavigation(
     val onOpenRestore: () -> Unit = {},
     val onOpenCrashLogs: () -> Unit = {},
     val onOpenStorage: () -> Unit = {},
+    val onOpenTts: () -> Unit = {},
+    val onOpenAsr: () -> Unit = {},
 )
 
 /** 设置页显示用的状态 */
@@ -136,6 +146,9 @@ data class SettingsUiState(
     val newerVersion: String? = null,
     val versionName: String = BuildConfig.VERSION_NAME,
     val githubRepo: String = BuildConfig.GITHUB_REPO,
+    /** 正在用的语音合成、识别服务商的名称（0.7.0）；没有选时为 null */
+    val ttsName: String? = null,
+    val asrName: String? = null,
 )
 
 /** 设置页里跳转之外的点击和开关 */
@@ -172,6 +185,7 @@ fun SettingsSectionScreen(
     val hasKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
     val autoCheckUpdate by viewModel.autoCheckUpdate.collectAsStateWithLifecycle()
     val newerRelease by viewModel.newerRelease.collectAsStateWithLifecycle()
+    val voiceNames by viewModel.voiceNames.collectAsStateWithLifecycle()
     var showTheme by remember { mutableStateOf(false) }
     var showFont by remember { mutableStateOf(false) }
     var confirmClearAll by remember { mutableStateOf(false) }
@@ -208,6 +222,8 @@ fun SettingsSectionScreen(
             canNotify = canNotify,
             autoCheckUpdate = autoCheckUpdate,
             newerVersion = newerRelease?.version,
+            ttsName = voiceNames.first,
+            asrName = voiceNames.second,
         ),
         onBack = onBack,
         navigation = navigation,
@@ -321,17 +337,15 @@ fun SettingsSectionList(section: SettingsSection, state: SettingsUiState, naviga
             WeListRow(
                 titleMaxLines = 2,
                 title = stringResource(R.string.settings_tts),
-                value = stringResource(R.string.coming_soon),
-                showArrow = false,
+                value = state.ttsName ?: stringResource(R.string.voice_source_unset),
+                onClick = navigation.onOpenTts,
                 showDivider = true,
-                enabled = false,
             )
             WeListRow(
                 titleMaxLines = 2,
                 title = stringResource(R.string.settings_asr),
-                value = stringResource(R.string.coming_soon),
-                showArrow = false,
-                enabled = false,
+                value = state.asrName ?: stringResource(R.string.voice_source_unset),
+                onClick = navigation.onOpenAsr,
             )
         }
         SettingsSection.GENERAL -> {

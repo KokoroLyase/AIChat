@@ -789,4 +789,58 @@
     <string name="contact_profile_item_reply_preferences">回复偏好</string>
     <string name="contact_prompt_usage" tools:ignore="PluralsCandidate">系统提示词合计约 %1$d token，占上下文上限的 %2$d%%（含全局记忆、记忆和回复偏好）。</string>
     <string name="contact_prompt_usage_warning" tools:ignore="PluralsCandidate">系统提示词约 %1$d token，超过上下文上限的一半，能带上的聊天记录会变少。可以精简提示词或全局记忆，或调高上下文上限。</string>
+    <!-- 0.7.0 语音消息：设置 -->
+    <string name="me_voice">语音消息</string>
+    <string name="voice_settings_title">语音消息</string>
+    <string name="voice_reply_type">消息发送类型</string>
+    <string name="voice_reply_follow">跟随</string>
+    <string name="voice_reply_text">文字</string>
+    <string name="voice_reply_voice">语音</string>
+    <string name="voice_reply_global">使用全局设置</string>
+    <string name="voice_reply_global_value">使用全局设置（%1$s）</string>
+    <string name="voice_reply_type_note">联系人回复你时发文字还是语音。跟随：你发文字就回文字，你发语音就回语音；语音：总是回语音，主动聊天的消息也是；文字：总是回文字。联系人可以在「朋友资料」里单独设置。语音回复要先在下面设置语音合成，没设置或合成失败时回文字。</string>
+    <string name="voice_tts_source">语音合成</string>
+    <string name="voice_asr_source">语音识别</string>
+    <string name="voice_source_unset">未设置</string>
+    <string name="voice_privacy_note">语音合成会把联系人回复的文字发给你选的语音合成服务商；发送语音和录音转文字会把录音发给你选的语音识别服务商。服务商按各自的规则收费，本 App 不收集这些内容。</string>
+    <string name="voice_providers_tts_title">语音合成</string>
+    <string name="voice_providers_asr_title">语音识别</string>
+    <string name="voice_providers_empty">还没有服务商，点右上角「添加」。</string>
+    <string name="voice_providers_tts_hint">把联系人的回复读成语音。支持两种请求格式：聊天接口带音频（按 Xiaomi MiMo 的文档实现）和 OpenAI 标准音频接口（/audio/speech）。只用打勾的那一个。</string>
+    <string name="voice_providers_asr_hint">把你的语音转成文字再发给联系人。支持两种请求格式：聊天接口带音频（按 Xiaomi MiMo 的文档实现）和 OpenAI 标准音频接口（/audio/transcriptions）。只用打勾的那一个。</string>
+    <string name="voice_provider_in_use">正在使用</string>
+    <string name="voice_provider_add_tts">添加语音合成服务商</string>
+    <string name="voice_provider_add_asr">添加语音识别服务商</string>
+    <string name="voice_provider_edit_tts">语音合成服务商</string>
+    <string name="voice_provider_edit_asr">语音识别服务商</string>
+    <string name="voice_provider_custom">自定义</string>
+    <string name="voice_protocol">请求格式</string>
+    <string name="voice_protocol_chat_audio">聊天接口带音频（MiMo）</string>
+    <string name="voice_protocol_openai_audio">OpenAI 标准音频接口</string>
+    <string name="voice_protocol_note">“聊天接口带音频”按 Xiaomi MiMo 的文档实现（/chat/completions），各家没有统一标准，不保证其他服务商能用；其他服务商一般用 OpenAI 标准音频接口。</string>
+    <string name="voice_model">模型</string>
+    <string name="voice_model_hint">模型 ID</string>
+    <string name="voice_model_required">请填写模型 ID</string>
+    <string name="voice_voice">默认音色</string>
+    <string name="voice_voice_hint">音色 ID，可以不填</string>
+    <string name="voice_voice_pick">选择预置音色</string>
+    <string name="voice_voice_note">音色先手动填写 ID，按服务商文档填。联系人可以在「朋友资料」里单独换音色。</string>
+    <string name="voice_style_mimo_note">语气和风格要求只对“聊天接口带音频”（MiMo）生效，在联系人的「朋友资料」里填写，不会被读出来。</string>
+    <string name="voice_use_this">使用这个服务商</string>
+    <string name="voice_delete_provider">删除服务商</string>
+    <string name="voice_delete_confirm">删除「%1$s」？删除后需要重新填写 API Key。</string>
+    <string name="voice_price_mimo_tts">MiMo 语音合成官方写着“限时免费”，没有写截止日期；免费期结束或额度不足时合成会失败，联系人改回文字消息。</string>
+    <string name="voice_price_mimo_asr">MiMo 语音识别按音频时长收费（官方价格约 0.5 元每小时），以服务商为准。</string>
+    <string name="voice_price_siliconflow">硅基流动的语音识别是否收费以服务商为准。</string>
+    <string-array name="mimo_tts_voices" translatable="false">
+        <item>mimo_default</item>
+        <item>冰糖</item>
+        <item>茉莉</item>
+        <item>苏打</item>
+        <item>白桦</item>
+        <item>Mia</item>
+        <item>Chloe</item>
+        <item>Milo</item>
+        <item>Dean</item>
+    </string-array>
 </resources>

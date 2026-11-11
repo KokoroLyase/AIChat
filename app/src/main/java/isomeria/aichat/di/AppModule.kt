@@ -213,6 +213,8 @@ abstract class BindingsModule {
 
     @Binds abstract fun voiceSettingsSource(impl: SettingsStore): isomeria.aichat.core.VoiceSettingsSource
 
+    @Binds abstract fun voiceService(impl: isomeria.aichat.data.voice.VoiceApi): isomeria.aichat.data.voice.VoiceService
+
     @Binds abstract fun replyControl(impl: ReplyScheduler): ReplyControl
 
     @Binds abstract fun proactiveControl(impl: isomeria.aichat.data.reply.ProactiveScheduler): isomeria.aichat.data.reply.ProactiveControl

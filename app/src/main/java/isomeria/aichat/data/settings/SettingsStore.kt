@@ -127,7 +127,7 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
 
     override fun voiceSettings(): isomeria.aichat.core.VoiceSettings = _voiceSettings.value
 
-    fun setVoiceSettings(value: isomeria.aichat.core.VoiceSettings) {
+    override fun setVoiceSettings(value: isomeria.aichat.core.VoiceSettings) {
         mmkv.encode(KEY_VOICE_REPLY_TYPE, value.replyType.name)
         mmkv.encode(KEY_VOICE_TTS, value.ttsSource)
         mmkv.encode(KEY_VOICE_ASR, value.asrSource)

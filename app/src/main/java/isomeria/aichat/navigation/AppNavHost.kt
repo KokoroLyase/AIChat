@@ -86,6 +86,10 @@ import kotlinx.serialization.Serializable
 @Serializable data class GlobalMemoryItemRoute(val topicId: Long, val itemId: Long = NEW_GLOBAL_ITEM)
 @Serializable data object ReplyPreferencesRoute
 @Serializable data object ProactiveRoute
+@Serializable data object VoiceSettingsRoute
+/** [kind] 是 ProviderKind 的名字：TTS 或 ASR */
+@Serializable data class VoiceProviderListRoute(val kind: String)
+@Serializable data class VoiceProviderEditRoute(val kind: String, val providerId: Long = NEW_PROVIDER)
 @Serializable data object SearchRoute
 @Serializable data class ChatInfoRoute(val contactId: Long)
 
@@ -137,6 +141,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenGlobalMemory = { nav.navigate(GlobalMemoryRoute) },
                 onOpenReplyPreferences = { nav.navigate(ReplyPreferencesRoute) },
                 onOpenProactive = { nav.navigate(ProactiveRoute) },
+                onOpenVoice = { nav.navigate(VoiceSettingsRoute) },
             )
         }
         page<GlobalMemoryRoute>(nav) {
@@ -164,6 +169,20 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenContact = { nav.navigate(ContactDetailRoute(it)) },
             )
         }
+        page<VoiceSettingsRoute>(nav) {
+            isomeria.aichat.feature.voice.VoiceSettingsScreen(
+                onBack = nav::popBackStackSafely,
+                onOpenProviders = { nav.navigate(VoiceProviderListRoute(it.name)) },
+            )
+        }
+        page<VoiceProviderListRoute>(nav) {
+            isomeria.aichat.feature.voice.VoiceProviderListScreen(
+                onBack = nav::popBackStackSafely,
+                onOpen = { kind, id -> nav.navigate(VoiceProviderEditRoute(kind.name, id)) },
+                onAdd = { nav.navigate(VoiceProviderEditRoute(it.name)) },
+            )
+        }
+        page<VoiceProviderEditRoute>(nav) { isomeria.aichat.feature.voice.VoiceProviderEditScreen(onBack = nav::popBackStackSafely) }
         page<SettingsSectionRoute>(nav) { entry ->
             SettingsSectionScreen(
                 section = SettingsSection.valueOf(entry.toRoute<SettingsSectionRoute>().section),
@@ -176,6 +195,8 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                     onOpenRestore = { nav.navigate(RestoreRoute) },
                     onOpenCrashLogs = { nav.navigate(CrashLogsRoute) },
                     onOpenStorage = { nav.navigate(StorageRoute) },
+                    onOpenTts = { nav.navigate(VoiceProviderListRoute(isomeria.aichat.data.db.ProviderKind.TTS.name)) },
+                    onOpenAsr = { nav.navigate(VoiceProviderListRoute(isomeria.aichat.data.db.ProviderKind.ASR.name)) },
                 ),
             )
         }
