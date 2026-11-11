@@ -46,6 +46,8 @@ class VoiceRepositoryTest {
     private lateinit var voices: VoiceRepository
     private val systemTts = isomeria.aichat.data.voice.FakeSystemTts()
     private val localPrefs = isomeria.aichat.data.voice.FakeLocalVoicePrefs()
+    private val offlineAsr = isomeria.aichat.data.voice.FakeOfflineAsr()
+    private val models by lazy { isomeria.aichat.data.voice.testModelStore(java.io.File(RuntimeEnvironment.getApplication().filesDir, "model-test").apply { deleteRecursively() }) }
 
     private val settings = object : VoiceSettingsSource {
         val flow = MutableStateFlow(VoiceSettings())
@@ -73,7 +75,7 @@ class VoiceRepositoryTest {
     @Before
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).addCallback(AppDatabase.seedCallback).allowMainThreadQueries().build()
-        voices = VoiceRepository(db, cipher, settings, api, UsageRepository(db.usageDao()), systemTts, localPrefs)
+        voices = VoiceRepository(db, cipher, settings, api, UsageRepository(db.usageDao()), systemTts, localPrefs, offlineAsr, models)
     }
 
     @After
@@ -242,6 +244,45 @@ class VoiceRepositoryTest {
             fail()
         } catch (e: LlmException) {
             assertEquals(LlmError.UNKNOWN, e.error)
+        }
+    }
+
+    // ---------- 0.7.1 离线识别（本机） ----------
+
+    @Test
+    fun offlineAsr_availableNeedsSupportAndModel_transcribeHasNoUsage() = runBlocking {
+        voices.selectLocal(ProviderKind.ASR, VoiceSource.OFFLINE_ASR, true)
+        assertEquals("local:offline-asr", settings.flow.value.asrSource)
+        assertFalse("还没下模型", voices.available(ProviderKind.ASR))
+        suspend fun reason(): VoiceUnavailableException.Reason? = try {
+            voices.transcribe(7, WavFormat.wrap(ByteArray(3_200))); null
+        } catch (e: VoiceUnavailableException) { e.reason }
+        assertEquals(VoiceUnavailableException.Reason.NO_MODEL, reason())
+        isomeria.aichat.data.voice.installFakeModel(models)
+        assertTrue(voices.available(ProviderKind.ASR))
+        offlineAsr.supported = false
+        assertFalse("手机不支持", voices.available(ProviderKind.ASR))
+        assertEquals(VoiceUnavailableException.Reason.UNSUPPORTED, reason())
+        offlineAsr.supported = true
+        val result = voices.transcribe(7, WavFormat.wrap(ByteArray(3_200)))
+        assertEquals("离线识别的文字", result.text)
+        assertEquals("0.1 秒 = 1600 个采样", 1_600, offlineAsr.calls.single().second)
+        assertTrue(api.asr.isEmpty())
+        assertTrue(db.usageDao().listAll().isEmpty())
+    }
+
+    @Test
+    fun offlineAsr_engineFailureOrEmpty_isLlmException() = runBlocking {
+        isomeria.aichat.data.voice.installFakeModel(models)
+        voices.selectLocal(ProviderKind.ASR, VoiceSource.OFFLINE_ASR, true)
+        for (setup in listOf<() -> Unit>({ offlineAsr.fail = true }, { offlineAsr.fail = false; offlineAsr.text = "" })) {
+            setup()
+            try {
+                voices.transcribe(7, WavFormat.wrap(ByteArray(320)))
+                fail()
+            } catch (e: LlmException) {
+                assertEquals(LlmError.UNKNOWN, e.error)
+            }
         }
     }
 }

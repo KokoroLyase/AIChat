@@ -11,6 +11,9 @@
 # MMKV 通过 JNI 回调
 -keep class com.tencent.mmkv.** { *; }
 
+# 0.7.1 离线识别：sherpa-onnx 的原生代码按名字读 Kotlin 配置类的字段、调用 native 方法
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+
 # release 包移除 android.util.Log 的 v/d/i 调用（日志只在 debug 包输出）
 -assumenosideeffects class android.util.Log {
     public static int v(...);

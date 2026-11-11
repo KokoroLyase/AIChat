@@ -652,7 +652,8 @@ fun ChatScreen(
     voiceIntroName?.let { name ->
         WeDialog(
             title = stringResource(R.string.voice_intro_title),
-            message = stringResource(R.string.voice_intro_message, name),
+            // 离线识别（0.7.1）时录音不离开手机
+            message = if (name.isEmpty()) stringResource(R.string.voice_intro_message_local) else stringResource(R.string.voice_intro_message, name),
             confirmText = stringResource(R.string.voice_intro_confirm),
             onDismiss = { voiceIntroName = null },
             onConfirm = {

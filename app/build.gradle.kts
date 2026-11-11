@@ -1,3 +1,4 @@
+import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -133,6 +134,11 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // 0.7.1：原生库（约 24 MB）压缩后放进安装包，下载约小 15 MB；安装时系统解压
+        jniLibs.useLegacyPackaging = true
+        // 0.7.1 离线识别的原生库只打 64 位 ARM（每种多约 25 MB）；其他设备上离线识别显示不可用。
+        // 只去掉 sherpa-onnx 的，别的库（MMKV 等）各平台的照旧
+        jniLibs.excludes += listOf("armeabi-v7a", "x86", "x86_64").flatMap { listOf("lib/$it/libsherpa-onnx-jni.so", "lib/$it/libonnxruntime.so") }
     }
 
     lint {
@@ -144,6 +150,24 @@ android {
 room {
     schemaDirectory("$projectDir/schemas")
 }
+
+// 0.7.1 离线识别：sherpa-onnx 的 AAR 从官方 GitHub Release 下载（settings.gradle.kts），构建前按写死的 SHA-256 核对
+val sherpaOnnx = "com.k2fsa.sherpa.onnx:sherpa-onnx-static-link-onnxruntime:${libs.versions.sherpaOnnx.get()}@aar"
+val sherpaOnnxSha256 = "b22c3fc1b6a45666d28892bb2f7694beeb77a8362d7ebd77c1a5431ec9435471"
+val sherpaOnnxAar: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+val verifySherpaOnnx by tasks.registering {
+    inputs.files(sherpaOnnxAar)
+    val expected = sherpaOnnxSha256
+    doLast {
+        val file = inputs.files.singleFile
+        val actual = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+        if (actual != expected) throw GradleException("sherpa-onnx AAR 的 SHA-256 不对：$actual（应为 $expected）")
+    }
+}
+tasks.named("preBuild") { dependsOn(verifySherpaOnnx) }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
@@ -182,6 +206,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.coil.compose)
     implementation(libs.mmkv)
+    // 0.7.1 离线识别：sherpa-onnx（Apache-2.0），静态链接 onnxruntime（MIT），含 Kotlin 接口和各平台原生库
+    implementation(sherpaOnnx)
+    sherpaOnnxAar(sherpaOnnx)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

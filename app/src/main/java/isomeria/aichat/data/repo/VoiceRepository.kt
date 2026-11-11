@@ -15,6 +15,9 @@ import isomeria.aichat.data.db.UsagePurpose
 import isomeria.aichat.data.llm.LlmEndpoint
 import isomeria.aichat.data.voice.AsrRequest
 import isomeria.aichat.data.voice.AsrResult
+import isomeria.aichat.data.voice.OfflineAsrEngine
+import isomeria.aichat.data.voice.OfflineModelStore
+import isomeria.aichat.data.voice.PcmSamples
 import isomeria.aichat.data.voice.SystemTts
 import isomeria.aichat.data.voice.SystemTtsStatus
 import isomeria.aichat.data.voice.TtsAudio
@@ -30,7 +33,8 @@ import kotlin.math.ceil
 
 /** 语音合成或识别用不了：还没选来源、选的服务商不在了、没有 Key、地址不对。 */
 class VoiceUnavailableException(val reason: Reason) : Exception(reason.name) {
-    enum class Reason { NO_SOURCE, NO_KEY, BAD_URL }
+    /** [UNSUPPORTED]、[NO_MODEL]（0.7.1）：离线识别在这台手机上跑不了、模型还没下好 */
+    enum class Reason { NO_SOURCE, NO_KEY, BAD_URL, UNSUPPORTED, NO_MODEL }
 }
 
 /**
@@ -56,6 +60,8 @@ class VoiceRepository @Inject constructor(
     private val usage: UsageRepository,
     private val systemTts: SystemTts,
     private val localPrefs: LocalVoicePrefs,
+    private val offlineAsr: OfflineAsrEngine,
+    private val models: OfflineModelStore,
 ) {
     private val dao get() = db.providerDao()
 
@@ -85,10 +91,11 @@ class VoiceRepository @Inject constructor(
 
     /**
      * 现在能不能合成或识别（不发请求）：选了服务商，有 Key，地址合规；
-     * 系统语音合成要有引擎和不联网的中文音色
+     * 系统语音合成要有引擎和不联网的中文音色；离线识别要这台手机支持、模型已经下好
      */
     suspend fun available(kind: ProviderKind): Boolean = when (selectedLocal(kind)) {
         VoiceSource.SYSTEM_TTS -> runCatching { systemTts.info().status == SystemTtsStatus.READY }.getOrDefault(false)
+        VoiceSource.OFFLINE_ASR -> offlineAsr.supported() && models.installed()
         null -> runCatching { endpoint(kind) }.isSuccess
         else -> false
     }
@@ -194,8 +201,23 @@ class VoiceRepository @Inject constructor(
     suspend fun recordSynthesis(contactId: Long, chars: Int, millis: Long) =
         usage.record(contactId, UsagePurpose.TTS, chars, seconds(millis))
 
-    /** 识别一段 16 kHz 单声道 WAV，记用量（服务商报告了时长就用它，否则按 WAV 长度算） */
+    /**
+     * 识别一段 16 kHz 单声道 WAV，记用量（服务商报告了时长就用它，否则按 WAV 长度算）。
+     * 选用离线识别（0.7.1）时在手机上识别，不发请求、不记用量；识别不出文字时和服务商返回空内容一样算失败
+     */
     suspend fun transcribe(contactId: Long, wav: ByteArray): AsrResult {
+        if (selectedLocal(ProviderKind.ASR) == VoiceSource.OFFLINE_ASR) {
+            if (!offlineAsr.supported()) throw VoiceUnavailableException(VoiceUnavailableException.Reason.UNSUPPORTED)
+            if (!models.installed()) throw VoiceUnavailableException(VoiceUnavailableException.Reason.NO_MODEL)
+            val text = try {
+                val (samples, rate) = PcmSamples.fromWav(wav)
+                offlineAsr.transcribe(models.dir, samples, rate)
+            } catch (e: java.io.IOException) {
+                throw isomeria.aichat.data.llm.LlmException(isomeria.aichat.data.llm.LlmError.UNKNOWN, message = e.message, cause = e)
+            }
+            if (text.isBlank()) throw isomeria.aichat.data.llm.LlmException(isomeria.aichat.data.llm.LlmError.UNKNOWN, message = "EmptyResult")
+            return AsrResult(text.trim())
+        }
         val (config, endpoint) = endpoint(ProviderKind.ASR)
         val result = api.transcribe(config.provider, endpoint, AsrRequest(config.defaultModel, wav))
         val seconds = result.seconds?.let { ceil(it).toInt() } ?: seconds(WavFormat.durationMillis(wav.size.toLong()))

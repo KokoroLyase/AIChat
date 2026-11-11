@@ -32,3 +32,31 @@ class FakeSystemTts(
 }
 
 class FakeLocalVoicePrefs(override var systemTtsVoice: String = "") : LocalVoicePrefs
+
+/** 测试用的离线识别：按 [supported] 报告能不能跑，识别时记下模型目录和采样数，返回 [text]（或按 [fail] 失败）。 */
+class FakeOfflineAsr(var supported: Boolean = true, var text: String = "离线识别的文字", var fail: Boolean = false) : OfflineAsrEngine {
+    val calls = mutableListOf<Triple<java.io.File, Int, Int>>()
+
+    override fun supported() = supported
+
+    override suspend fun transcribe(modelDir: java.io.File, samples: FloatArray, sampleRate: Int): String {
+        calls += Triple(modelDir, samples.size, sampleRate)
+        if (fail) throw IOException("fake failure")
+        return text
+    }
+}
+
+/** 测试用的模型目录：[root] 下的模型文件和 [OfflineAsrModel] 同名，大小用 [files] 里写的（测试不下载 230 MB） */
+fun testModelStore(
+    root: java.io.File,
+    files: List<ModelFile> = listOf(ModelFile("tokens.txt", 3, ""), ModelFile("model.int8.onnx", 5, "")),
+    downloader: ModelDownloader = ModelDownloader(okhttp3.OkHttpClient(), "https://example.invalid/", { false }),
+    freeBytes: (java.io.File) -> Long = { Long.MAX_VALUE },
+) = OfflineModelStore(root, downloader, files, freeBytes)
+
+/** 把 [store] 的模型文件按写的大小放好，相当于下载完成 */
+fun installFakeModel(store: OfflineModelStore, files: List<ModelFile> = listOf(ModelFile("tokens.txt", 3, ""), ModelFile("model.int8.onnx", 5, ""))) {
+    store.dir.mkdirs()
+    files.forEach { java.io.File(store.dir, it.name).writeBytes(ByteArray(it.bytes.toInt())) }
+    store.refresh()
+}

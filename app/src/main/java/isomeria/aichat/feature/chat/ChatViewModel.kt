@@ -353,8 +353,10 @@ class ChatViewModel @Inject constructor(
         .map { voices.available(isomeria.aichat.data.db.ProviderKind.ASR) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    /** 正在用的语音识别服务商的名称（第一次录音前的说明里写明录音发给谁） */
-    suspend fun asrName(): String = voices.selected(isomeria.aichat.data.db.ProviderKind.ASR)?.name.orEmpty()
+    /** 正在用的语音识别服务商的名称（第一次录音前的说明里写明录音发给谁）；用的是本机离线识别（0.7.1）时为空串 */
+    suspend fun asrName(): String =
+        if (voices.selectedLocal(isomeria.aichat.data.db.ProviderKind.ASR) != null) ""
+        else voices.selected(isomeria.aichat.data.db.ProviderKind.ASR)?.name.orEmpty()
 
     var voiceIntroShown: Boolean
         get() = settings.voiceIntroShown

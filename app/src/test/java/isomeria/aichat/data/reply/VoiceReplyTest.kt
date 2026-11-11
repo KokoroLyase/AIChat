@@ -75,6 +75,8 @@ class VoiceReplyTest {
 
     private val systemTts = isomeria.aichat.data.voice.FakeSystemTts()
     private val localPrefs = isomeria.aichat.data.voice.FakeLocalVoicePrefs()
+    private val offlineAsr = isomeria.aichat.data.voice.FakeOfflineAsr()
+    private val models by lazy { isomeria.aichat.data.voice.testModelStore(java.io.File(RuntimeEnvironment.getApplication().filesDir, "model-test").apply { deleteRecursively() }) }
 
     private val settings = object : VoiceSettingsSource {
         var value = VoiceSettings()
@@ -130,7 +132,7 @@ class VoiceReplyTest {
             db.conversationDao().upsert(Conversation(contactId = contactId, lastMessageTime = start - 10_000))
         }
         settings.value = VoiceSettings(ttsSource = VoiceSource.provider(ttsId), asrSource = VoiceSource.provider(asrId))
-        val voices = VoiceRepository(db, cipher, settings, api, UsageRepository(db.usageDao()), systemTts, localPrefs)
+        val voices = VoiceRepository(db, cipher, settings, api, UsageRepository(db.usageDao()), systemTts, localPrefs, offlineAsr, models)
         pipeline = VoicePipeline(db, voices, codec, FileStorage(context), settings, { h.preferences }, Clock { h.now }, h.random)
         engine = ReplyEngine(
             db = db, contactDao = db.contactDao(), messageDao = db.messageDao(), conversationDao = db.conversationDao(), memoryDao = db.memoryDao(),
@@ -329,7 +331,7 @@ class VoiceReplyTest {
                 return api.synthesize(protocol, endpoint, request)
             }
         }
-        val voices = VoiceRepository(db, cipher, settings, slow, UsageRepository(db.usageDao()), isomeria.aichat.data.voice.FakeSystemTts(), isomeria.aichat.data.voice.FakeLocalVoicePrefs())
+        val voices = VoiceRepository(db, cipher, settings, slow, UsageRepository(db.usageDao()), isomeria.aichat.data.voice.FakeSystemTts(), isomeria.aichat.data.voice.FakeLocalVoicePrefs(), offlineAsr, models)
         val slowPipeline = VoicePipeline(db, voices, codec, FileStorage(context), settings, { h.preferences }, Clock { h.now }, h.random)
         settings.value = settings.value.copy(replyType = ReplyType.VOICE)
         sendText("讲个长的")
@@ -501,5 +503,46 @@ class VoiceReplyTest {
         engine.run(contactId)
         assertTrue(replies().all { it.type == MessageType.TEXT })
         assertTrue(systemTts.calls.isEmpty())
+    }
+
+    // ---------- 0.7.1 离线识别（本机） ----------
+
+    @Test
+    fun offlineAsr_transcribesOnThePhone_thenRequestsModel_noAsrUsage() = runBlocking {
+        isomeria.aichat.data.voice.installFakeModel(models)
+        settings.value = settings.value.copy(asrSource = VoiceSource.of(VoiceSource.OFFLINE_ASR))
+        val (id, wav) = sendVoice()
+        engine.run(contactId)
+        assertTrue("不发给识别服务商", api.asr.isEmpty())
+        assertEquals(models.dir, offlineAsr.calls.single().first)
+        assertEquals(16_000, offlineAsr.calls.single().third)
+        val message = db.messageDao().get(id)!!
+        assertEquals("离线识别的文字", message.content)
+        assertTrue(message.voicePath!!.endsWith(".m4a"))
+        assertFalse(wav.exists())
+        assertEquals("离线识别的文字", h.provider.requests.single().messages.last().plainText())
+        assertTrue("本机识别不记用量", db.usageDao().listAll().none { it.purpose == UsagePurpose.ASR })
+    }
+
+    @Test
+    fun offlineAsr_modelMissing_failsAsUnavailable_noModelRequest() = runBlocking {
+        settings.value = settings.value.copy(asrSource = VoiceSource.of(VoiceSource.OFFLINE_ASR))
+        val (voice, wav) = sendVoice()
+        engine.run(contactId)
+        assertEquals(FailReason.ASR_UNAVAILABLE.code, db.messageDao().get(voice)!!.errorCode)
+        assertTrue(offlineAsr.calls.isEmpty())
+        assertTrue(h.provider.requests.isEmpty())
+        assertTrue("识别失败时 WAV 留着，重试再识别", wav.exists())
+    }
+
+    @Test
+    fun offlineAsr_emptyResult_failsLikeAProviderFailure_retryWorks() = runBlocking {
+        isomeria.aichat.data.voice.installFakeModel(models)
+        settings.value = settings.value.copy(asrSource = VoiceSource.of(VoiceSource.OFFLINE_ASR))
+        offlineAsr.text = "  "
+        val (voice, _) = sendVoice()
+        engine.run(contactId)
+        assertEquals(FailReason.ASR_FAILED.code, db.messageDao().get(voice)!!.errorCode)
+        assertTrue(h.provider.requests.isEmpty())
     }
 }

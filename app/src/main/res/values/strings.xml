@@ -891,6 +891,7 @@
     <string name="voice_asr_setup_message">发送语音和录音转文字，要先在「我 → 语音消息」里设置语音识别服务商并填写 API Key。录音会发给它转成文字。</string>
     <string name="voice_intro_title">使用语音前请知悉</string>
     <string name="voice_intro_message">按住说话和录音转文字会录下你的声音，发给你选的语音识别服务商（%1$s）转成文字，识别出的文字再像普通消息一样发给联系人的模型服务商。服务商按自己的规则收费。</string>
+    <string name="voice_intro_message_local">按住说话和录音转文字会录下你的声音，用手机上的离线识别模型转成文字，录音不离开手机；识别出的文字再像普通消息一样发给联系人的模型服务商。</string>
     <string name="voice_intro_confirm">知道了</string>
     <string name="voice_mic_denied_title">没有麦克风权限</string>
     <string name="voice_mic_denied_message">按住说话和录音转文字需要麦克风权限，可以在系统设置里为智信打开。</string>
