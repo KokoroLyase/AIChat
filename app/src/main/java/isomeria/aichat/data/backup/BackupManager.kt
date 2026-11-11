@@ -86,6 +86,8 @@ data class BackupPreview(
     val contactCount: Int get() = data.contacts.size
     val messageCount: Int get() = data.messages.size
     val imageCount: Int get() = data.messages.count { it.type == MessageType.IMAGE }
+    /** 语音消息（0.7.0）；0.6.0 及更早的备份没有 */
+    val voiceCount: Int get() = data.messages.count { it.type == MessageType.VOICE }
 
     /** 备份里的全局记忆；0.4.2 及更早的备份没有 */
     val globalMemory: GlobalMemoryCount get() = GlobalMemoryCount(data.globalCategories.size, data.globalItems.size)

@@ -87,7 +87,7 @@ fun StorageContent(state: StorageState, onBack: () -> Unit, onRefresh: () -> Uni
             if (usage != null || state.loading) {
                 val rows = listOf(
                     R.string.storage_images to usage?.images, R.string.storage_avatars to usage?.avatars,
-                    R.string.storage_backgrounds to usage?.backgrounds,
+                    R.string.storage_backgrounds to usage?.backgrounds, R.string.storage_voice to usage?.voice,
                     R.string.crash_title to usage?.logs, R.string.storage_cache to usage?.cache,
                     R.string.storage_database to usage?.database,
                 )

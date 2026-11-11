@@ -171,6 +171,9 @@ fun UsageContent(
                     style = WeTheme.typography.small,
                     color = colors.textTertiary,
                 )
+                if (state.total.hasVoice) {
+                    Text(voiceDetail(state.total), style = WeTheme.typography.small, color = colors.textTertiary)
+                }
                 WeSegmented(
                     options = listOf(
                         UsageGrouping.BY_DAY to stringResource(R.string.usage_by_day),
@@ -223,6 +226,7 @@ private fun UsageRows(rows: List<UsageRowItem>, onOpen: ((UsageRowItem) -> Unit)
                     Text(number(row.total.totalTokens), style = WeTheme.typography.listTitle, color = colors.textPrimary)
                 }
                 Text(usageDetail(row.total), style = WeTheme.typography.listTime, color = colors.textTertiary)
+                if (row.total.hasVoice) Text(voiceDetail(row.total), style = WeTheme.typography.listTime, color = colors.textTertiary)
             }
             if (onOpen != null) {
                 Icon(
@@ -248,6 +252,16 @@ private fun usageDetail(total: UsageTotal): String {
         total.proactiveTokens > 0 -> stringResource(R.string.usage_detail_proactive, input, output, number(total.proactiveTokens))
         else -> stringResource(R.string.usage_detail, input, output)
     }
+}
+
+/** 语音合成和识别（0.7.0）：服务商按字数或时长计费，单独一行，不算进 token */
+@Composable
+private fun voiceDetail(total: UsageTotal): String {
+    val parts = buildList {
+        if (total.ttsChars > 0 || total.ttsSeconds > 0) add(stringResource(R.string.usage_detail_tts, number(total.ttsChars), number(total.ttsSeconds)))
+        if (total.asrSeconds > 0) add(stringResource(R.string.usage_detail_asr, number(total.asrSeconds)))
+    }
+    return parts.joinToString(stringResource(R.string.usage_detail_separator))
 }
 
 private fun number(value: Long): String = String.format(Locale.ROOT, "%,d", value)
@@ -300,6 +314,17 @@ fun UsageDetailScreen(onBack: () -> Unit, viewModel: UsageDetailViewModel = hilt
         }
     }
 }
+
+/** 截图用的示例数据：用了语音（0.7.0） */
+internal val previewVoiceUsageState = UsageState(
+    loaded = true,
+    total = UsageTotal(0, promptTokens = 58_320, completionTokens = 9_140, memoryTokens = 1_850, requests = 86, ttsChars = 1_284, ttsSeconds = 315, asrSeconds = 142),
+    rows = listOf(
+        UsageRowItem(3, "今天", UsageTotal(3, promptTokens = 12_400, completionTokens = 2_100, requests = 18, ttsChars = 1_284, ttsSeconds = 315, asrSeconds = 142)),
+        UsageRowItem(2, "昨天", UsageTotal(2, promptTokens = 21_500, completionTokens = 3_300, memoryTokens = 1_850, requests = 31)),
+        UsageRowItem(1, "10月30日", UsageTotal(1, asrSeconds = 12)),
+    ),
+)
 
 /** 截图用的示例数据 */
 internal val previewUsageState = UsageState(

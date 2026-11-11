@@ -64,7 +64,7 @@ class ContactDetailProfileUiTest {
         val profile = compose.onNodeWithText("朋友资料").getUnclippedBoundsInRoot().top
         val memory = compose.onNodeWithText(app.getString(R.string.memory_title)).getUnclippedBoundsInRoot().top
         assertTrue(profile < memory)
-        compose.onNodeWithText("编辑朋友的头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文上限、全局记忆、回复偏好、是否分条显示、自动记忆、主动聊天等").assertExists()
+        compose.onNodeWithText("编辑朋友的头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文上限、全局记忆、回复偏好、是否分条显示、自动记忆、主动聊天、消息发送类型、音色、语气和风格等").assertExists()
         compose.onNodeWithText("朋友资料").performClick()
         assertEquals(1, edits)
         assertEquals(0, memories)

@@ -117,6 +117,9 @@ fun ContactEditScreen(
     var showDiscard by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
     var showProactiveIntro by remember { mutableStateOf(false) }
+    var showReplyTypeSheet by remember { mutableStateOf(false) }
+    val globalReplyType by viewModel.globalReplyType.collectAsStateWithLifecycle()
+    val providerVoice by viewModel.providerVoice.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -242,6 +245,9 @@ fun ContactEditScreen(
                 onFrequency = { value -> viewModel.update { it.copy(proactiveFrequency = value) } },
             )
 
+            GroupSpacer()
+            ContactVoiceRows(form, globalReplyType, providerVoice, onPickReplyType = { showReplyTypeSheet = true }, onUpdate = viewModel::update)
+
             if (!state.isNew) {
                 GroupSpacer()
                 Box(
@@ -273,6 +279,11 @@ fun ContactEditScreen(
             },
             onDismiss = { showAvatarSheet = false },
         )
+    }
+    if (showReplyTypeSheet) {
+        ReplyTypeSheet(form.replyType, globalReplyType, onPick = { type -> viewModel.update { it.copy(replyType = type) } }) {
+            showReplyTypeSheet = false
+        }
     }
     if (showProviderSheet) {
         ProviderSheet(providerList, form.providerId, onPick = viewModel::selectProvider) {
@@ -361,6 +372,71 @@ internal fun GlobalSwitchRows(form: ContactForm, update: ((ContactForm) -> Conta
         },
     )
     FootnoteText(stringResource(R.string.contact_use_reply_preferences_hint) + stringResource(if (form.useReplyPreferences) R.string.contact_split_hint_overridden else R.string.contact_split_hint))
+}
+
+/**
+ * 语音消息（0.7.0）：消息发送类型（默认使用「我 → 语音消息」的全局设置）、音色（留空用语音合成服务商的音色）、语气和风格。
+ */
+@Composable
+internal fun ContactVoiceRows(
+    form: ContactForm,
+    globalType: isomeria.aichat.data.db.ReplyType,
+    providerVoice: String,
+    onPickReplyType: () -> Unit,
+    onUpdate: ((ContactForm) -> ContactForm) -> Unit,
+) {
+    isomeria.aichat.feature.settings.ConfigActionRow(
+        title = stringResource(R.string.contact_reply_type),
+        value = replyTypeLabel(form.replyType, globalType),
+        showDivider = true,
+        onClick = onPickReplyType,
+    )
+    FormRow(stringResource(R.string.contact_tts_voice), showDivider = true) {
+        InlineField(
+            value = form.ttsVoice,
+            onValueChange = { value -> onUpdate { it.copy(ttsVoice = value.take(Contact.VOICE_MAX_LENGTH)) } },
+            hint = if (providerVoice.isBlank()) stringResource(R.string.contact_tts_voice_hint_empty) else stringResource(R.string.contact_tts_voice_hint, providerVoice),
+        )
+    }
+    FormRow(stringResource(R.string.contact_tts_style)) {
+        InlineField(
+            value = form.ttsStyle,
+            onValueChange = { value -> onUpdate { it.copy(ttsStyle = value.take(Contact.STYLE_MAX_LENGTH)) } },
+            hint = stringResource(R.string.contact_tts_style_hint),
+        )
+    }
+    FootnoteText(stringResource(R.string.contact_voice_hint))
+}
+
+@Composable
+private fun replyTypeName(type: isomeria.aichat.data.db.ReplyType): String = stringResource(
+    when (type) {
+        isomeria.aichat.data.db.ReplyType.FOLLOW -> R.string.voice_reply_follow
+        isomeria.aichat.data.db.ReplyType.TEXT -> R.string.voice_reply_text
+        isomeria.aichat.data.db.ReplyType.VOICE -> R.string.voice_reply_voice
+    },
+)
+
+@Composable
+private fun replyTypeLabel(type: isomeria.aichat.data.db.ReplyType?, globalType: isomeria.aichat.data.db.ReplyType): String =
+    if (type == null) stringResource(R.string.voice_reply_global_value, replyTypeName(globalType)) else replyTypeName(type)
+
+/** 选消息发送类型：使用全局设置、跟随、文字、语音 */
+@Composable
+private fun ReplyTypeSheet(
+    current: isomeria.aichat.data.db.ReplyType?,
+    globalType: isomeria.aichat.data.db.ReplyType,
+    onPick: (isomeria.aichat.data.db.ReplyType?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = listOf(null) + isomeria.aichat.data.db.ReplyType.entries
+    isomeria.aichat.ui.components.WeActionSheet(
+        title = stringResource(R.string.contact_reply_type),
+        options = options.map { type ->
+            isomeria.aichat.ui.components.SheetOption(replyTypeLabel(type, globalType), selected = type == current) { onPick(type) }
+        },
+        onDismiss = onDismiss,
+    )
 }
 
 /**

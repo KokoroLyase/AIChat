@@ -212,7 +212,7 @@ class ScreenshotTest {
     @Test fun exportPlainCompletedLight() = backupDialogShot("43-export-completed-plain", false) { ExportSample(ExportUiState(result = ExportSummary(2, 1000, 2, false, encrypted = false))) }
     @Test fun exportLargeLight() = large("43-export-large", false) { ExportSample(ExportUiState(hasApiKey = true, includeKey = true, password = "123", confirm = "", errorRes = isomeria.aichat.R.string.export_password_mismatch)) }
     @Test fun exportLargeDark() = large("43-export-large", true) { ExportSample(ExportUiState()) }
-    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789, backgrounds = 860000))
+    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789, backgrounds = 860000, voice = 2400000))
     @Test fun storageLight() = shot("42-storage", false) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageDark() = shot("42-storage", true) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageLoading() = shot("42-storage-loading", false) { StorageContent(StorageState(), {}, {}, {}, {}, {}, {}) }
@@ -912,6 +912,25 @@ class ScreenshotTest {
         }
         captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
+    @Composable private fun ContactVoice() = Column {
+        GroupSpacer()
+        isomeria.aichat.feature.contactedit.ContactVoiceRows(isomeria.aichat.feature.contactedit.ContactForm(), isomeria.aichat.data.db.ReplyType.FOLLOW, "mimo_default", {}, {})
+        GroupSpacer()
+        isomeria.aichat.feature.contactedit.ContactVoiceRows(
+            isomeria.aichat.feature.contactedit.ContactForm(replyType = isomeria.aichat.data.db.ReplyType.VOICE, ttsVoice = "default_zh", ttsStyle = "温柔一点，语速慢一些，像睡前聊天"),
+            isomeria.aichat.data.db.ReplyType.FOLLOW, "", {}, {},
+        )
+    }
+    @Test fun usageVoiceLight() = shot("77-usage-voice", false) { UsageContent(isomeria.aichat.feature.usage.previewVoiceUsageState, {}, {}, {}, {}) }
+    @Test fun usageVoiceDark() = shot("77-usage-voice", true) { UsageContent(isomeria.aichat.feature.usage.previewVoiceUsageState, {}, {}, {}, {}) }
+    @Test fun usageVoiceLarge() = large("77-usage-voice-large", false) { UsageContent(isomeria.aichat.feature.usage.previewVoiceUsageState, {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun usageVoiceNarrow() = large("77-usage-voice-narrow", true) { UsageContent(isomeria.aichat.feature.usage.previewVoiceUsageState, {}, {}, {}, {}) }
+
+    @Test fun contactVoiceLight() = shot("76-contact-voice", false) { ContactVoice() }
+    @Test fun contactVoiceDark() = shot("76-contact-voice", true) { ContactVoice() }
+    @Test fun contactVoiceLarge() = large("76-contact-voice-large", false) { ContactVoice() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contactVoiceNarrow() = large("76-contact-voice-narrow", true) { ContactVoice() }
+
     @Test fun voiceMenuLight() = voiceMenuShot("75-voice-menu", false)
     @Test fun voiceMenuDark() = voiceMenuShot("75-voice-menu", true, id = 14)
     @Test fun voiceMenuLarge() = voiceMenuShot("75-voice-menu-large", false, scale = 1.6f)

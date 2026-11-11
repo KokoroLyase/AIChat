@@ -66,6 +66,10 @@ data class ContactForm(
     /** 主动聊天（0.6.0）：默认关闭 */
     val proactiveEnabled: Boolean = false,
     val proactiveFrequency: ProactiveFrequency = ProactiveFrequency.MEDIUM,
+    /** 语音消息（0.7.0）：消息发送类型（空 = 使用全局设置）、音色（空 = 服务商的音色）、语气和风格 */
+    val replyType: isomeria.aichat.data.db.ReplyType? = null,
+    val ttsVoice: String = "",
+    val ttsStyle: String = "",
 )
 
 /**
@@ -121,6 +125,7 @@ class ContactEditViewModel @Inject constructor(
     memories: MemoryRepository,
     private val contextBuilder: ContextBuilder,
     private val clock: Clock,
+    voices: isomeria.aichat.data.repo.VoiceRepository,
 ) : ViewModel() {
     private val contactId = savedState.toRoute<ContactEditRoute>().contactId
     private var existing: Contact? = null
@@ -130,6 +135,16 @@ class ContactEditViewModel @Inject constructor(
     private var saved = false
 
     private val _state = MutableStateFlow(ContactEditState())
+
+    /** 「我 → 语音消息」里的消息发送类型：「使用全局设置」后面显示 */
+    val globalReplyType: StateFlow<isomeria.aichat.data.db.ReplyType> = settings.voiceSettings
+        .map { it.replyType }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, settings.voiceSettings.value.replyType)
+
+    /** 正在用的语音合成服务商的音色：音色留空时用它 */
+    val providerVoice: StateFlow<String> = voices.observe(isomeria.aichat.data.db.ProviderKind.TTS, settings.voiceSettings)
+        .map { list -> list.providers.firstOrNull { it.id == list.selectedId }?.voice.orEmpty() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val state: StateFlow<ContactEditState> = _state.asStateFlow()
 
     /** 可选的服务商 */
@@ -198,6 +213,9 @@ class ContactEditViewModel @Inject constructor(
                         useReplyPreferences = it.useReplyPreferences,
                         proactiveEnabled = it.proactiveEnabled,
                         proactiveFrequency = it.proactiveFrequency,
+                        replyType = it.replyType,
+                        ttsVoice = it.ttsVoice.orEmpty(),
+                        ttsStyle = it.ttsStyle,
                     )
                 } ?: ContactForm(avatarColor = randomAvatarColor())
             }
@@ -318,6 +336,9 @@ class ContactEditViewModel @Inject constructor(
                     useReplyPreferences = form.useReplyPreferences,
                     proactiveEnabled = form.proactiveEnabled,
                     proactiveFrequency = form.proactiveFrequency,
+                    replyType = form.replyType,
+                    ttsVoice = form.ttsVoice.trim().ifEmpty { null },
+                    ttsStyle = form.ttsStyle.trim(),
                 ),
             )
             old.id
@@ -339,6 +360,9 @@ class ContactEditViewModel @Inject constructor(
                 useReplyPreferences = form.useReplyPreferences,
                 proactiveEnabled = form.proactiveEnabled,
                 proactiveFrequency = form.proactiveFrequency,
+                replyType = form.replyType,
+                ttsVoice = form.ttsVoice.trim().ifEmpty { null },
+                ttsStyle = form.ttsStyle.trim(),
                 createdAt = now,
                 updatedAt = now,
             ),

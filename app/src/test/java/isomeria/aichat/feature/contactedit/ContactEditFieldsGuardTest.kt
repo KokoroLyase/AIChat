@@ -41,6 +41,8 @@ class ContactEditFieldsGuardTest {
         // 0.6.0：主动聊天开关下的频率（属于「主动聊天」这一项）、说明和第一次开启时的弹窗
         "contact_proactive_frequency", "contact_proactive_hint", "contact_proactive_intro", "contact_proactive_intro_title",
         "contact_proactive_intro_confirm",
+        // 0.7.0：音色、语气和风格的提示，语音设置下的说明
+        "contact_tts_voice_hint", "contact_tts_voice_hint_empty", "contact_tts_style_hint", "contact_voice_hint",
     )
 
     @Test
@@ -64,7 +66,7 @@ class ContactEditFieldsGuardTest {
     fun hintWordingMatchesPlan() {
         val separator = app.getString(R.string.list_separator)
         val text = app.getString(R.string.contact_profile_hint, ContactEditField.entries.joinToString(separator) { app.getString(it.hint) })
-        assertEquals("编辑朋友的头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文上限、全局记忆、回复偏好、是否分条显示、自动记忆、主动聊天等", text)
+        assertEquals("编辑朋友的头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文上限、全局记忆、回复偏好、是否分条显示、自动记忆、主动聊天、消息发送类型、音色、语气和风格等", text)
     }
 
     /** 显示用的小字只在项目字间多了不可见的 WORD JOINER：去掉后和原文一样，“、”前后不加 */
@@ -74,7 +76,7 @@ class ContactEditFieldsGuardTest {
         assertEquals("头", "头".keepTogether())
         val separator = app.getString(R.string.list_separator)
         val shown = app.getString(R.string.contact_profile_hint, ContactEditField.entries.joinToString(separator) { app.getString(it.hint).keepTogether() })
-        assertEquals("编辑朋友的头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文上限、全局记忆、回复偏好、是否分条显示、自动记忆、主动聊天等", shown.replace("\u2060", ""))
+        assertEquals("编辑朋友的头像、名称、服务商、模型、思考强度、温度、系统提示词、上下文上限、全局记忆、回复偏好、是否分条显示、自动记忆、主动聊天、消息发送类型、音色、语气和风格等", shown.replace("\u2060", ""))
         assertTrue(shown.split(separator).all { !it.startsWith("\u2060") && !it.endsWith("\u2060") })
     }
 }

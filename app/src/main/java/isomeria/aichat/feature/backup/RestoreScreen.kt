@@ -506,6 +506,14 @@ private fun BackupInfo(preview: BackupPreview) {
         showArrow = false,
         showDivider = true,
     )
+    if (preview.voiceCount > 0) {
+        WeListRow(
+            title = stringResource(R.string.restore_info_voice),
+            value = stringResource(R.string.restore_count_voice, preview.voiceCount),
+            showArrow = false,
+            showDivider = true,
+        )
+    }
     WeListRow(
         title = stringResource(R.string.restore_info_key),
         value = stringResource(if (manifest.includesApiKey) R.string.restore_key_included else R.string.restore_key_none),

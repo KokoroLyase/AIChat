@@ -264,7 +264,7 @@
 
     <!-- 导出数据 -->
     <string name="export_title">导出数据</string>
-    <string name="export_intro">导出联系人、聊天记录、记忆、用量统计、服务商、头像、聊天图片、聊天背景和设置。不设密码时是普通 zip 文件，拿到文件的人都能打开；设置密码后整个文件都会加密。卸载 App 后，只能靠导出文件找回数据。</string>
+    <string name="export_intro">导出联系人、聊天记录（含语音消息）、记忆、用量统计、服务商（含语音合成和识别）、头像、聊天图片、聊天背景和设置。不设密码时是普通 zip 文件，拿到文件的人都能打开；设置密码后整个文件都会加密。卸载 App 后，只能靠导出文件找回数据。</string>
     <string name="export_include_key">包含 API Key</string>
     <string name="export_no_key">还没有保存 API Key</string>
     <string name="export_key_hint">包含 API Key 时必须设置密码。忘记密码后，这个文件里的所有数据都无法恢复。</string>
@@ -297,6 +297,8 @@
     <string name="restore_count_contacts">%1$d 位</string>
     <string name="restore_count_messages">%1$d 条</string>
     <string name="restore_count_images">%1$d 张</string>
+    <string name="restore_info_voice">语音消息</string>
+    <string name="restore_count_voice">%1$d 条</string>
     <string name="restore_info_key">API Key</string>
     <string name="restore_key_included">已包含（加密）</string>
     <string name="restore_key_none">未包含</string>
@@ -401,7 +403,10 @@
     <string name="usage_detail_memory">输入 %1$s · 输出 %2$s · 其中记忆 %3$s</string>
     <string name="usage_deleted_contact">已删除的联系人</string>
     <string name="usage_empty">这段时间没有用量</string>
-    <string name="usage_hint">数字来自服务商返回的用量；服务商没有返回时是估算值。清空聊天记录不影响统计。</string>
+    <string name="usage_hint">数字来自服务商返回的用量；服务商没有返回时是估算值。语音合成按字数、语音识别按秒数单独统计，不算进 token。清空聊天记录不影响统计。</string>
+    <string name="usage_detail_tts">语音合成 %1$s 字 / %2$s 秒</string>
+    <string name="usage_detail_asr">语音识别 %1$s 秒</string>
+    <string name="usage_detail_separator">" · "</string>
 
     <!-- 开源许可 -->
     <string name="licenses_title">开源许可</string>
@@ -613,11 +618,12 @@
     <string name="storage_images">聊天图片</string>
     <string name="storage_avatars">头像</string>
     <string name="storage_backgrounds">聊天背景</string>
+    <string name="storage_voice">语音消息</string>
     <string name="storage_cache">缓存</string>
     <string name="storage_database">数据库</string>
     <string name="storage_clear_cache">清理缓存</string>
     <string name="storage_orphans">清理孤立文件</string>
-    <string name="storage_notice">清理缓存只删可以重新生成的临时文件，不影响聊天图片、头像、聊天背景和数据库。孤立文件是没有任何联系人、消息或聊天在用的头像、图片和聊天背景，清理前会先告诉你数量。聊天图片只在删除对应消息时才会删除。</string>
+    <string name="storage_notice">清理缓存只删可以重新生成的临时文件，不影响聊天图片、头像、聊天背景、语音消息和数据库。孤立文件是没有任何联系人、消息或聊天在用的头像、图片、聊天背景和语音文件，清理前会先告诉你数量。聊天图片和语音只在删除对应消息时才会删除。</string>
     <string name="storage_busy">正在回复、更新或恢复，请稍后再清理。</string>
     <string name="storage_result">已清理 %1$d 个文件，释放约 %2$s。</string>
     <string name="storage_no_orphans">没有发现孤立文件。</string>
@@ -874,6 +880,14 @@
     <string name="voice_mic_denied_message">按住说话和录音转文字需要麦克风权限，可以在系统设置里为智信打开。</string>
     <string name="error_asr_failed">语音识别失败，这条语音没有发给联系人。可以重发，再识别一次。</string>
     <string name="error_asr_unavailable">还没有设置语音识别服务，或它没有 API Key，这条语音没有发给联系人。</string>
+    <!-- 0.7.0 语音消息：联系人设置 -->
+    <string name="contact_reply_type">消息发送类型</string>
+    <string name="contact_tts_voice">音色</string>
+    <string name="contact_tts_voice_hint">默认 %1$s</string>
+    <string name="contact_tts_voice_hint_empty">用服务商的音色</string>
+    <string name="contact_tts_style">语气和风格</string>
+    <string name="contact_tts_style_hint">例如：温柔、慢一些</string>
+    <string name="contact_voice_hint">联系人回复你时发文字还是语音，默认跟「我 → 语音消息」一致。音色填语音合成服务商提供的音色名，留空用服务商设置的音色；语气和风格只有聊天接口格式（如 Xiaomi MiMo）支持，标准音频接口会忽略。</string>
     <!-- 0.7.0 语音消息：语音条和播放 -->
     <string name="voice_bubble_desc">语音，%1$d 秒</string>
     <string name="voice_state_playing">正在播放</string>

@@ -123,6 +123,7 @@ class BackupVoiceTest {
         }
         val data = backup.inspect(zip).data
         assertEquals(7, backup.inspect(zip).manifest.formatVersion)
+        assertEquals("恢复前的摘要：语音消息条数（合成中的那条按文字导出）", 2, backup.inspect(zip).voiceCount)
         val messages = data.messages.sortedBy { it.createdAt }
         assertEquals(listOf(MessageType.VOICE, MessageType.VOICE, MessageType.TEXT), messages.map { it.type })
         assertEquals("还在合成的语音按文字、已送达写入", MessageStatus.SUCCESS, messages[2].status)

@@ -25,6 +25,9 @@ enum class ContactEditField(@StringRes val label: Int, @StringRes val hint: Int 
     SPLIT(R.string.contact_split, R.string.contact_profile_item_split),
     AUTO_MEMORY(R.string.contact_auto_memory),
     PROACTIVE(R.string.contact_proactive),
+    REPLY_TYPE(R.string.contact_reply_type),
+    TTS_VOICE(R.string.contact_tts_voice),
+    TTS_STYLE(R.string.contact_tts_style),
 }
 
 /**

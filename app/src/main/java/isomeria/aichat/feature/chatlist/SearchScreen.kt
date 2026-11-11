@@ -129,7 +129,7 @@ fun SearchScreen(
                         avatarColor = group.contactAvatarColor,
                         title = AnnotatedString(group.contactName),
                         subtitle = if (single != null) {
-                            highlightMatch(single.content.replace('\n', ' '), results.query, brand)
+                            voicePrefix(single) + highlightMatch(single.content.replace('\n', ' '), results.query, brand)
                         } else {
                             AnnotatedString(stringResource(R.string.search_related_count, group.hitCount))
                         },
@@ -148,3 +148,8 @@ fun SearchScreen(
         }
     }
 }
+
+/** 命中的是语音的转写文字（0.7.0）：前面标上「[语音]」 */
+@Composable
+private fun voicePrefix(message: isomeria.aichat.data.db.Message): AnnotatedString =
+    AnnotatedString(if (message.type == isomeria.aichat.data.db.MessageType.VOICE) stringResource(R.string.preview_voice) + " " else "")

@@ -22,8 +22,13 @@ data class UsageTotal(
     val requests: Int = 0,
     /** 其中主动聊天用掉的 token（0.6.0；含模型决定不发的那些请求） */
     val proactiveTokens: Long = 0,
+    /** 语音合成的字数和合成出的秒数、语音识别的秒数（0.7.0）：按字数或时长计费，不算进 token */
+    val ttsChars: Long = 0,
+    val ttsSeconds: Long = 0,
+    val asrSeconds: Long = 0,
 ) {
     val totalTokens: Long get() = promptTokens + completionTokens
+    val hasVoice: Boolean get() = ttsChars > 0 || ttsSeconds > 0 || asrSeconds > 0
 }
 
 /** 把按天、按联系人存的用量汇总成页面要显示的几种列表。 */
@@ -47,14 +52,24 @@ object UsageStats {
     /** 按联系人合计，用得多的在前；用量相同时按 id 排，顺序稳定 */
     fun byContact(rows: List<UsageDaily>): List<UsageTotal> =
         rows.groupBy { it.contactId }.map { (id, list) -> sum(id, list) }
-            .sortedWith(compareByDescending<UsageTotal> { it.totalTokens }.thenBy { it.key })
+            .sortedWith(compareByDescending<UsageTotal> { it.totalTokens }.thenByDescending { it.ttsChars + it.asrSeconds }.thenBy { it.key })
 
-    private fun sum(key: Long, rows: List<UsageDaily>) = UsageTotal(
-        key = key,
-        promptTokens = rows.sumOf { it.promptTokens },
-        completionTokens = rows.sumOf { it.completionTokens },
-        memoryTokens = rows.filter { it.purpose == UsagePurpose.MEMORY }.sumOf { it.promptTokens + it.completionTokens },
-        requests = rows.sumOf { it.requests },
-        proactiveTokens = rows.filter { it.purpose == UsagePurpose.PROACTIVE }.sumOf { it.promptTokens + it.completionTokens },
-    )
+    /** 语音合成、识别（0.7.0）存的是字数和秒数，单独合计，不混进 token 和请求次数 */
+    private val VOICE = setOf(UsagePurpose.TTS, UsagePurpose.ASR)
+
+    private fun sum(key: Long, all: List<UsageDaily>): UsageTotal {
+        val rows = all.filter { it.purpose !in VOICE }
+        val tts = all.filter { it.purpose == UsagePurpose.TTS }
+        return UsageTotal(
+            key = key,
+            promptTokens = rows.sumOf { it.promptTokens },
+            completionTokens = rows.sumOf { it.completionTokens },
+            memoryTokens = rows.filter { it.purpose == UsagePurpose.MEMORY }.sumOf { it.promptTokens + it.completionTokens },
+            requests = rows.sumOf { it.requests },
+            proactiveTokens = rows.filter { it.purpose == UsagePurpose.PROACTIVE }.sumOf { it.promptTokens + it.completionTokens },
+            ttsChars = tts.sumOf { it.promptTokens },
+            ttsSeconds = tts.sumOf { it.completionTokens },
+            asrSeconds = all.filter { it.purpose == UsagePurpose.ASR }.sumOf { it.promptTokens },
+        )
+    }
 }

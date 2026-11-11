@@ -128,7 +128,7 @@ fun ChatSearchScreen(
                         name = name,
                         avatarColor = if (mine) SelfAvatarColor else contact?.avatarColor ?: SelfAvatarColor,
                         title = AnnotatedString(name),
-                        subtitle = highlightMatch(message.content.replace('\n', ' '), results.query, brand),
+                        subtitle = voicePrefix(message) + highlightMatch(message.content.replace('\n', ' '), results.query, brand),
                         trailing = viewModel.formatter.forList(message.createdAt, now),
                         onClick = { onOpenMessage(message.contactId, message.id) },
                         showDivider = index != results.messages.lastIndex,
@@ -138,3 +138,8 @@ fun ChatSearchScreen(
         }
     }
 }
+
+/** 命中的是语音的转写文字（0.7.0）：前面标上「[语音]」 */
+@Composable
+private fun voicePrefix(message: isomeria.aichat.data.db.Message): AnnotatedString =
+    AnnotatedString(if (message.type == isomeria.aichat.data.db.MessageType.VOICE) stringResource(R.string.preview_voice) + " " else "")
