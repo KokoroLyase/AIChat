@@ -230,7 +230,7 @@ class OfflineModelStore internal constructor(
             allowHost = { ModelDownloader.hostIn(it, OfflineAsrModel.ALLOWED_HOSTS) },
         ),
         files = OfflineAsrModel.FILES,
-        freeBytes = { it.usableSpace },
+        freeBytes = { allocatableBytes(context, it) },
     )
 
     private val lock = Mutex()
@@ -291,6 +291,16 @@ class OfflineModelStore internal constructor(
     private fun downloadedBytes(): Long = files.sumOf { file ->
         val done = File(dir, file.name)
         if (done.isFile && done.length() == file.bytes) file.bytes else File(dir, file.name + ModelDownloader.PART).length()
+    }
+
+    private companion object {
+        /** 能写多少：按系统的说法（会算上系统可以腾出来的缓存）；查不到时退回文件系统的剩余空间 */
+        fun allocatableBytes(context: Context, dir: File): Long = try {
+            val storage = context.getSystemService(android.os.storage.StorageManager::class.java)
+            storage.getAllocatableBytes(storage.getUuidForPath(dir))
+        } catch (_: IOException) {
+            dir.freeSpace
+        }
     }
 
     private fun diskState(): ModelState = when {
