@@ -14,6 +14,7 @@ import isomeria.aichat.data.db.MIGRATION_2_3
 import isomeria.aichat.data.db.MIGRATION_3_4
 import isomeria.aichat.data.db.MIGRATION_4_5
 import isomeria.aichat.data.db.MIGRATION_5_6
+import isomeria.aichat.data.db.MIGRATION_6_7
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -194,6 +195,46 @@ class DatabaseTest {
                 assertTrue(c.moveToFirst())
                 assertEquals(0, c.getInt(0))
                 assertEquals(3, c.getInt(1))
+            }
+        }
+    }
+
+    /** 0.7.0：消息、联系人、服务商加语音字段，旧数据都取默认值（不是语音、用全局设置、没有音色） */
+    @Test
+    fun migrate6To7_voiceColumnsWithDefaults_oldDataUntouched() {
+        helper.createDatabase("migration-v6-test", 6).use { db ->
+            db.execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK')")
+            db.execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency) VALUES(7,'甲',0,1,'m','OFF',1.3,'人设',4000,1,1,1,1,'off',0,1,1,'HIGH')")
+            db.execSQL("INSERT INTO message(id,contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,replyGroup,createdAt,origin) VALUES(1,7,'USER','TEXT','在吗',0,0,0,'SUCCESS',0,0,0,NULL,8,'NORMAL'),(2,7,'ASSISTANT','TEXT','在',0,0,0,'PENDING',0,7,3,'g',9,'PROACTIVE')")
+        }
+        helper.runMigrationsAndValidate("migration-v6-test", 7, true, MIGRATION_6_7).use { db ->
+            db.query("SELECT voicePath, voiceMillis, voicePlayed, voiceShowText, type, status, origin FROM message ORDER BY id").use { c ->
+                assertTrue(c.moveToFirst())
+                assertTrue(c.isNull(0))
+                assertEquals(listOf(0L, 0L, 0L), listOf(c.getLong(1), c.getLong(2), c.getLong(3)))
+                assertEquals("TEXT", c.getString(4))
+                assertTrue(c.moveToNext())
+                assertEquals(listOf("TEXT", "PENDING", "PROACTIVE"), listOf(c.getString(4), c.getString(5), c.getString(6)))
+            }
+            db.query("SELECT replyType, ttsVoice, ttsStyle, proactiveEnabled, proactiveFrequency, systemPrompt FROM contact WHERE id=7").use { c ->
+                assertTrue(c.moveToFirst())
+                assertTrue("用全局设置", c.isNull(0))
+                assertTrue(c.isNull(1))
+                assertEquals("", c.getString(2))
+                assertEquals(1, c.getInt(3))
+                assertEquals("HIGH", c.getString(4))
+                assertEquals("人设", c.getString(5))
+            }
+            db.query("SELECT voice, kind FROM provider_config WHERE id=1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("", c.getString(0))
+                assertEquals("LLM", c.getString(1))
+            }
+            // 新字段能写
+            db.execSQL("INSERT INTO message(id,contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,createdAt,origin,voicePath,voiceMillis,voicePlayed,voiceShowText) VALUES(3,7,'USER','VOICE','你好',0,0,0,'SUCCESS',0,0,0,10,'NORMAL','/v/3.m4a',2000,1,1)")
+            db.query("SELECT voicePath FROM message WHERE id=3").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("/v/3.m4a", c.getString(0))
             }
         }
     }
