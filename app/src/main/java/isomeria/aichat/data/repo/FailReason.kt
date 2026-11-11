@@ -18,6 +18,10 @@ enum class FailReason(val code: Int) {
     NO_API_KEY(4),
     EMPTY_REPLY(5),
     CONFIGURATION(6),
+    /** 语音识别失败（0.7.0）：没有请求模型，点击重试会重新识别 */
+    ASR_FAILED(10),
+    /** 没有设置语音识别服务，或它没有 Key（0.7.0） */
+    ASR_UNAVAILABLE(11),
     UNKNOWN(9),
     ;
 

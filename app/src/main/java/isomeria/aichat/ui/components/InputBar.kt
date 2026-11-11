@@ -45,9 +45,24 @@ import isomeria.aichat.ui.theme.WeTheme
 
 enum class InputPanel { NONE, EMOJI, MORE }
 
+/** 输入栏里和语音有关的操作（0.7.0），见 [HoldToTalkButton] 和录音转文字的麦克风按钮。 */
+data class VoiceInputActions(
+    val recording: RecordingUi? = null,
+    val transcribing: Boolean = false,
+    val onPress: () -> Boolean = { false },
+    val onZone: (RecordZone) -> Unit = {},
+    val onRelease: (RecordZone) -> Unit = {},
+    val onToggle: () -> Unit = {},
+    val onCancel: () -> Unit = {},
+    val onToText: () -> Unit = {},
+    /** 文字框右侧的麦克风：录音转文字 */
+    val onMic: () -> Unit = {},
+)
+
 /**
  * 聊天输入栏：语音切换、输入框（自动增高，最多 5 行）、表情、「+」；
- * 输入文字后「+」变成绿色「发送」按钮。语音只有外观；表情面板见 EmojiPanel.kt。
+ * 输入文字后「+」变成绿色「发送」按钮。语音模式下是「按住 说话」（0.7.0）；文字框右侧的麦克风是录音转文字。
+ * 表情面板见 EmojiPanel.kt。
  */
 @Composable
 fun ChatInputBar(
@@ -59,8 +74,8 @@ fun ChatInputBar(
     onTogglePanel: (InputPanel) -> Unit,
     onSend: () -> Unit,
     onInputFocused: () -> Unit,
-    onVoiceComingSoon: () -> Unit,
     focusRequester: FocusRequester,
+    voice: VoiceInputActions = VoiceInputActions(),
     modifier: Modifier = Modifier,
 ) {
     val colors = WeTheme.colors
@@ -80,7 +95,16 @@ fun ChatInputBar(
         )
         Spacer(Modifier.width(8.dp))
         if (voiceMode) {
-            HoldToTalkButton(onVoiceComingSoon, Modifier.weight(1f))
+            HoldToTalkButton(
+                recording = voice.recording,
+                onPress = voice.onPress,
+                onZone = voice.onZone,
+                onRelease = voice.onRelease,
+                onToggle = voice.onToggle,
+                onCancel = voice.onCancel,
+                onToText = voice.onToText,
+                modifier = Modifier.weight(1f),
+            )
         } else {
             Row(
                 Modifier
@@ -91,31 +115,42 @@ fun ChatInputBar(
                     .padding(start = 10.dp, end = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    textStyle = WeTheme.typography.message.copy(color = colors.textPrimary),
-                    cursorBrush = SolidColor(colors.brand),
-                    maxLines = dimens.inputMaxLines,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = 8.dp)
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { if (it.isFocused) onInputFocused() },
-                )
-                Icon(
-                    Icons.Outlined.Mic,
-                    contentDescription = stringResource(R.string.chat_voice),
-                    tint = colors.inputIcon,
-                    modifier = Modifier
-                        .padding(start = 4.dp)
-                        .size(22.dp)
+                Box(Modifier.weight(1f).padding(vertical = 8.dp), contentAlignment = Alignment.CenterStart) {
+                    if (voice.transcribing && value.text.isEmpty()) {
+                        // 录音转文字正在识别：在空输入框里提示
+                        Text(stringResource(R.string.voice_transcribing), style = WeTheme.typography.message, color = colors.textSecondary)
+                    }
+                    BasicTextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        textStyle = WeTheme.typography.message.copy(color = colors.textPrimary),
+                        cursorBrush = SolidColor(colors.brand),
+                        maxLines = dimens.inputMaxLines,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { if (it.isFocused) onInputFocused() },
+                    )
+                }
+                Box(
+                    Modifier
+                        .size(32.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = onVoiceComingSoon,
+                            enabled = !voice.transcribing,
+                            role = Role.Button,
+                            onClick = voice.onMic,
                         ),
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.Mic,
+                        contentDescription = stringResource(R.string.voice_mic_desc),
+                        tint = if (voice.transcribing) colors.disabled else colors.inputIcon,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
         }
         Spacer(Modifier.width(8.dp))
@@ -172,22 +207,6 @@ private fun SendButton(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(stringResource(R.string.chat_send), style = WeTheme.typography.small, color = Color.White)
-    }
-}
-
-@Composable
-private fun HoldToTalkButton(onPress: () -> Unit, modifier: Modifier) {
-    val colors = WeTheme.colors
-    val dimens = WeTheme.dimens
-    Box(
-        modifier
-            .height(dimens.inputMinHeight)
-            .clip(RoundedCornerShape(dimens.inputCorner))
-            .background(colors.inputBackground)
-            .clickable(onClick = onPress),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(stringResource(R.string.chat_hold_to_talk), style = WeTheme.typography.listTitle, color = colors.textPrimary)
     }
 }
 

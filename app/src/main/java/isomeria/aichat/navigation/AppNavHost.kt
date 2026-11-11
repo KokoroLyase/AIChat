@@ -209,6 +209,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
                 onEditContact = { nav.navigate(ContactEditRoute(it)) },
                 onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
+                onOpenVoiceSettings = { nav.navigate(VoiceProviderListRoute(isomeria.aichat.data.db.ProviderKind.ASR.name)) },
             )
         }
         page<ChatInfoRoute>(nav) {

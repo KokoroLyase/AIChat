@@ -878,4 +878,20 @@ class ScreenshotTest {
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun voiceEditNarrow() = large("71-voice-provider-edit-narrow", true) { VoiceEditPage() }
     @Test fun voiceEditCustomLight() = shot("71-voice-provider-edit-custom", false) { VoiceEditPage(voiceEditCustom) }
     @Test fun voiceEditCustomDark() = shot("71-voice-provider-edit-custom", true) { VoiceEditPage(voiceEditCustom) }
+
+    private fun rec(zone: isomeria.aichat.ui.components.RecordZone = isomeria.aichat.ui.components.RecordZone.SEND, toggled: Boolean = false,
+        mode: isomeria.aichat.ui.components.RecordMode = isomeria.aichat.ui.components.RecordMode.VOICE_MESSAGE, elapsed: Long = 4_000) =
+        isomeria.aichat.ui.components.RecordingUi(mode, toggled, elapsed, 0.6f, zone)
+    @Test fun holdToTalkLight() = shot("72-chat-hold-to-talk", false) { ChatPageSample(voiceMode = true) }
+    @Test fun holdToTalkDark() = shot("72-chat-hold-to-talk", true) { ChatPageSample(voiceMode = true) }
+    @Test fun holdToTalkLarge() = large("72-chat-hold-to-talk-large", false) { ChatPageSample(voiceMode = true) }
+    @Test fun transcribingLight() = shot("72-chat-transcribing", false) { ChatPageSample(transcribing = true) }
+    @Test fun recordingSendLight() = shot("73-recording-send", false) { ChatPageSample(voiceMode = true, recording = rec()) }
+    @Test fun recordingSendDark() = shot("73-recording-send", true) { ChatPageSample(voiceMode = true, recording = rec()) }
+    @Test fun recordingCancelLight() = shot("73-recording-cancel", false) { ChatPageSample(voiceMode = true, recording = rec(isomeria.aichat.ui.components.RecordZone.CANCEL)) }
+    @Test fun recordingTextDark() = shot("73-recording-to-text", true) { ChatPageSample(voiceMode = true, recording = rec(isomeria.aichat.ui.components.RecordZone.TO_TEXT, elapsed = 52_300)) }
+    @Test fun recordingToggledLight() = shot("73-recording-toggled", false) { ChatPageSample(voiceMode = true, recording = rec(toggled = true)) }
+    @Test fun recordingMicDark() = shot("73-recording-mic", true) { ChatPageSample(recording = rec(toggled = true, mode = isomeria.aichat.ui.components.RecordMode.TO_TEXT)) }
+    @Test fun recordingLarge() = large("73-recording-large", false) { ChatPageSample(voiceMode = true, recording = rec(toggled = true)) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun recordingNarrow() = large("73-recording-narrow", true) { ChatPageSample(voiceMode = true, recording = rec(toggled = true)) }
 }

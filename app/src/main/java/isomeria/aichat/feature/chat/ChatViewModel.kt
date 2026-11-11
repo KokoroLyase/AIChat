@@ -85,6 +85,13 @@ data class ChatUiState(
 sealed interface ChatEvent {
     data object ImageImportFailed : ChatEvent
     data class ScrollToLatest(val messageId: Long) : ChatEvent
+    /** 录音不到 1 秒 */
+    data object VoiceTooShort : ChatEvent
+    /** 麦克风打不开（被占用、没有权限） */
+    data object MicUnavailable : ChatEvent
+    /** 录音转文字的结果，放进输入框 */
+    data class VoiceText(val text: String) : ChatEvent
+    data object VoiceTextFailed : ChatEvent
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -99,6 +106,8 @@ class ChatViewModel @Inject constructor(
     private val formatter: ChatTimeFormatter,
     private val activeChat: ActiveChatTracker,
     @ApplicationScope private val appScope: CoroutineScope,
+    private val recorder: isomeria.aichat.data.voice.VoiceRecorder,
+    private val voices: isomeria.aichat.data.repo.VoiceRepository,
 ) : ViewModel() {
     private val route = savedState.toRoute<ChatRoute>()
     val contactId: Long = route.contactId
@@ -282,8 +291,58 @@ class ChatViewModel @Inject constructor(
         return true
     }
 
+    // ---------- 录音（0.7.0） ----------
+
+    private val voiceRecording = VoiceRecording(
+        recorder = recorder,
+        newVoiceFile = { files.newVoiceFile("wav") },
+        newTempFile = { java.io.File(files.voiceTempDir, "${java.util.UUID.randomUUID()}.wav").also { isomeria.aichat.data.repo.StorageOperations.pin(it) } },
+        discard = { file ->
+            files.delete(file.absolutePath)
+            file.delete()
+            isomeria.aichat.data.repo.StorageOperations.unpin(file)
+        },
+        send = { file, millis -> chats.sendVoice(contactId, file, millis); requestLatest() },
+        transcribe = { bytes -> voices.transcribe(contactId, bytes).text },
+        emit = { events.send(it) },
+        uiScope = viewModelScope,
+        workScope = appScope,
+    )
+
+    /** 正在录音时的状态；没在录时为 null */
+    val recording: StateFlow<isomeria.aichat.ui.components.RecordingUi?> = voiceRecording.state
+
+    /** 录音转文字正在识别 */
+    val transcribing: StateFlow<Boolean> = voiceRecording.transcribing
+
+    /** 语音识别有没有设置好（选了服务商、有 Key）；没有时语音入口提示去设置 */
+    val asrAvailable: StateFlow<Boolean> = voices.observe(isomeria.aichat.data.db.ProviderKind.ASR, settings.voiceSettings)
+        .map { voices.available(isomeria.aichat.data.db.ProviderKind.ASR) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** 正在用的语音识别服务商的名称（第一次录音前的说明里写明录音发给谁） */
+    suspend fun asrName(): String = voices.selected(isomeria.aichat.data.db.ProviderKind.ASR)?.name.orEmpty()
+
+    var voiceIntroShown: Boolean
+        get() = settings.voiceIntroShown
+        set(value) { settings.voiceIntroShown = value }
+
+    var micPermissionAsked: Boolean
+        get() = settings.micPermissionAsked
+        set(value) { settings.micPermissionAsked = value }
+
+    /** 开始录音；麦克风打不开时返回 false。[toggled] 是点一下开始、再点结束的录法 */
+    fun startRecording(mode: isomeria.aichat.ui.components.RecordMode, toggled: Boolean): Boolean = voiceRecording.start(mode, toggled)
+
+    fun setRecordZone(zone: isomeria.aichat.ui.components.RecordZone) = voiceRecording.setZone(zone)
+
+    /** 结束录音：[zone] 是松开时手指的位置（或点的按钮），见 [VoiceRecording.finish] */
+    fun finishRecording(zone: isomeria.aichat.ui.components.RecordZone) = voiceRecording.finish(zone)
+
     override fun onCleared() {
         activeChat.leave(contactId)
+        // 离开聊天页时还在录：丢掉，不发送
+        voiceRecording.abandon()
     }
 }
 

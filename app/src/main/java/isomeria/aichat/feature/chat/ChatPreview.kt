@@ -18,6 +18,7 @@ import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.ui.components.ChatInputBar
+import isomeria.aichat.ui.components.RecordingOverlay
 import isomeria.aichat.ui.components.InputPanel
 import isomeria.aichat.ui.components.TopBarIcon
 import isomeria.aichat.ui.components.WeIcons
@@ -73,6 +74,11 @@ internal fun ChatPageSample(
     input: String = "",
     /** 聊天背景：截图测试传入固定位图 */
     background: androidx.compose.ui.graphics.ImageBitmap? = null,
+    /** 语音（0.7.0）：输入栏是「按住 说话」、正在录音的浮层、录音转文字正在识别 */
+    voiceMode: Boolean = false,
+    recording: isomeria.aichat.ui.components.RecordingUi? = null,
+    transcribing: Boolean = false,
+    rows: List<ChatRow> = sampleRows,
 ) {
     Column(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) {
         WeTopBar(
@@ -95,7 +101,7 @@ internal fun ChatPageSample(
             }
             androidx.compose.runtime.CompositionLocalProvider(LocalChatHasBackground provides (background != null)) {
                 ChatMessageList(
-                    rows = sampleRows,
+                    rows = rows,
                     contact = sampleContact,
                     myName = "我",
                     myAvatarPath = null,
@@ -104,18 +110,19 @@ internal fun ChatPageSample(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            recording?.let { RecordingOverlay(it, 60_000, {}, {}, {}) }
         }
         ChatInputBar(
             value = TextFieldValue(input),
             onValueChange = {},
-            voiceMode = false,
+            voiceMode = voiceMode,
             panel = InputPanel.NONE,
             onToggleVoice = {},
             onTogglePanel = {},
             onSend = {},
             onInputFocused = {},
-            onVoiceComingSoon = {},
             focusRequester = remember { FocusRequester() },
+            voice = isomeria.aichat.ui.components.VoiceInputActions(recording = recording, transcribing = transcribing),
         )
     }
 }

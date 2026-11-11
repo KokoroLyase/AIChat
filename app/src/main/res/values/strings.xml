@@ -22,7 +22,6 @@
     <string name="action_resend">重发</string>
     <string name="action_clear">清空</string>
     <string name="no_app_to_open_link">没有可以打开链接的应用</string>
-    <string name="coming_soon">即将支持</string>
     <string name="default_nickname">我</string>
 
     <!-- 聊天列表 -->
@@ -57,7 +56,6 @@
     <string name="chat_more">更多功能</string>
     <string name="chat_send">发送</string>
     <string name="chat_hold_to_talk">按住 说话</string>
-    <string name="chat_voice_coming">语音聊天即将支持</string>
     <string name="chat_album">相册</string>
     <string name="chat_camera">拍照</string>
     <string name="chat_image_unsupported">当前模型不支持图片，可以到联系人编辑里换成支持图片的模型</string>
@@ -843,4 +841,36 @@
         <item>Milo</item>
         <item>Dean</item>
     </string-array>
+    <!-- 0.7.0 语音消息：录音 -->
+    <string name="voice_release_to_send">松开 发送</string>
+    <string name="voice_release_to_cancel">松开 取消</string>
+    <string name="voice_release_to_text">松开 转文字</string>
+    <string name="voice_a11y_start">开始录音</string>
+    <string name="voice_a11y_send">结束录音并发送</string>
+    <string name="voice_a11y_recording">正在录音</string>
+    <string name="voice_cancel">取消</string>
+    <string name="voice_to_text">转文字</string>
+    <string name="voice_to_text_icon">文</string>
+    <string name="voice_finish">完成</string>
+    <string name="voice_mic_desc">录音转文字</string>
+    <string name="voice_remaining">还可以说 %1$d 秒</string>
+    <string name="voice_seconds">%1$d″</string>
+    <string name="voice_hint_release_send">松开发送，上滑到左边取消、右边转文字</string>
+    <string name="voice_hint_release_cancel">松开手指，取消发送</string>
+    <string name="voice_hint_release_text">松开手指，转成文字</string>
+    <string name="voice_hint_tap_finish">正在录音，点「发送」发出语音，最长 60 秒</string>
+    <string name="voice_hint_tap_finish_text">正在录音，点「完成」转成文字，最长 60 秒</string>
+    <string name="voice_too_short">说话时间太短</string>
+    <string name="voice_mic_unavailable">麦克风暂时不能用，可能被别的 App 占用</string>
+    <string name="voice_transcribing">正在识别…</string>
+    <string name="voice_transcribe_failed">语音识别失败，请稍后再试</string>
+    <string name="voice_asr_setup_title">还没有设置语音识别</string>
+    <string name="voice_asr_setup_message">发送语音和录音转文字，要先在「我 → 语音消息」里设置语音识别服务商并填写 API Key。录音会发给它转成文字。</string>
+    <string name="voice_intro_title">使用语音前请知悉</string>
+    <string name="voice_intro_message">按住说话和录音转文字会录下你的声音，发给你选的语音识别服务商（%1$s）转成文字，识别出的文字再像普通消息一样发给联系人的模型服务商。服务商按自己的规则收费。</string>
+    <string name="voice_intro_confirm">知道了</string>
+    <string name="voice_mic_denied_title">没有麦克风权限</string>
+    <string name="voice_mic_denied_message">按住说话和录音转文字需要麦克风权限，可以在系统设置里为智信打开。</string>
+    <string name="error_asr_failed">语音识别失败，这条语音没有发给联系人。可以重发，再识别一次。</string>
+    <string name="error_asr_unavailable">还没有设置语音识别服务，或它没有 API Key，这条语音没有发给联系人。</string>
 </resources>

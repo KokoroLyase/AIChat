@@ -47,6 +47,8 @@ android {
 
         buildConfigField("String", "GITHUB_REPO", "\"KokoroLyase/AIChat\"")
         buildConfigField("String", "UPDATE_API_BASE", "\"https://api.github.com/\"")
+        // 带测试工具的包（debug、perf）：可以用预置音频代替麦克风（0.7.0）
+        buildConfigField("boolean", "TEST_TOOLS", "false")
     }
 
     signingConfigs {
@@ -64,6 +66,7 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            buildConfigField("boolean", "TEST_TOOLS", "true")
             // 测试应用内更新：-PdebugUpdateApiBase=http://localhost:端口/ 换成本机的假 Release（只影响 debug 包）
             providers.gradleProperty("debugUpdateApiBase").orNull?.let {
                 buildConfigField("String", "UPDATE_API_BASE", "\"$it\"")
@@ -88,6 +91,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += "release"
             buildConfigField("String", "UPDATE_API_BASE", "\"http://localhost:1/\"")
+            buildConfigField("boolean", "TEST_TOOLS", "true")
         }
     }
 

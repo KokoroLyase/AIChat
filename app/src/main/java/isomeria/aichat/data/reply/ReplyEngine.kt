@@ -47,6 +47,8 @@ import javax.inject.Singleton
  * - 被取消（用户取消，或又发了新消息替换了任务）时什么也不写，由发起取消的一方处理状态
  * - 0.6.0：联系人开启主动聊天时，回复里的约定标记不显示，约好的时间记下来，到点由主动聊天处理；
  *   没开启时这一步什么也不做，回复和 0.5.0 一样
+ * - 0.7.0：等待回复的消息里有语音时先识别（[VoicePipeline]），识别失败时这一轮都标为失败、不请求模型；
+ *   没有语音时这一步什么也不做
  */
 @Singleton
 class ReplyEngine @Inject constructor(
@@ -68,12 +70,25 @@ class ReplyEngine @Inject constructor(
     private val delivery: DeliveryEngine,
     private val queue: ReplyQueue,
     private val reminders: ProactiveReminders,
+    private val voice: VoicePipeline? = null,
 ) {
     suspend fun run(contactId: Long) {
+        // 用户发的语音先识别成文字（识别成功后才算进入等待回复）；失败时不请求模型
+        if (voice != null && !transcribe(contactId)) return
         // 上一轮已经生成的先发完：投递任务在发，这里只是等（到点时顺手送达，不会重复）
         delivery.run(contactId)
         waitForQuiet(contactId)
         isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
+    }
+
+    /** 识别这一轮的语音；失败时把等待回复的消息都标为失败（可以点击重试，会重新识别），返回 false */
+    private suspend fun transcribe(contactId: Long): Boolean {
+        val pipeline = voice ?: return true
+        val reason = isomeria.aichat.data.repo.StorageOperations.gate.activity { pipeline.transcribeWaiting(contactId) } ?: return true
+        val waiting = messageDao.sendingIds(contactId)
+        if (waiting.isNotEmpty()) fail(waiting, reason)
+        debugLog("voice transcription failed: $reason")
+        return false
     }
 
     /** 回复偏好的「稍等几秒」：从等待回复的最新一条消息算起；可以取消，不占用存储操作的闸门 */

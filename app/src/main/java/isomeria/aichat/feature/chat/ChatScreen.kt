@@ -85,6 +85,15 @@ import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.ui.components.ChatInputBar
+import isomeria.aichat.ui.components.RecordMode
+import isomeria.aichat.ui.components.RecordZone
+import isomeria.aichat.ui.components.RecordingOverlay
+import isomeria.aichat.ui.components.VoiceInputActions
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
+import androidx.core.content.ContextCompat
 import isomeria.aichat.ui.components.EmojiCatalog
 import isomeria.aichat.ui.components.EmojiGroup
 import isomeria.aichat.ui.components.EmojiPanel
@@ -118,6 +127,8 @@ fun ChatScreen(
     onEditContact: (Long) -> Unit = {},
     /** 打开模型配置；参数是服务商 id 和模型 id */
     onOpenModel: (Long, String) -> Unit = { _, _ -> },
+    /** 打开语音识别服务商的设置（0.7.0） */
+    onOpenVoiceSettings: () -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -142,6 +153,13 @@ fun ChatScreen(
     var failedDialog by remember { mutableStateOf<Message?>(null) }
     var deleteDialog by remember { mutableStateOf<Message?>(null) }
     var pendingCameraUri by rememberSaveable { mutableStateOf<String?>(null) }
+    // 语音（0.7.0）
+    val recording by viewModel.recording.collectAsStateWithLifecycle()
+    val transcribing by viewModel.transcribing.collectAsStateWithLifecycle()
+    val asrAvailable by viewModel.asrAvailable.collectAsStateWithLifecycle()
+    var showAsrSetup by remember { mutableStateOf(false) }
+    var voiceIntroName by remember { mutableStateOf<String?>(null) }
+    var showMicDenied by remember { mutableStateOf(false) }
 
     // 草稿：进入时载入，离开时保存
     LaunchedEffect(Unit) {
@@ -267,11 +285,21 @@ fun ChatScreen(
                 ChatEvent.ImageImportFailed ->
                     Toast.makeText(context, R.string.chat_image_import_failed, Toast.LENGTH_SHORT).show()
                 is ChatEvent.ScrollToLatest -> pendingLatest = event.messageId
+                ChatEvent.VoiceTooShort -> Toast.makeText(context, R.string.voice_too_short, Toast.LENGTH_SHORT).show()
+                ChatEvent.MicUnavailable -> Toast.makeText(context, R.string.voice_mic_unavailable, Toast.LENGTH_SHORT).show()
+                ChatEvent.VoiceTextFailed -> Toast.makeText(context, R.string.voice_transcribe_failed, Toast.LENGTH_SHORT).show()
+                is ChatEvent.VoiceText -> {
+                    // 识别结果放进输入框光标处，用户改完再发
+                    val (text, cursor) = TextEditing.insert(input.text, input.selection.start, input.selection.end, event.text)
+                    input = TextFieldValue(text, TextRange(cursor))
+                    voiceMode = false
+                }
             }
         }
     }
 
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val pickImages = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(9)) { uris ->
         viewModel.sendImages(uris)
     }
@@ -293,6 +321,50 @@ fun ChatScreen(
         }
         return true
     }
+
+    /**
+     * 录音前检查（0.7.0）：没设置语音识别时提示去设置；第一次用时说明录音发给谁；没有麦克风权限时申请，
+     * 拒绝过（系统不再弹窗）时说明并给设置入口。都通过才返回 true
+     */
+    fun beforeRecord(): Boolean {
+        if (!asrAvailable) {
+            showAsrSetup = true
+            return false
+        }
+        if (!viewModel.voiceIntroShown) {
+            scope.launch { voiceIntroName = viewModel.asrName() }
+            return false
+        }
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            val activity = context.findActivity()
+            if (viewModel.micPermissionAsked && activity != null && !activity.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
+                showMicDenied = true
+            } else {
+                viewModel.micPermissionAsked = true
+                micPermission.launch(Manifest.permission.RECORD_AUDIO)
+            }
+            return false
+        }
+        return true
+    }
+
+    val voiceActions = VoiceInputActions(
+        recording = recording,
+        transcribing = transcribing,
+        onPress = { beforeSend() && beforeRecord() && viewModel.startRecording(RecordMode.VOICE_MESSAGE, toggled = false) },
+        onZone = viewModel::setRecordZone,
+        onRelease = viewModel::finishRecording,
+        onToggle = {
+            if (recording == null) {
+                if (beforeSend() && beforeRecord()) viewModel.startRecording(RecordMode.VOICE_MESSAGE, toggled = true)
+            } else {
+                viewModel.finishRecording(RecordZone.SEND)
+            }
+        },
+        onCancel = { viewModel.finishRecording(RecordZone.CANCEL) },
+        onToText = { viewModel.finishRecording(RecordZone.TO_TEXT) },
+        onMic = { if (beforeRecord()) viewModel.startRecording(RecordMode.TO_TEXT, toggled = true) },
+    )
 
     fun closePanels() {
         if (panel != InputPanel.NONE) panel = InputPanel.NONE
@@ -414,6 +486,15 @@ fun ChatScreen(
         if (newMessageCount > 0 && !atBottom && focusDone) {
             NewMessagesButton(newMessageCount, viewModel::goToLatest, Modifier.align(Alignment.BottomEnd))
         }
+        recording?.let { rec ->
+            RecordingOverlay(
+                state = rec,
+                maxMillis = MAX_RECORD_MILLIS,
+                onCancel = voiceActions.onCancel,
+                onToText = voiceActions.onToText,
+                onFinish = { viewModel.finishRecording(RecordZone.SEND) },
+            )
+        }
         }
 
         if (contact != null) {
@@ -448,10 +529,8 @@ fun ChatScreen(
                         panel = InputPanel.NONE
                     }
                 },
-                onVoiceComingSoon = {
-                    Toast.makeText(context, R.string.chat_voice_coming, Toast.LENGTH_SHORT).show()
-                },
                 focusRequester = focusRequester,
+                voice = voiceActions,
             )
             ChatBottomArea(reserve = if (panel != InputPanel.NONE || awaitingKeyboard) panelHeight else null) {
                 when (panel) {
@@ -517,7 +596,7 @@ fun ChatScreen(
 
     failedDialog?.let { message ->
         val reason = FailReason.of(message.errorCode)
-        val needsSettings = reason == FailReason.AUTH || reason == FailReason.NO_API_KEY || reason == FailReason.CONFIGURATION
+        val needsSettings = reason == FailReason.AUTH || reason == FailReason.NO_API_KEY || reason == FailReason.CONFIGURATION || reason == FailReason.ASR_UNAVAILABLE
         // 问题在模型规则时，修正入口是模型配置页，联系人页改不了
         val modelToConfigure by produceState<String?>(null, message.id) {
             value = if (reason == FailReason.CONFIGURATION) viewModel.modelToConfigure() else null
@@ -542,7 +621,50 @@ fun ChatScreen(
                 val model = modelToConfigure
                 if (model != null) state.contact?.let { onOpenModel(it.providerId, model) }
                 else if (reason == FailReason.CONFIGURATION) state.contact?.let { onEditContact(it.id) }
+                else if (reason == FailReason.ASR_UNAVAILABLE) onOpenVoiceSettings()
                 else if (needsSettings) state.contact?.let { onOpenProvider(it.providerId) } else viewModel.retry()
+            },
+        )
+    }
+
+    if (showAsrSetup) {
+        WeDialog(
+            title = stringResource(R.string.voice_asr_setup_title),
+            message = stringResource(R.string.voice_asr_setup_message),
+            confirmText = stringResource(R.string.action_go_settings),
+            onDismiss = { showAsrSetup = false },
+            onConfirm = {
+                showAsrSetup = false
+                onOpenVoiceSettings()
+            },
+        )
+    }
+    voiceIntroName?.let { name ->
+        WeDialog(
+            title = stringResource(R.string.voice_intro_title),
+            message = stringResource(R.string.voice_intro_message, name),
+            confirmText = stringResource(R.string.voice_intro_confirm),
+            onDismiss = { voiceIntroName = null },
+            onConfirm = {
+                voiceIntroName = null
+                viewModel.voiceIntroShown = true
+            },
+        )
+    }
+    if (showMicDenied) {
+        WeDialog(
+            title = stringResource(R.string.voice_mic_denied_title),
+            message = stringResource(R.string.voice_mic_denied_message),
+            confirmText = stringResource(R.string.action_go_settings),
+            onDismiss = { showMicDenied = false },
+            onConfirm = {
+                showMicDenied = false
+                runCatching {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
             },
         )
     }
@@ -684,5 +806,17 @@ fun failReasonText(reason: FailReason): Int = when (reason) {
     FailReason.INTERRUPTED -> R.string.error_interrupted
     FailReason.NO_API_KEY -> R.string.error_no_key
     FailReason.EMPTY_REPLY -> R.string.error_empty_reply
+    FailReason.ASR_FAILED -> R.string.error_asr_failed
+    FailReason.ASR_UNAVAILABLE -> R.string.error_asr_unavailable
     FailReason.UNKNOWN -> R.string.error_unknown
+}
+
+/** Compose 里拿到的 Context 可能包了几层，找到 Activity 才能判断“不再询问” */
+internal fun android.content.Context.findActivity(): android.app.Activity? {
+    var current: android.content.Context? = this
+    while (current is android.content.ContextWrapper) {
+        if (current is android.app.Activity) return current
+        current = current.baseContext
+    }
+    return null
 }
