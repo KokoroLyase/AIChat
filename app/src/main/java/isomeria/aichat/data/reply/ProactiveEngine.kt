@@ -23,6 +23,8 @@ import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.ProactiveReminder
 import isomeria.aichat.data.db.ProactiveState
 import isomeria.aichat.data.db.UsagePurpose
+import isomeria.aichat.core.ProactiveResult
+import isomeria.aichat.core.ProactiveResultLog
 import isomeria.aichat.data.llm.ChatEvent
 import isomeria.aichat.data.llm.LlmError
 import isomeria.aichat.data.llm.LlmException
@@ -126,6 +128,7 @@ class ProactiveEngine @Inject constructor(
     private val reminders: ProactiveReminders,
     private val labels: ProactiveLabels,
     private val zone: Provider<ZoneId>,
+    private val results: ProactiveResultLog = ProactiveResultLog.NONE,
 ) {
     private val contacts get() = db.contactDao()
     private val conversations get() = db.conversationDao()
@@ -157,6 +160,8 @@ class ProactiveEngine @Inject constructor(
             return ProactiveRun()
         }
         val now = clock.now()
+        // 一次检查的时间有限（系统给后台任务约 10 分钟）：过了这个时间不再发起新的请求，剩下的留到下次检查
+        val deadline = now + RUN_BUDGET_MILLIS
         val lastRunAt = proactive.state()?.lastRunAt ?: 0L
         val sinceLastCheck = if (lastRunAt <= 0L) ProactivePolicy.CHECK_INTERVAL_MILLIS else (now - lastRunAt).coerceAtLeast(0)
         val attempts = mutableListOf<Pair<Long, ProactiveAttempt>>()
@@ -170,6 +175,7 @@ class ProactiveEngine @Inject constructor(
             }
             // 同一个联系人一次检查只发一个约定，其余留到下次
             if (!reminded.add(contact.id)) continue
+            if (clock.now() >= deadline) break
             val attempt = attempt(contact, reminder)
             attempts += contact.id to attempt
             // 被挡住的（正在等回复、今天次数用完、没配 Key）留到下次检查，过了宽限期再丢；发起过请求的不论结果都不重试
@@ -180,7 +186,7 @@ class ProactiveEngine @Inject constructor(
             val hour = Instant.ofEpochMilli(now).atZone(zone.get()).hour
             var calls = 0
             for (contact in enabled) {
-                if (calls >= MAX_CALLS_PER_RUN) break
+                if (calls >= MAX_CALLS_PER_RUN || clock.now() >= deadline) break
                 if (contact.id in reminded) continue
                 if (!force) {
                     val idle = now - lastInteraction(contact)
@@ -325,15 +331,18 @@ class ProactiveEngine @Inject constructor(
             }
         } catch (_: TimeoutCancellationException) {
             debugLog("proactive failed: timeout")
+            results.record(contactId, startedAt, ProactiveResult.TIMED_OUT)
             return ProactiveAttempt(ProactiveOutcome.FAILED)
         } catch (e: LlmException) {
             debugLog("proactive failed: ${e.error} http=${e.httpCode}")
+            results.record(contactId, startedAt, ProactiveResult.FAILED)
             return ProactiveAttempt(ProactiveOutcome.FAILED)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             // 不记录异常内容
             debugLog("proactive failed unexpectedly: ${e.javaClass.simpleName}")
+            results.record(contactId, startedAt, ProactiveResult.FAILED)
             return ProactiveAttempt(ProactiveOutcome.FAILED)
         }
 
@@ -344,6 +353,7 @@ class ProactiveEngine @Inject constructor(
         val (text, parsed) = reminders.extract(contact, raw, finishedAt)
         if (ProactivePolicy.isSkip(raw) || text.isBlank()) {
             usage.record(contactId, UsagePurpose.PROACTIVE, usedPrompt, usedCompletion)
+            results.record(contactId, startedAt, ProactiveResult.SKIPPED)
             return ProactiveAttempt(ProactiveOutcome.SKIPPED)
         }
         val rows = ReplyComposer.rows(
@@ -375,7 +385,11 @@ class ProactiveEngine @Inject constructor(
                 true
             }
         }
-        if (!sent) return ProactiveAttempt(ProactiveOutcome.DISCARDED)
+        if (!sent) {
+            results.record(contactId, startedAt, ProactiveResult.DISCARDED)
+            return ProactiveAttempt(ProactiveOutcome.DISCARDED)
+        }
+        results.record(contactId, startedAt, ProactiveResult.SENT)
         // 预览、未读、通知和记忆都在送达时处理
         queue.enqueueDelivery(contactId)
         return ProactiveAttempt(ProactiveOutcome.SENT)
@@ -416,7 +430,12 @@ class ProactiveEngine @Inject constructor(
         /** 一次检查最多为几个联系人调用模型：周期任务的运行时间有限，也避免一醒来就连发 */
         const val MAX_CALLS_PER_RUN = 3
 
-        /** 后台任务随时可能被系统冻结或停止，不等太久；超时算失败，不重试 */
-        const val REQUEST_TIMEOUT_MILLIS = 90_000L
+        /**
+         * 带思考的模型一次回复常常要一分多钟（真机实测 90 秒不够，两次主动请求都超时），所以等到 4 分钟；
+         * 超时算失败，不重试。系统给后台任务约 10 分钟：一次检查里过了 [RUN_BUDGET_MILLIS] 就不再发起新请求，
+         * 最坏情况是两个请求各等满 4 分钟
+         */
+        const val REQUEST_TIMEOUT_MILLIS = 240_000L
+        const val RUN_BUDGET_MILLIS = 240_000L
     }
 }

@@ -306,6 +306,16 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
 
     val reminders = ProactiveReminders(db, control, { zone }, proactiveLabels)
 
+    /** 每个联系人最近一次主动请求的结果（真实实现存在 MMKV 里） */
+    val results = mutableMapOf<Long, Pair<Long, isomeria.aichat.core.ProactiveResult>>()
+    private val resultLog = object : isomeria.aichat.core.ProactiveResultLog {
+        override fun record(contactId: Long, at: Long, result: isomeria.aichat.core.ProactiveResult) {
+            results[contactId] = at to result
+        }
+
+        override fun last(contactId: Long) = results[contactId]
+    }
+
     val proactive by lazy {
         ProactiveEngine(
             db = db,
@@ -324,6 +334,7 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             reminders = reminders,
             labels = proactiveLabels,
             zone = { zone },
+            results = resultLog,
         )
     }
 

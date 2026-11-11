@@ -208,6 +208,8 @@ abstract class BindingsModule {
 
     @Binds abstract fun proactiveSettingsSource(impl: SettingsStore): isomeria.aichat.core.ProactiveSettingsSource
 
+    @Binds abstract fun proactiveResultLog(impl: SettingsStore): isomeria.aichat.core.ProactiveResultLog
+
     @Binds abstract fun replyControl(impl: ReplyScheduler): ReplyControl
 
     @Binds abstract fun proactiveControl(impl: isomeria.aichat.data.reply.ProactiveScheduler): isomeria.aichat.data.reply.ProactiveControl

@@ -60,7 +60,7 @@ class ProactiveUiTest {
 
     private val contacts = listOf(
         ProactiveContactStatus(1, "小雨", ProactiveFrequency.MEDIUM, null, "今天 12:05", "明天 07:00"),
-        ProactiveContactStatus(2, "阿哲", ProactiveFrequency.HIGH, ProactiveBlock.PAUSED, "昨天 21:40"),
+        ProactiveContactStatus(2, "阿哲", ProactiveFrequency.HIGH, ProactiveBlock.PAUSED, "昨天 21:40", lastResult = isomeria.aichat.core.ProactiveResult.TIMED_OUT),
         ProactiveContactStatus(3, "小满", ProactiveFrequency.LOW, ProactiveBlock.NO_KEY),
     )
 
@@ -83,7 +83,7 @@ class ProactiveUiTest {
         // 读屏读到的就是状态小字
         val root = compose.onNodeWithText("阿哲")
         root.assertExists()
-        compose.onNodeWithText("频繁 · 已暂停：连续 2 次没有回复，你发消息后恢复\n上次主动请求：昨天 21:40").assertExists()
+        compose.onNodeWithText("频繁 · 已暂停：连续 2 次没有回复，你发消息后恢复\n上次主动请求：昨天 21:40（模型 4 分钟内没有答完，已放弃）").assertExists()
         compose.onNodeWithText("适中 · 正常\n上次主动请求：今天 12:05\n约好的提醒：明天 07:00").assertExists()
         compose.onNodeWithText("偶尔 · 无法运行：没有可用的 API Key").assertExists()
     }

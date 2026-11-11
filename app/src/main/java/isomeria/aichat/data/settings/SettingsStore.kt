@@ -30,7 +30,7 @@ enum class FontSize(val scale: Float) {
  */
 @Singleton
 class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
-    UpdatePrefs, NicknameSource, ReplyPreferencesSource, ProactiveSettingsSource {
+    UpdatePrefs, NicknameSource, ReplyPreferencesSource, ProactiveSettingsSource, isomeria.aichat.core.ProactiveResultLog {
     private val mmkv: MMKV
 
     init {
@@ -114,6 +114,17 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
     }
 
     /** 第一次开启主动聊天时的说明（会自动消耗 API 额度）是否已经看过；和设备有关，不随备份 */
+    override fun record(contactId: Long, at: Long, result: isomeria.aichat.core.ProactiveResult) {
+        mmkv.encode(KEY_PROACTIVE_RESULT + contactId, "$at:${result.name}")
+    }
+
+    override fun last(contactId: Long): Pair<Long, isomeria.aichat.core.ProactiveResult>? {
+        val raw = mmkv.decodeString(KEY_PROACTIVE_RESULT + contactId) ?: return null
+        val at = raw.substringBefore(':').toLongOrNull() ?: return null
+        val result = isomeria.aichat.core.ProactiveResult.entries.firstOrNull { it.name == raw.substringAfter(':') } ?: return null
+        return at to result
+    }
+
     var proactiveIntroShown: Boolean
         get() = mmkv.decodeBool(KEY_PROACTIVE_INTRO, false)
         set(value) {
@@ -221,5 +232,6 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
         const val KEY_PROACTIVE_QUIET_END = "proactive_quiet_end"
         const val KEY_PROACTIVE_LIMIT = "proactive_daily_limit"
         const val KEY_PROACTIVE_INTRO = "proactive_intro_shown"
+        const val KEY_PROACTIVE_RESULT = "proactive_result_"
     }
 }

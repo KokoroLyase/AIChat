@@ -744,8 +744,8 @@ class ScreenshotTest {
     // ---------- 0.6.0 主动聊天 ----------
 
     private val proactiveContacts = listOf(
-        isomeria.aichat.feature.proactive.ProactiveContactStatus(1, "小雨", ProactiveFrequency.MEDIUM, null, "今天 12:05", "明天 07:00"),
-        isomeria.aichat.feature.proactive.ProactiveContactStatus(2, "阿哲", ProactiveFrequency.HIGH, isomeria.aichat.core.ProactiveBlock.PAUSED, "昨天 21:40"),
+        isomeria.aichat.feature.proactive.ProactiveContactStatus(1, "小雨", ProactiveFrequency.MEDIUM, null, "今天 12:05", "明天 07:00", isomeria.aichat.core.ProactiveResult.SENT),
+        isomeria.aichat.feature.proactive.ProactiveContactStatus(2, "阿哲", ProactiveFrequency.HIGH, isomeria.aichat.core.ProactiveBlock.PAUSED, "昨天 21:40", lastResult = isomeria.aichat.core.ProactiveResult.TIMED_OUT),
         isomeria.aichat.feature.proactive.ProactiveContactStatus(3, "名字特别特别长的一位联系人朋友", ProactiveFrequency.LOW, isomeria.aichat.core.ProactiveBlock.NO_KEY),
     )
     private val proactiveState = isomeria.aichat.feature.proactive.ProactiveScreenState(

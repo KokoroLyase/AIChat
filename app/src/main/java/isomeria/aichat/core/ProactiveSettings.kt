@@ -39,6 +39,27 @@ data class ProactiveSettings(
     }
 }
 
+/** 一次主动请求的结果，显示在「我 → 主动聊天」里，说明为什么没有消息。 */
+enum class ProactiveResult { SENT, SKIPPED, FAILED, TIMED_OUT, DISCARDED }
+
+/**
+ * 每个联系人最近一次主动请求的结果。只属于这台手机，不随备份；按请求开始的时间和
+ * 会话上的 lastProactiveAt 对上才显示，所以恢复数据或清空聊天后不会显示旧结果。
+ */
+interface ProactiveResultLog {
+    fun record(contactId: Long, at: Long, result: ProactiveResult)
+
+    /** 请求开始的时间和结果；没有记录时为 null */
+    fun last(contactId: Long): Pair<Long, ProactiveResult>?
+
+    companion object {
+        val NONE = object : ProactiveResultLog {
+            override fun record(contactId: Long, at: Long, result: ProactiveResult) = Unit
+            override fun last(contactId: Long): Pair<Long, ProactiveResult>? = null
+        }
+    }
+}
+
 /** 读取当前的主动聊天设置。单元测试里换成固定值（MMKV 需要原生库）。 */
 fun interface ProactiveSettingsSource {
     fun proactiveSettings(): ProactiveSettings

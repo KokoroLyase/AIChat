@@ -676,6 +676,12 @@
     <string name="proactive_contacts_hint" tools:ignore="PluralsCandidate">连续 %1$d 次主动找你都没有得到回复，这个联系人会暂停，你再发消息后恢复。</string>
     <string name="proactive_contact_line">%1$s · %2$s</string>
     <string name="proactive_contact_last">上次主动请求：%1$s</string>
+    <string name="proactive_contact_last_result">上次主动请求：%1$s（%2$s）</string>
+    <string name="proactive_result_sent">已发出消息</string>
+    <string name="proactive_result_skipped">模型决定不发</string>
+    <string name="proactive_result_failed">请求失败</string>
+    <string name="proactive_result_timed_out">模型 4 分钟内没有答完，已放弃</string>
+    <string name="proactive_result_discarded">你先发了消息，这次作废</string>
     <string name="proactive_contact_reminder">约好的提醒：%1$s</string>
     <string name="proactive_state_ok">正常</string>
     <string name="proactive_state_quiet">现在是免打扰时段</string>

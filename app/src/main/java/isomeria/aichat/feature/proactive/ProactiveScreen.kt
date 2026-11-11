@@ -74,6 +74,8 @@ data class ProactiveContactStatus(
     val lastAttempt: String? = null,
     /** 最近的一个约定提醒，已排好版 */
     val nextReminder: String? = null,
+    /** [lastAttempt] 那一次请求的结果；没有记录时为 null */
+    val lastResult: isomeria.aichat.core.ProactiveResult? = null,
 )
 
 data class ProactiveScreenState(
@@ -125,12 +127,14 @@ class ProactiveViewModel @Inject constructor(
             scheduled = scheduled,
             canNotify = notify && notifier.canNotify(),
             contacts = contacts.map { contact ->
+                val lastAt = db.conversationDao().get(contact.id)?.lastProactiveAt?.takeIf { it > 0 }
                 ProactiveContactStatus(
                     id = contact.id,
                     name = contact.name,
                     frequency = contact.proactiveFrequency,
                     block = engine.blockNow(contact),
-                    lastAttempt = db.conversationDao().get(contact.id)?.lastProactiveAt?.takeIf { it > 0 }?.let { formatter.forChat(it, now) },
+                    lastAttempt = lastAt?.let { formatter.forChat(it, now) },
+                    lastResult = settings.last(contact.id)?.takeIf { it.first == lastAt }?.second,
                     nextReminder = reminders.firstOrNull { it.contactId == contact.id }?.let { formatter.forChat(it.dueAt, now) },
                 )
             },
@@ -313,7 +317,18 @@ private fun blockLabel(block: ProactiveBlock?): String = when (block) {
 @Composable
 private fun contactDetail(contact: ProactiveContactStatus): String {
     val lines = mutableListOf(stringResource(R.string.proactive_contact_line, frequencyLabel(contact.frequency), blockLabel(contact.block)))
-    contact.lastAttempt?.let { lines += stringResource(R.string.proactive_contact_last, it) }
+    contact.lastAttempt?.let { at ->
+        val result = when (contact.lastResult) {
+            isomeria.aichat.core.ProactiveResult.SENT -> R.string.proactive_result_sent
+            isomeria.aichat.core.ProactiveResult.SKIPPED -> R.string.proactive_result_skipped
+            isomeria.aichat.core.ProactiveResult.FAILED -> R.string.proactive_result_failed
+            isomeria.aichat.core.ProactiveResult.TIMED_OUT -> R.string.proactive_result_timed_out
+            isomeria.aichat.core.ProactiveResult.DISCARDED -> R.string.proactive_result_discarded
+            null -> null
+        }
+        lines += if (result == null) stringResource(R.string.proactive_contact_last, at)
+        else stringResource(R.string.proactive_contact_last_result, at, stringResource(result))
+    }
     contact.nextReminder?.let { lines += stringResource(R.string.proactive_contact_reminder, it) }
     return lines.joinToString("\n")
 }

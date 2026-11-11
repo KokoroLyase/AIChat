@@ -27,6 +27,7 @@ import isomeria.aichat.data.llm.LlmException
 import isomeria.aichat.data.repo.ChatMessageActions
 import isomeria.aichat.data.repo.ChatPaging
 import isomeria.aichat.data.repo.ChatRepository
+import isomeria.aichat.core.ProactiveResult
 import isomeria.aichat.data.repo.FileStorage
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -245,6 +246,70 @@ class ProactiveEngineTest {
         assertTrue(rows().none { it.status == MessageStatus.FAILED })
     }
 
+    @Test
+    fun aRequestThatTimesOut_countsAsAFailure_andIsRecordedAsATimeout() = runBlocking {
+        // 服务商一直不答：和真实请求一样在流里抛出超时
+        h.provider.beforeReply = { kotlinx.coroutines.withTimeout(1) { kotlinx.coroutines.delay(60_000) } }
+        assertEquals(ProactiveAttempt(ProactiveOutcome.FAILED), force())
+        assertEquals(1, requests.size)
+        assertEquals(1, used())
+        assertTrue(proactiveRows().isEmpty())
+        assertEquals(start to ProactiveResult.TIMED_OUT, h.results[id])
+    }
+
+    @Test
+    fun everyRequest_recordsItsResult_forTheStatusPage() = runBlocking {
+        assertNull(h.results[id])
+        assertEquals(ProactiveOutcome.SENT, force()!!.outcome)
+        assertEquals(start to ProactiveResult.SENT, h.results[id])
+        assertEquals("结果按请求开始的时间和会话对上", start, conversation().lastProactiveAt)
+
+        deliver()
+        h.now += hour
+        h.provider.reply = "[SKIP]"
+        assertEquals(ProactiveOutcome.SKIPPED, force()!!.outcome)
+        assertEquals(h.now to ProactiveResult.SKIPPED, h.results[id])
+
+        h.now += hour
+        h.provider.failure = LlmException(LlmError.SERVER, 500)
+        assertEquals(ProactiveOutcome.FAILED, force()!!.outcome)
+        assertEquals(h.now to ProactiveResult.FAILED, h.results[id])
+
+        // 请求期间用户发了消息：作废
+        h.now += hour
+        h.provider.failure = null
+        h.provider.reply = "在吗"
+        h.provider.beforeReply = { db.messageDao().insert(text(Role.USER, "我先说", h.now + 1)) }
+        assertEquals(ProactiveOutcome.DISCARDED, force()!!.outcome)
+        val discardedAt = h.now
+        assertEquals(discardedAt to ProactiveResult.DISCARDED, h.results[id])
+        assertEquals(discardedAt, conversation().lastProactiveAt)
+
+        // 被挡住的不发请求，也不改上一次的结果
+        h.provider.beforeReply = null
+        h.proactiveSettings = h.proactiveSettings.copy(dailyLimit = 4)
+        assertEquals(ProactiveOutcome.BLOCKED, force()!!.outcome)
+        assertEquals(discardedAt to ProactiveResult.DISCARDED, h.results[id])
+    }
+
+    @Test
+    fun aSlowRequest_usesUpTheRunBudget_soTheNextContactWaitsForTheNextCheck() = runBlocking {
+        db.contactDao().insert(
+            Contact(id = 2, name = "阿青", avatarColor = 0, providerId = 1, model = "m", proactiveEnabled = true, createdAt = 2, updatedAt = start - 10 * hour),
+        )
+        // 第一个请求用了 4 分钟多（带思考的模型）
+        h.provider.beforeReply = { h.now += 250_000 }
+        val run = h.proactive.run(force = true)
+        assertEquals("只为一个联系人发了请求", 1, requests.size)
+        assertEquals(1, run.attempts.size)
+        assertEquals(1, used())
+        // 下一次检查轮到另一个
+        h.provider.beforeReply = null
+        h.now += 15 * 60_000
+        val next = h.proactive.run(force = true)
+        assertTrue(next.attempts.any { it.second.outcome == ProactiveOutcome.SENT })
+    }
+
     // ---------- 不调用模型就跳过 ----------
 
     @Test
@@ -442,14 +507,17 @@ class ProactiveEngineTest {
 
     @Test
     fun ordinaryReply_withMarker_hidesItAndRecordsTheTime_onlyWhenProactiveIsOn() = runBlocking {
-        h.now = at(10, 22)
-        chat.sendText(id, "明早7点叫我")
-        h.provider.reply = "好的\n[提醒 2026-11-11 07:00 叫他起床]"
+        // sendText 用真实时间记用户消息，「等你说完再回」会把假时钟推到真实时间之后：
+        // 约定的时间按真实日期往后取，测试才不会在某一天之后开始失败
+        h.now = System.currentTimeMillis()
+        val due = java.time.LocalDate.now(zone).plusDays(2).atTime(7, 0)
+        chat.sendText(id, "后天早上7点叫我")
+        h.provider.reply = "好的\n[提醒 $due 叫他起床]".replace('T', ' ')
         h.engine.run(id)
         assertEquals(listOf("好的"), rows().filter { it.status == MessageStatus.PENDING }.map { it.content })
-        assertTrue(rows().none { "提醒 2026" in it.content })
+        assertTrue(rows().none { "提醒 20" in it.content })
         val reminder = db.proactiveDao().remindersOf(id).single()
-        assertEquals(at(11, 7), reminder.dueAt)
+        assertEquals(due.atZone(zone).toInstant().toEpochMilli(), reminder.dueAt)
         assertEquals("叫他起床", reminder.note)
         assertEquals("记下约定后重新排任务", 1, h.control.syncs)
         assertTrue(requests.last().messages.first().plainText().contains(ReplyHarness.REMINDER_HINT))
