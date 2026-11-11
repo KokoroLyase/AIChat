@@ -157,13 +157,24 @@ class ChatRepository @Inject constructor(
 
     /** 重新生成：删除最后一次回复（分条的几条一起删），重新请求 */
     suspend fun regenerate(contactId: Long) {
-        if (messageActions.regenerate(contactId) { refreshLastMessage(contactId) }) replyScheduler.enqueue(contactId)
+        val removed = mutableListOf<String>()
+        val ok = messageActions.regenerate(contactId, removed) { refreshLastMessage(contactId) }
+        removed.forEach(files::delete)
+        if (ok) replyScheduler.enqueue(contactId)
     }
 
-    /** 取消回复：丢弃未完成的内容，等待中的消息标记失败。已经生成、等着投递的回复照常送达 */
+    /**
+     * 取消回复：丢弃未完成的内容，等待中的消息标记失败。已经生成、等着投递的回复照常送达；
+     * 还在合成的语音回复不再合成，改成文字送达（0.7.0）
+     */
     suspend fun cancelReply(contactId: Long) {
         replyScheduler.cancel(contactId)
         messageDao.failSending(contactId, FailReason.CANCELLED.code)
+        val held = messageDao.awaitingSynthesis(contactId)
+        if (held.isNotEmpty()) {
+            messageDao.degradeToText(held.map { it.id })
+            replyScheduler.enqueueDelivery(contactId)
+        }
     }
 
     suspend fun deleteMessage(id: Long) {

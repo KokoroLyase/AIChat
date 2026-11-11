@@ -17,13 +17,17 @@ import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderKind
 import isomeria.aichat.data.db.ProviderModel
 import isomeria.aichat.data.db.ProviderProtocol
+import isomeria.aichat.data.db.MessageOrigin
+import isomeria.aichat.data.db.ReplyType
 import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.db.UsagePurpose
 import isomeria.aichat.data.llm.ChatRole
 import isomeria.aichat.data.llm.LlmEndpoint
 import isomeria.aichat.data.llm.LlmError
 import isomeria.aichat.data.llm.LlmException
+import isomeria.aichat.data.llm.OpenAiRequestBuilder
 import isomeria.aichat.data.repo.ChatMessageActions
+import isomeria.aichat.data.repo.ChatRepository
 import isomeria.aichat.data.repo.FailReason
 import isomeria.aichat.data.repo.FileStorage
 import isomeria.aichat.data.repo.GlobalMemoryRepository
@@ -132,6 +136,7 @@ class VoiceReplyTest {
             preferences = { h.preferences }, random = h.random, sleeper = h.sleeper, delivery = h.delivery, queue = h.queue,
             reminders = h.reminders, voice = pipeline,
         )
+        h.voice = pipeline
         h.provider.reply = "好的\n\n马上来"
     }
 
@@ -221,5 +226,220 @@ class VoiceReplyTest {
         assertTrue(api.asr.isEmpty())
         assertTrue("跟随模式、发的是文字：回文字，不合成", api.tts.isEmpty())
         assertTrue(replies().all { it.type == MessageType.TEXT })
+    }
+
+    // ---------- 回文字还是语音 ----------
+
+    private val longReply = listOf("今天加班到很晚，回来路上又下起了大雨", "伞还忘在公司了，只好一路跑回家", "整个人都淋透了，现在刚洗完澡出来", "你吃饭了没有呀，要不要一起点外卖").joinToString("\n")
+
+    private suspend fun setContact(transform: (Contact) -> Contact) = db.contactDao().update(transform(db.contactDao().get(contactId)!!))
+
+    @Test
+    fun followMode_voiceIn_voiceOut_synthesizedThenDelivered() = runBlocking {
+        sendVoice()
+        engine.run(contactId)
+        assertEquals("模型只请求一次", 1, h.provider.requests.size)
+        replies().single().let {
+            assertEquals(MessageType.VOICE, it.type)
+            assertEquals("好的\n马上来", it.content)
+            assertTrue(File(it.voicePath!!).isFile)
+            assertEquals(2_000L, it.voiceMillis)
+            assertFalse("对方的语音默认未听", it.voicePlayed)
+        }
+        assertEquals(listOf("好的\n马上来"), api.tts.map { it.text })
+        assertEquals("mimo_default", api.tts.single().voice)
+        assertTrue(contactId in h.queue.deliveries)
+        h.delivery.run(contactId)
+        assertEquals(MessageStatus.SUCCESS, replies().single().status)
+        assertEquals("[VOICE]", db.conversationDao().get(contactId)!!.lastMessagePreview)
+        db.usageDao().listAll().single { it.purpose == UsagePurpose.TTS }.let {
+            assertEquals("合成按字数记", 6, it.promptTokens)
+            assertEquals("和秒数", 2, it.completionTokens)
+        }
+    }
+
+    @Test
+    fun followMode_lastWaitingDecides() = runBlocking {
+        sendVoice(at = start - 6_000)
+        sendText("最后一条是文字")
+        engine.run(contactId)
+        assertTrue("跟随看最后一条：文字", replies().all { it.type == MessageType.TEXT })
+        assertTrue(api.tts.isEmpty())
+    }
+
+    @Test
+    fun voiceMode_textIn_voiceOut_contactTextOverridesGlobal() = runBlocking {
+        settings.value = settings.value.copy(replyType = ReplyType.VOICE)
+        sendText("在吗")
+        engine.run(contactId)
+        assertEquals(MessageType.VOICE, replies().single().type)
+
+        setContact { it.copy(replyType = ReplyType.TEXT) }
+        sendText("再来", at = h.now + 1)
+        engine.run(contactId)
+        assertEquals(MessageType.TEXT, replies().maxBy { it.createdAt }.type)
+        assertEquals("联系人设为文字后不再合成", 1, api.tts.size)
+    }
+
+    @Test
+    fun contactVoiceAndStyle_overrideProviderVoice() = runBlocking {
+        setContact { it.copy(replyType = ReplyType.VOICE, ttsVoice = "default_zh", ttsStyle = "温柔一点") }
+        sendText("在吗")
+        engine.run(contactId)
+        assertEquals("default_zh", api.tts.single().voice)
+        assertEquals("温柔一点", api.tts.single().style)
+    }
+
+    @Test
+    fun noTtsAvailable_voiceModeFallsBackToText_noTtsRequest() = runBlocking {
+        settings.value = settings.value.copy(replyType = ReplyType.VOICE, ttsSource = "")
+        sendVoice()
+        engine.run(contactId)
+        assertTrue(replies().all { it.type == MessageType.TEXT })
+        assertTrue(api.tts.isEmpty())
+    }
+
+    @Test
+    fun longReply_twoVoices_partialFailure_degradesThatOne_keepsOrder_noSecondModelRequest() = runBlocking {
+        h.provider.reply = longReply
+        api.ttsFailOn = setOf(2)
+        sendVoice()
+        engine.run(contactId)
+        val rows = replies().sortedWith(compareBy({ it.createdAt }, { it.id }))
+        assertEquals(listOf(MessageType.VOICE, MessageType.TEXT), rows.map { it.type })
+        assertTrue("失败的那条排在第一条之后", rows[1].createdAt > rows[0].createdAt)
+        assertEquals(longReply.replace("\n", ""), rows.joinToString("") { it.content }.replace("\n", ""))
+        assertEquals(2, api.tts.size)
+        assertEquals(1, h.provider.requests.size)
+        assertEquals("只留下合成成功的那个文件", 1, File(context.filesDir, "voice").listFiles()!!.count { it.extension == "mp3" })
+    }
+
+    @Test
+    fun threeVoices_lastFails_staysLast() = runBlocking {
+        val sentence = "这是一句比较长的话，用来测试语音回复分成好几段的情况。"
+        h.provider.reply = List(24) { sentence }.joinToString("")
+        api.ttsFailOn = setOf(3)
+        // 合成要花时间：每次请求时钟往前走 3 秒
+        val slow = object : VoiceService by api {
+            override suspend fun synthesize(protocol: String, endpoint: LlmEndpoint, request: TtsRequest): TtsAudio {
+                h.now += 3_000
+                return api.synthesize(protocol, endpoint, request)
+            }
+        }
+        val voices = VoiceRepository(db, cipher, settings, slow, UsageRepository(db.usageDao()))
+        val slowPipeline = VoicePipeline(db, voices, codec, FileStorage(context), settings, { h.preferences }, Clock { h.now }, h.random)
+        settings.value = settings.value.copy(replyType = ReplyType.VOICE)
+        sendText("讲个长的")
+        engineWith(slowPipeline).run(contactId)
+        val rows = replies().sortedWith(compareBy({ it.createdAt }, { it.id }))
+        assertEquals(listOf(MessageType.VOICE, MessageType.VOICE, MessageType.TEXT), rows.map { it.type })
+        assertEquals(h.provider.reply, rows.joinToString("") { it.content }.replace("\n", ""))
+    }
+
+    private fun engineWith(pipeline: VoicePipeline) = ReplyEngine(
+        db = db, contactDao = db.contactDao(), messageDao = db.messageDao(), conversationDao = db.conversationDao(), memoryDao = db.memoryDao(),
+        providers = h.providers, usage = UsageRepository(db.usageDao()), nicknames = { h.nickname }, files = FileStorage(context),
+        contextBuilder = h.contextBuilder, clock = Clock { h.now }, promptGlobals = GlobalMemoryRepository(db, { h.preferences }, Clock { h.now }),
+        preferences = { h.preferences }, random = h.random, sleeper = h.sleeper, delivery = h.delivery, queue = h.queue,
+        reminders = h.reminders, voice = pipeline,
+    )
+
+    @Test
+    fun allSynthesisFails_reSplitsAsTextByReplyPreferences_noSecondModelRequest_notRetried() = runBlocking {
+        setContact { it.copy(useReplyPreferences = true) }
+        h.provider.reply = longReply
+        api.ttsFailOn = setOf(1, 2)
+        sendVoice()
+        engine.run(contactId)
+        val rows = replies().sortedWith(compareBy({ it.createdAt }, { it.id }))
+        assertTrue(rows.all { it.type == MessageType.TEXT && it.voicePath == null })
+        assertEquals("按回复偏好重新拆成一行一条", longReply.split("\n"), rows.map { it.content })
+        assertEquals(1, h.provider.requests.size)
+        assertTrue(db.messageDao().awaitingSynthesis(contactId).isEmpty())
+        // 再跑一次回复任务：不会再合成
+        engine.run(contactId)
+        assertEquals(2, api.tts.size)
+    }
+
+    @Test
+    fun interruptedSynthesis_isResumedByTheNextRun_withoutModelRequest() = runBlocking {
+        db.messageDao().insertAll(pipeline.heldRows(db.contactDao().get(contactId)!!, "刚才没说完的", "", 0, 0, start, 0, start))
+        assertTrue("等合成的不送达", db.messageDao().duePending(contactId, Long.MAX_VALUE).isEmpty())
+        engine.run(contactId)
+        assertTrue(h.provider.requests.isEmpty())
+        assertEquals(1, api.tts.size)
+        assertEquals(MessageStatus.SUCCESS, replies().single().status)
+        assertTrue(File(replies().single().voicePath!!).isFile)
+    }
+
+    @Test
+    fun voicePipelinePresent_butReplyTypeOnly_requestIsIdenticalTo060() = runBlocking {
+        sendText("在吗")
+        val withoutVoice = OpenAiRequestBuilder.build(h.runAndRewind(contactId)).toString()
+        settings.value = settings.value.copy(replyType = ReplyType.VOICE)
+        engine.run(contactId)
+        val withVoice = OpenAiRequestBuilder.build(h.provider.requests.last()).toString()
+        assertEquals("语音模式只改变回复的形式，请求逐字不变", withoutVoice, withVoice)
+        assertEquals(MessageType.VOICE, replies().single().type)
+    }
+
+    // ---------- 主动消息 ----------
+
+    private suspend fun proactiveReady() {
+        setContact { it.copy(proactiveEnabled = true, updatedAt = start - 10 * 3_600_000L) }
+        db.conversationDao().upsert(Conversation(contactId = contactId, lastMessageTime = start - 5 * 3_600_000L))
+        db.messageDao().insert(Message(contactId = contactId, role = Role.USER, type = MessageType.TEXT, content = "在吗", status = MessageStatus.SUCCESS, createdAt = start - 5 * 3_600_000L))
+        h.provider.reply = "在忙吗"
+    }
+
+    @Test
+    fun proactive_voiceModeSendsVoice() = runBlocking {
+        proactiveReady()
+        settings.value = settings.value.copy(replyType = ReplyType.VOICE)
+        h.proactive.run(force = true)
+        val sent = replies().filter { it.origin == MessageOrigin.PROACTIVE }
+        assertEquals(MessageType.VOICE, sent.single().type)
+        assertTrue(File(sent.single().voicePath!!).isFile)
+    }
+
+    @Test
+    fun proactive_followModeSendsText() = runBlocking {
+        proactiveReady()
+        h.proactive.run(force = true)
+        val sent = replies().filter { it.origin == MessageOrigin.PROACTIVE }
+        assertEquals(MessageType.TEXT, sent.single().type)
+        assertTrue(api.tts.isEmpty())
+    }
+
+    // ---------- 重新生成和取消 ----------
+
+    private fun chat() = ChatRepository(context, db, db.contactDao(), db.conversationDao(), db.messageDao(), FileStorage(context), h.queue, h.notifications)
+
+    @Test
+    fun regenerate_deletesTheVoiceFilesOfTheOldReply() = runBlocking {
+        h.provider.reply = longReply
+        sendVoice()
+        engine.run(contactId)
+        h.delivery.run(contactId)
+        val files = replies().map { File(it.voicePath!!) }
+        assertEquals(2, files.size)
+        assertTrue(files.all { it.isFile })
+        chat().regenerate(contactId)
+        assertTrue(replies().isEmpty())
+        assertTrue("旧回复的语音文件删掉了", files.none { it.exists() })
+        assertTrue(contactId in h.queue.enqueued)
+    }
+
+    @Test
+    fun cancelReply_whileSynthesizing_deliversAsText() = runBlocking {
+        db.messageDao().insertAll(pipeline.heldRows(db.contactDao().get(contactId)!!, "还没合成", "", 0, 0, start, 0, start))
+        chat().cancelReply(contactId)
+        assertEquals(MessageType.TEXT, replies().single().type)
+        assertTrue(contactId in h.queue.deliveries)
+        // 已经取消：还在路上的合成结果回来后不会再填进这条（还没送达时也一样）
+        assertEquals(0, db.messageDao().finishSynthesis(replies().single().id, "x", 1, start))
+        assertEquals(null, replies().single().voicePath)
+        h.delivery.run(contactId)
+        assertEquals(MessageStatus.SUCCESS, replies().single().status)
     }
 }

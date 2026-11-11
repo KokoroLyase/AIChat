@@ -216,8 +216,12 @@ interface MessageDao {
     suspend fun awaitingSynthesis(contactId: Long): List<Message>
 
     /** 合成好了：填上语音文件和时长，按 [time] 排进投递 */
-    @Query("UPDATE message SET voicePath = :path, voiceMillis = :millis, createdAt = :time WHERE id = :id AND status = 'PENDING'")
+    @Query("UPDATE message SET voicePath = :path, voiceMillis = :millis, createdAt = :time WHERE id = :id AND status = 'PENDING' AND type = 'VOICE' AND voicePath IS NULL")
     suspend fun finishSynthesis(id: Long, path: String, millis: Long, time: Long): Int
+
+    /** 这一条合成失败：改成文字消息，按 [time] 排进投递（保持和前后几条语音的顺序） */
+    @Query("UPDATE message SET type = 'TEXT', voicePath = NULL, voiceMillis = 0, createdAt = :time WHERE id = :id AND status = 'PENDING' AND type = 'VOICE' AND voicePath IS NULL")
+    suspend fun degradeAt(id: Long, time: Long)
 
     /** 合成失败或被中断：这条语音回复改成文字消息，照常投递 */
     @Query("UPDATE message SET type = 'TEXT', voicePath = NULL, voiceMillis = 0 WHERE id IN (:ids) AND status = 'PENDING'")
@@ -294,6 +298,10 @@ interface MessageDao {
     @Query("DELETE FROM message WHERE contactId = :contactId AND replyGroup = :group")
     suspend fun deleteReplyGroup(contactId: Long, group: String)
 
+    /** 同一次回复里几条的语音文件（重新生成时一起删） */
+    @Query("SELECT voicePath FROM message WHERE contactId = :contactId AND replyGroup = :group AND voicePath IS NOT NULL")
+    suspend fun groupVoicePaths(contactId: Long, group: String): List<String>
+
     @Query("SELECT * FROM message WHERE contactId = :contactId ORDER BY createdAt, id")
     fun observeByContact(contactId: Long): Flow<List<Message>>
 
@@ -349,6 +357,10 @@ interface MessageDao {
     /** 等待回复的消息里最新一条的时间：回复偏好的「稍等几秒」从这里算 */
     @Query("SELECT MAX(createdAt) FROM message WHERE contactId = :contactId AND role = 'USER' AND status = 'SENDING'")
     suspend fun latestSendingAt(contactId: Long): Long?
+
+    /** 等待回复的消息里最新一条：「跟随」时看它是不是语音（0.7.0） */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'USER' AND status = 'SENDING' ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun latestSending(contactId: Long): Message?
 
     @Query("SELECT DISTINCT contactId FROM message WHERE status = 'SENDING'")
     suspend fun contactsWithSending(): List<Long>

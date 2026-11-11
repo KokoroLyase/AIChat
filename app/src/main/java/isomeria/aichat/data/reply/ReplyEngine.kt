@@ -15,6 +15,7 @@ import isomeria.aichat.data.db.UsagePurpose
 import isomeria.aichat.data.db.ConversationDao
 import isomeria.aichat.data.db.MessageDao
 import isomeria.aichat.data.db.MessageStatus
+import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.llm.ChatEvent
 import isomeria.aichat.data.llm.ChatRequest
 import isomeria.aichat.data.llm.LlmException
@@ -75,6 +76,10 @@ class ReplyEngine @Inject constructor(
     suspend fun run(contactId: Long) {
         // 用户发的语音先识别成文字（识别成功后才算进入等待回复）；失败时不请求模型
         if (voice != null && !transcribe(contactId)) return
+        // 上一轮回语音、合成被打断（发了新消息替换了任务）：接着合成，合成好的交给投递
+        if (voice != null && isomeria.aichat.data.repo.StorageOperations.gate.activity { voice.synthesizeHeld(contactId) }) {
+            queue.enqueueDelivery(contactId)
+        }
         // 上一轮已经生成的先发完：投递任务在发，这里只是等（到点时顺手送达，不会重复）
         delivery.run(contactId)
         waitForQuiet(contactId)
@@ -189,7 +194,18 @@ class ReplyEngine @Inject constructor(
             fail(waiting, FailReason.EMPTY_REPLY)
             return
         }
-        val rows = ReplyComposer.rows(
+        // 回语音还是文字（0.7.0）：联系人或全局的消息发送类型，「跟随」时看等待回复的最后一条是不是语音。不影响上面的请求
+        val pipeline = voice?.takeIf { it.replyAsVoice(contact, messageDao.latestSending(contactId)?.let { last -> last.type == MessageType.VOICE }) }
+        val rows = pipeline?.heldRows(
+            contact = contact,
+            text = text,
+            reasoning = reasoning.toString(),
+            promptTokens = promptTokens,
+            completionTokens = completionTokens,
+            startedAt = startedAt,
+            firstContentAt = firstContentAt,
+            finishedAt = finishedAt,
+        ) ?: ReplyComposer.rows(
             contact = contact,
             text = text,
             reasoning = reasoning.toString(),
@@ -213,7 +229,9 @@ class ReplyEngine @Inject constructor(
                 completionTokens = completionTokens.takeIf { it > 0 } ?: estimator.text(content.toString() + reasoning),
             )
         }
-        debugLog("reply ok: parts=${rows.size} prompt=$promptTokens completion=$completionTokens")
+        debugLog("reply ok: parts=${rows.size} voice=${pipeline != null} prompt=$promptTokens completion=$completionTokens")
+        // 语音回复：逐条合成，成功的才送达；失败的改成文字，不再请求模型
+        pipeline?.synthesizeHeld(contactId)
         // 预览、未读、通知和记忆都在送达时处理
         queue.enqueueDelivery(contactId)
         if (parsed.isNotEmpty()) reminders.schedule()

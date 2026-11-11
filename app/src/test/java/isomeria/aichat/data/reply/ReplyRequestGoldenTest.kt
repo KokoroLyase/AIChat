@@ -335,8 +335,12 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             labels = proactiveLabels,
             zone = { zone },
             results = resultLog,
+            voice = voice,
         )
     }
+
+    /** 0.7.0 语音：主动聊天用的语音流水线，要在第一次用 [proactive] 之前设好 */
+    var voice: VoicePipeline? = null
 
     private val cipher = object : SecretCipher {
         override fun encrypt(plain: String) = "enc:$plain"

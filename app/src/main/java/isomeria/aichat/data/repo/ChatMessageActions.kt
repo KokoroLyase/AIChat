@@ -32,14 +32,21 @@ class ChatMessageActions(private val db: AppDatabase) {
         return messages.trailingUserIds(contactId, boundary?.createdAt ?: Long.MIN_VALUE, boundary?.id ?: Long.MIN_VALUE, null)
     }
 
-    suspend fun regenerate(contactId: Long, refreshPreview: suspend () -> Unit = {}): Boolean = db.withTransaction {
+    /** [removedFiles] 收集删掉的那次回复的语音文件，调用方在事务提交后删除 */
+    suspend fun regenerate(contactId: Long, removedFiles: MutableList<String>? = null, refreshPreview: suspend () -> Unit = {}): Boolean = db.withTransaction {
         // 还有没送达的回复、或正在等回复时不能重新生成
         if (messages.hasPending(contactId) || messages.hasSending(contactId)) return@withTransaction false
         val last = messages.latestVisible(contactId) ?: return@withTransaction false
         if (last.role != Role.ASSISTANT) return@withTransaction false
         val toResend = regenerationTurn(contactId, last)
         if (toResend.isEmpty()) return@withTransaction false
-        if (last.replyGroup != null) messages.deleteReplyGroup(contactId, last.replyGroup) else messages.delete(last.id)
+        if (last.replyGroup != null) {
+            removedFiles?.addAll(messages.groupVoicePaths(contactId, last.replyGroup))
+            messages.deleteReplyGroup(contactId, last.replyGroup)
+        } else {
+            last.voicePath?.let { removedFiles?.add(it) }
+            messages.delete(last.id)
+        }
         messages.setStatus(toResend, MessageStatus.SENDING, 0)
         refreshPreview()
         true

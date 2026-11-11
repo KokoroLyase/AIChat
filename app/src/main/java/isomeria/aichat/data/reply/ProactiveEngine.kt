@@ -129,6 +129,7 @@ class ProactiveEngine @Inject constructor(
     private val labels: ProactiveLabels,
     private val zone: Provider<ZoneId>,
     private val results: ProactiveResultLog = ProactiveResultLog.NONE,
+    private val voice: VoicePipeline? = null,
 ) {
     private val contacts get() = db.contactDao()
     private val conversations get() = db.conversationDao()
@@ -356,7 +357,19 @@ class ProactiveEngine @Inject constructor(
             results.record(contactId, startedAt, ProactiveResult.SKIPPED)
             return ProactiveAttempt(ProactiveOutcome.SKIPPED)
         }
-        val rows = ReplyComposer.rows(
+        // 主动消息：消息发送类型是「语音」时发语音，「跟随」和「文字」发文字（0.7.0）
+        val pipeline = voice?.takeIf { it.replyAsVoice(contact, lastWaitingIsVoice = null) }
+        val rows = pipeline?.heldRows(
+            contact = contact,
+            text = text,
+            reasoning = reasoning.toString(),
+            promptTokens = promptTokens,
+            completionTokens = completionTokens,
+            startedAt = startedAt,
+            firstContentAt = firstContentAt,
+            finishedAt = finishedAt,
+            origin = MessageOrigin.PROACTIVE,
+        ) ?: ReplyComposer.rows(
             contact = contact,
             text = text,
             reasoning = reasoning.toString(),
@@ -390,6 +403,7 @@ class ProactiveEngine @Inject constructor(
             return ProactiveAttempt(ProactiveOutcome.DISCARDED)
         }
         results.record(contactId, startedAt, ProactiveResult.SENT)
+        pipeline?.synthesizeHeld(contactId)
         // 预览、未读、通知和记忆都在送达时处理
         queue.enqueueDelivery(contactId)
         return ProactiveAttempt(ProactiveOutcome.SENT)

@@ -23,6 +23,8 @@ import isomeria.aichat.data.repo.VoiceRepository
 import isomeria.aichat.data.repo.VoiceUnavailableException
 import isomeria.aichat.data.voice.AudioCodec
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.UUID
 import javax.inject.Inject
@@ -95,18 +97,23 @@ class VoicePipeline @Inject constructor(
         return ReplyTypeRule.voiceReply(contact.replyType, voice.replyType, lastWaitingIsVoice, voices.available(ProviderKind.TTS))
     }
 
-    /** 回语音时要写库的几条：等合成的语音消息，内容按 [VoiceChunks] 分段；思考和用量只记在第一条 */
+    /**
+     * 回语音时要写库的几条：等合成的语音消息，内容按 [VoiceChunks] 分段；思考和用量只记在第一条。
+     * createdAt 先按生成完成的时间占位（等合成的不会送达），合成后改成实际送达的时间
+     */
     fun heldRows(
         contact: Contact,
         text: String,
         reasoning: String,
-        reasoningMillis: Long,
         promptTokens: Int,
         completionTokens: Int,
-        at: Long,
+        startedAt: Long,
+        firstContentAt: Long,
+        finishedAt: Long,
         origin: MessageOrigin = MessageOrigin.NORMAL,
     ): List<Message> {
         val group = UUID.randomUUID().toString()
+        val thinkingMillis = if (reasoning.isNotEmpty()) (if (firstContentAt > 0) firstContentAt else finishedAt) - startedAt else 0L
         return VoiceChunks.split(text).mapIndexed { index, part ->
             Message(
                 contactId = contact.id,
@@ -114,35 +121,38 @@ class VoicePipeline @Inject constructor(
                 type = MessageType.VOICE,
                 content = part,
                 reasoning = if (index == 0) reasoning.trim().ifEmpty { null } else null,
-                reasoningMillis = if (index == 0) reasoningMillis else 0L,
+                reasoningMillis = if (index == 0) thinkingMillis else 0L,
                 status = MessageStatus.PENDING,
                 model = contact.model,
                 promptTokens = if (index == 0) promptTokens else 0,
                 completionTokens = if (index == 0) completionTokens else 0,
                 replyGroup = group,
-                createdAt = at + index,
+                createdAt = finishedAt + index,
                 origin = origin,
             )
         }
     }
 
     /**
-     * 合成这个联系人等着合成的语音回复。返回有没有要投递的（调用方再排投递任务）。
+     * 合成这个联系人等着合成的语音回复。返回有没有处理过（调用方再排投递任务）。
+     * 同一时间只合成一处（回复任务和主动聊天可能同时到这里），拿到锁后重新查，已经合成过的不会再请求。
      * 合成途中被取消时，没合成的留着，下次回复任务开始时接着合成；App 被杀时启动恢复按文字送达
      */
-    suspend fun synthesizeHeld(contactId: Long): Boolean {
+    suspend fun synthesizeHeld(contactId: Long): Boolean = synthesisLock.withLock {
         val held = messages.awaitingSynthesis(contactId)
-        if (held.isEmpty()) return false
+        if (held.isEmpty()) return@withLock false
         val contact = db.contactDao().get(contactId)
         if (contact == null) {
             messages.degradeToText(held.map { it.id })
-            return true
+            return@withLock true
         }
-        val failed = mutableListOf<Message>()
+        // 每条的送达时间依次排开；失败的那条也占住自己的位置，改成文字后顺序不变
+        val failed = mutableListOf<Pair<Message, Long>>()
         var time = clock.now()
         for (message in held) {
+            val at = maxOf(clock.now(), time)
             val ok = try {
-                synthesizeOne(contact, message, time)?.let { time = it + GAP_MILLIS } != null
+                synthesizeOne(contact, message, at)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: VoiceUnavailableException) {
@@ -154,27 +164,27 @@ class VoicePipeline @Inject constructor(
                 debugLog("synthesize failed unexpectedly: ${e.javaClass.simpleName}")
                 false
             }
-            if (!ok) failed += message
+            if (!ok) failed += message to at
+            time = at + GAP_MILLIS
         }
-        if (failed.isEmpty()) return true
-        if (failed.size == held.size) degradeAll(contact, held) else messages.degradeToText(failed.map { it.id })
-        return true
+        when {
+            failed.isEmpty() -> Unit
+            failed.size == held.size -> degradeAll(contact, held)
+            else -> failed.forEach { (message, at) -> messages.degradeAt(message.id, at) }
+        }
+        true
     }
 
-    /** 合成一条：写文件、量时长、填进消息；返回这条的送达时间。消息在这期间被删了时删掉文件、返回 null */
-    private suspend fun synthesizeOne(contact: Contact, message: Message, notBefore: Long): Long? {
+    /** 合成一条：写文件、量时长、填进消息，按 [at] 送达。消息在这期间被删了或改成文字时删掉文件（仍算成功，不再降级） */
+    private suspend fun synthesizeOne(contact: Contact, message: Message, at: Long): Boolean {
         val audio = voices.synthesize(contact, message.content)
         val file = files.newVoiceFile(audio.extension)
         try {
             file.writeBytes(audio.bytes)
             val millis = codec.durationMillis(file).takeIf { it > 0 } ?: estimateMillis(message.content)
-            val at = maxOf(clock.now(), notBefore)
-            if (messages.finishSynthesis(message.id, file.absolutePath, millis, at) == 0) {
-                files.delete(file.absolutePath)
-                return null
-            }
             voices.recordSynthesis(contact.id, message.content.length, millis)
-            return at
+            if (messages.finishSynthesis(message.id, file.absolutePath, millis, at) == 0) files.delete(file.absolutePath)
+            return true
         } catch (e: Throwable) {
             files.delete(file.absolutePath)
             throw e
@@ -221,5 +231,7 @@ class VoicePipeline @Inject constructor(
         const val TAG = "VoicePipeline"
         /** 几条语音之间隔多久送达 */
         const val GAP_MILLIS = 1_500L
+        /** 整个 App 同一时间只合成一处 */
+        val synthesisLock = Mutex()
     }
 }
