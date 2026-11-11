@@ -28,6 +28,7 @@ import isomeria.aichat.data.db.MIGRATION_2_3
 import isomeria.aichat.data.db.MIGRATION_3_4
 import isomeria.aichat.data.db.MIGRATION_4_5
 import isomeria.aichat.data.db.MIGRATION_5_6
+import isomeria.aichat.data.db.MIGRATION_6_7
 import isomeria.aichat.data.db.GlobalMemoryDao
 import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.MessageDao
@@ -62,7 +63,7 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .addCallback(AppDatabase.seedCallback)
             .build()
 
@@ -210,6 +211,8 @@ abstract class BindingsModule {
 
     @Binds abstract fun proactiveResultLog(impl: SettingsStore): isomeria.aichat.core.ProactiveResultLog
 
+    @Binds abstract fun voiceSettingsSource(impl: SettingsStore): isomeria.aichat.core.VoiceSettingsSource
+
     @Binds abstract fun replyControl(impl: ReplyScheduler): ReplyControl
 
     @Binds abstract fun proactiveControl(impl: isomeria.aichat.data.reply.ProactiveScheduler): isomeria.aichat.data.reply.ProactiveControl
@@ -217,6 +220,8 @@ abstract class BindingsModule {
     @Binds abstract fun replyQueue(impl: ReplyScheduler): ReplyQueue
 
     @Binds abstract fun replyNotifications(impl: ReplyNotifier): ReplyNotifications
+
+    @Binds abstract fun messagePreviewer(impl: isomeria.aichat.data.repo.ResourceMessagePreviewer): isomeria.aichat.data.repo.MessagePreviewer
 
     @Binds abstract fun receivingForeground(impl: ReplyNotifier): isomeria.aichat.data.reply.ReceivingForeground
 

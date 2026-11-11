@@ -12,7 +12,10 @@ enum class ThinkingLevel { OFF, HIGH, MAX }
 
 enum class Role { USER, ASSISTANT }
 
-enum class MessageType { TEXT, IMAGE }
+/**
+ * 消息类型。VOICE（0.7.0）：语音消息，文件在 files/voice/，转写文字存在 content（用于上下文、记忆、搜索和「转文字」）。
+ */
+enum class MessageType { TEXT, IMAGE, VOICE }
 
 /**
  * 消息状态：发送中（等待回复）、成功、失败、待投递。
@@ -27,8 +30,13 @@ enum class ProviderKind { LLM, TTS, ASR }
 /** 模型能力：接口报告支持 / 不支持，或接口没说（由用户在设置里标记）。 */
 enum class Capability { YES, NO, UNKNOWN }
 
-/** 用量的用途：聊天回复、自动总结记忆，或联系人主动聊天（0.6.0；含 [SKIP] 和失败的请求）。 */
-enum class UsagePurpose { CHAT, MEMORY, PROACTIVE }
+/**
+ * 用量的用途：聊天回复、自动总结记忆，或联系人主动聊天（0.6.0；含 [SKIP] 和失败的请求）。
+ *
+ * 语音合成 TTS、语音识别 ASR（0.7.0）不按 token 计，借用同一张表但含义不同，统计时单独列出、不并进 token 合计：
+ * ASR 的 promptTokens 是识别的音频秒数；TTS 的 promptTokens 是合成的字数、completionTokens 是合成出的音频秒数。
+ */
+enum class UsagePurpose { CHAT, MEMORY, PROACTIVE, TTS, ASR }
 
 /**
  * 消息来源（0.6.0）：普通消息（用户发的、对用户消息的回复），或联系人主动发来的。
@@ -38,6 +46,9 @@ enum class MessageOrigin { NORMAL, PROACTIVE }
 
 /** 主动聊天的频率（0.6.0）：偶尔 / 适中 / 频繁。 */
 enum class ProactiveFrequency { LOW, MEDIUM, HIGH }
+
+/** 消息发送类型（0.7.0）：跟随（用户发文字回文字、发语音回语音）/ 文字 / 语音。 */
+enum class ReplyType { FOLLOW, TEXT, VOICE }
 
 /** 联系人。一个联系人对应一个会话。 */
 @Entity(tableName = "contact")
@@ -73,6 +84,12 @@ data class Contact(
     /** 主动聊天（0.6.0）：新旧联系人默认关闭，用户手动开启后才会在没有操作时调用模型 */
     @ColumnInfo(defaultValue = "0") val proactiveEnabled: Boolean = false,
     @ColumnInfo(defaultValue = "'MEDIUM'") val proactiveFrequency: ProactiveFrequency = ProactiveFrequency.MEDIUM,
+    /** 消息发送类型（0.7.0）：null 表示使用「我 → 语音消息」里的全局设置（默认跟随） */
+    val replyType: ReplyType? = null,
+    /** 语音合成的音色（0.7.0）：null 用语音服务商的默认音色 */
+    val ttsVoice: String? = null,
+    /** 语气和风格要求（0.7.0），只对 MiMo 这类支持的服务商生效，不会被读出来 */
+    @ColumnInfo(defaultValue = "''") val ttsStyle: String = "",
 ) {
     companion object {
         /** DeepSeek 官方对「通用对话」建议的温度 */
@@ -81,6 +98,9 @@ data class Contact(
         const val MIN_CONTEXT_TOKENS = 1000
         const val MAX_CONTEXT_TOKENS = 200_000
         const val NAME_MAX_LENGTH = 20
+        /** 音色 ID 和语气风格要求的长度上限（0.7.0） */
+        const val VOICE_MAX_LENGTH = 100
+        const val STYLE_MAX_LENGTH = 200
     }
 }
 
@@ -161,7 +181,21 @@ data class Message(
     val createdAt: Long,
     /** 来源（0.6.0）：联系人主动发来的是 PROACTIVE */
     @ColumnInfo(defaultValue = "'NORMAL'") val origin: MessageOrigin = MessageOrigin.NORMAL,
-)
+    /**
+     * 语音文件（0.7.0，files/voice/ 里）。联系人的语音回复在合成完成前为 null：这时它是 PENDING 但不会送达
+     * （[isomeria.aichat.data.db.MessageDao.duePending] 不取），合成成功后填上路径才排进投递，失败就改成文字
+     */
+    val voicePath: String? = null,
+    /** 语音时长（毫秒） */
+    @ColumnInfo(defaultValue = "0") val voiceMillis: Long = 0,
+    /** 联系人的语音是否播放过或转过文字：没有时右侧显示红点 */
+    @ColumnInfo(defaultValue = "0") val voicePlayed: Boolean = false,
+    /** 是否在语音条下面显示转写文字（「转文字」/「取消转文字」） */
+    @ColumnInfo(defaultValue = "0") val voiceShowText: Boolean = false,
+) {
+    /** 等着合成的语音回复：已经存了文字，还没有语音文件 */
+    val awaitingSynthesis: Boolean get() = type == MessageType.VOICE && role == Role.ASSISTANT && voicePath == null
+}
 
 /**
  * 主动聊天的设备状态（0.6.0），只有一行：今日已用的调用次数和最近一次检查的时间。
@@ -226,6 +260,8 @@ data class ProviderConfig(
     val presetId: String? = null,
     /** 协议与品牌分开；legacy 保留旧 provider 的编码语义。 */
     @ColumnInfo(defaultValue = "'LEGACY'") val compatibility: String = "LEGACY",
+    /** 语音合成服务商的默认音色（0.7.0，只对 kind 为 TTS 的有意义） */
+    @ColumnInfo(defaultValue = "''") val voice: String = "",
 )
 
 /** 服务商的模型列表与能力（是否支持图片、是否支持思考）。 */

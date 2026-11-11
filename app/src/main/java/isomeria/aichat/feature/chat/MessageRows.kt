@@ -203,6 +203,11 @@ fun MessageRow(
                         onClick = { message.imagePath?.let(actions.onImageClick) },
                         onLongClick = { menuOpen = true },
                     )
+                    MessageType.VOICE -> TextBubble(
+                        text = message.content,
+                        sent = sent,
+                        onLongClick = { menuOpen = true },
+                    )
                 }
                 if (menuOpen) WeBubbleMenu(menuItems) { menuOpen = false }
             }

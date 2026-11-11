@@ -38,6 +38,7 @@ class DeliveryEngine @Inject constructor(
     private val queue: ReplyQueue,
     private val clock: Clock,
     private val sleeper: Sleeper,
+    private val previews: isomeria.aichat.data.repo.MessagePreviewer = isomeria.aichat.data.repo.MessagePreviewer.PLAIN,
 ) {
     private val messages get() = db.messageDao()
     private val conversations get() = db.conversationDao()
@@ -51,7 +52,7 @@ class DeliveryEngine @Inject constructor(
         // 送达的这条比会话里记的最后一条新才更新预览；用户在投递期间发的更新的消息保持在预览里
         val conversation = conversations.get(contactId)
         if (conversation != null && last.createdAt >= conversation.lastMessageTime) {
-            conversations.setLastMessage(contactId, last.createdAt, last.content)
+            conversations.setLastMessage(contactId, last.createdAt, previews.preview(last))
         }
         if (!activeChat.isViewing(contactId)) conversations.addUnread(contactId, due.size)
         due
@@ -63,7 +64,8 @@ class DeliveryEngine @Inject constructor(
         if (delivered.isEmpty()) return false
         val contact = db.contactDao().get(contactId) ?: return true
         val group = delivered.last().replyGroup
-        val parts = group?.let { messages.deliveredParts(contactId, it) }?.takeIf { it.isNotEmpty() } ?: delivered.map { it.content }
+        // 语音（0.7.0）在通知里和预览一样显示「[语音]」
+        val parts = (group?.let { messages.deliveredGroup(contactId, it) }?.takeIf { it.isNotEmpty() } ?: delivered).map(previews::preview)
         val first = group == null || delivered.any { it.id == messages.firstOfGroup(contactId, group)?.id }
         alerts.afterReply(contact, parts, alert = first)
         debugLog("delivered: ${delivered.size} first=$first")
@@ -84,9 +86,13 @@ class DeliveryEngine @Inject constructor(
         if (delivered && db.contactDao().get(contactId)?.autoMemory == true) memoryQueue.enqueue(contactId)
     }
 
-    /** 启动时：到期的直接送达，没到期的交给投递任务 */
+    /**
+     * 启动时：到期的直接送达，没到期的交给投递任务。
+     * 还在等合成的语音回复（App 在合成途中被杀）按合成失败处理：改成文字照常送达，不再请求模型或合成服务
+     */
     suspend fun recover() {
         for (contactId in messages.contactsWithPending()) {
+            messages.awaitingSynthesis(contactId).takeIf { it.isNotEmpty() }?.let { held -> messages.degradeToText(held.map { it.id }) }
             val delivered = deliverDueAndNotify(contactId)
             if (messages.hasPending(contactId)) {
                 queue.restartDelivery(contactId)

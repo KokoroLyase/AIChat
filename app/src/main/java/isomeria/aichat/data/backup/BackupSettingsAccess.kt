@@ -21,6 +21,8 @@ data class AppSettingsSnapshot(
     val replyPreferences: ReplyPreferences = ReplyPreferences(),
     /** 主动聊天的免打扰时段和每日上限（0.6.0）；今日已用次数是设备状态，不在这里 */
     val proactive: ProactiveSettings = ProactiveSettings(),
+    /** 语音消息的全局设置（0.7.0）：发送类型默认值、语音合成和识别的来源 */
+    val voice: isomeria.aichat.core.VoiceSettings = isomeria.aichat.core.VoiceSettings(),
 )
 
 /** 导出和恢复读写设置的入口；单元测试里换成内存实现（MMKV 需要原生库）。 */
@@ -40,6 +42,7 @@ class SettingsStoreBackupAccess @Inject constructor(private val store: SettingsS
         autoCheckUpdate = store.autoCheckUpdate,
         replyPreferences = store.replyPreferences.value,
         proactive = store.proactiveSettings.value,
+        voice = store.voiceSettings.value,
     )
 
     override fun write(snapshot: AppSettingsSnapshot) {
@@ -52,5 +55,6 @@ class SettingsStoreBackupAccess @Inject constructor(private val store: SettingsS
         store.setAutoCheckUpdate(snapshot.autoCheckUpdate)
         store.setReplyPreferences(snapshot.replyPreferences)
         store.setProactiveSettings(snapshot.proactive)
+        store.setVoiceSettings(snapshot.voice)
     }
 }

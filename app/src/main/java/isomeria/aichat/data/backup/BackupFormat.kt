@@ -9,6 +9,7 @@ import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.ProactiveFrequency
 import isomeria.aichat.data.db.ProviderKind
+import isomeria.aichat.data.db.ReplyType
 import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.db.ThinkingLevel
 import isomeria.aichat.data.db.UsagePurpose
@@ -21,10 +22,13 @@ import kotlinx.serialization.json.Json
  *   manifest.json   App 版本、数据格式版本、导出时间
  *   data.json       联系人、会话、消息、服务商配置（每个服务商各自的模型和可选的 Key）、记忆、用量、
  *                   全局记忆（v5 起）和设置；v6 起联系人带主动聊天开关和频率、消息带来源、设置带主动聊天的
- *                   免打扰时段和每日上限。今日已用次数、暂停计数和约定提醒是设备状态，不导出
+ *                   免打扰时段和每日上限。今日已用次数、暂停计数和约定提醒是设备状态，不导出。
+ *                   v7 起消息带语音文件和状态、联系人带消息发送类型和音色、服务商包括语音合成和识别的（Key 同样默认不导出）、
+ *                   设置带语音消息的全局设置
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
  *   background/…    聊天背景（v4 起）
+ *   voice/…         语音消息（v7 起）
  *
  * data.json 里的头像和图片写成 zip 内的相对路径（如 images/xxx.jpg），恢复时换成本机路径。
  * 格式和数据库表分开定义：以后改表不影响已经导出的文件，改格式时 [BackupFormat.VERSION] +1，
@@ -33,7 +37,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 6
+    const val VERSION = 7
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -43,9 +47,10 @@ object BackupFormat {
     const val AVATARS_DIR = "avatars/"
     const val IMAGES_DIR = "images/"
     const val BACKGROUNDS_DIR = "background/"
+    const val VOICE_DIR = "voice/"
 
     /** zip 内文件名只允许这些字符（不能以点开头），防止「../」之类的路径 */
-    val mediaNamePattern = Regex("""^(avatars|images|background)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
+    val mediaNamePattern = Regex("""^(avatars|images|background|voice)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
 
     val json = Json {
         ignoreUnknownKeys = true
@@ -108,6 +113,10 @@ data class ContactDto(
     /** 主动聊天开关和频率（v6 起；旧备份迁移后关闭、适中） */
     val proactiveEnabled: Boolean = false,
     val proactiveFrequency: ProactiveFrequency = ProactiveFrequency.MEDIUM,
+    /** 消息发送类型（v7 起；null 用全局设置）、音色和语气风格 */
+    val replyType: ReplyType? = null,
+    val ttsVoice: String? = null,
+    val ttsStyle: String = "",
 )
 
 @Serializable
@@ -150,6 +159,11 @@ data class MessageDto(
     val createdAt: Long,
     /** 来源（v6 起；旧备份里都是普通消息） */
     val origin: MessageOrigin = MessageOrigin.NORMAL,
+    /** 语音文件的 zip 内相对路径，如 voice/xxx.m4a（v7 起） */
+    val voice: String? = null,
+    val voiceMillis: Long = 0,
+    val voicePlayed: Boolean = false,
+    val voiceShowText: Boolean = false,
 )
 
 @Serializable
@@ -166,6 +180,8 @@ data class ProviderDto(
     val apiKey: SecretDto? = null,
     val presetId: String? = null,
     val compatibility: String = "LEGACY",
+    /** 语音合成服务商的默认音色（v7 起） */
+    val voice: String = "",
 )
 
 @Serializable
@@ -248,6 +264,14 @@ data class ProactiveSettingsDto(
     val dailyLimit: Int = ProactiveSettings.DEFAULT_DAILY_LIMIT,
 )
 
+/** 语音消息的全局设置（v7 起）。来源是 provider:{备份里的服务商 id} 这样的字符串，恢复时换成本机的 id */
+@Serializable
+data class VoiceSettingsDto(
+    val replyType: ReplyType = ReplyType.FOLLOW,
+    val ttsSource: String = "",
+    val asrSource: String = "",
+)
+
 /** 一天、一个联系人的用量。contactId 为 0 时是已删除联系人的合计 */
 @Serializable
 data class UsageDto(
@@ -294,4 +318,6 @@ data class SettingsDto(
     val replyPreferences: ReplyPreferencesDto? = null,
     /** 主动聊天的免打扰时段和每日上限（v6 起）；没有时恢复保留本机的 */
     val proactive: ProactiveSettingsDto? = null,
+    /** 语音消息的全局设置（v7 起）；没有时恢复保留本机的 */
+    val voice: VoiceSettingsDto? = null,
 )

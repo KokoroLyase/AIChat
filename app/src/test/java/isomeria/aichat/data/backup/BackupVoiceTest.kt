@@ -1,0 +1,229 @@
+package isomeria.aichat.data.backup
+
+import android.app.Application
+import androidx.room.Room
+import isomeria.aichat.core.VoiceSettings
+import isomeria.aichat.core.VoiceSource
+import isomeria.aichat.data.crypto.SecretCipher
+import isomeria.aichat.data.db.AppDatabase
+import isomeria.aichat.data.db.Contact
+import isomeria.aichat.data.db.Conversation
+import isomeria.aichat.data.db.Message
+import isomeria.aichat.data.db.MessageStatus
+import isomeria.aichat.data.db.MessageType
+import isomeria.aichat.data.db.ProviderConfig
+import isomeria.aichat.data.db.ProviderKind
+import isomeria.aichat.data.db.ReplyType
+import isomeria.aichat.data.db.Role
+import isomeria.aichat.data.db.UsagePurpose
+import isomeria.aichat.data.reply.ReplyControl
+import isomeria.aichat.data.repo.FileStorage
+import isomeria.aichat.data.settings.FontSize
+import isomeria.aichat.data.settings.ThemeMode
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+
+/**
+ * 0.7.0 语音消息的导出与恢复：语音文件放在 zip 的 voice/ 下、保留扩展名，消息的语音字段、联系人的发送类型和音色、
+ * 语音服务商（Key 默认不导出）和语音设置都随备份；恢复时来源里的服务商 id 换成本机的。
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36], application = Application::class)
+class BackupVoiceTest {
+    private val context = RuntimeEnvironment.getApplication()
+    private lateinit var db: AppDatabase
+    private lateinit var files: FileStorage
+    private lateinit var backup: BackupManager
+    private val cipher = object : SecretCipher {
+        override fun encrypt(plain: String) = "enc:$plain"
+        override fun decrypt(encoded: String) = if (encoded.startsWith("enc:")) encoded.removePrefix("enc:") else null
+    }
+    private val settings = object : BackupSettingsAccess {
+        var v = AppSettingsSnapshot(ThemeMode.SYSTEM, FontSize.STANDARD, "", null, true, true, true)
+        override fun read() = v
+        override fun write(snapshot: AppSettingsSnapshot) { v = snapshot }
+    }
+
+    @Before
+    fun setUp() {
+        listOf("avatars", "images", "background", "voice", "backups").forEach { File(context.filesDir, it).deleteRecursively() }
+        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).addCallback(AppDatabase.seedCallback).build()
+        files = FileStorage(context)
+        backup = BackupManager(context, db, files, cipher, settings, object : ReplyControl {
+            override fun cancel(contactId: Long) = Unit
+            override suspend fun isActive(contactId: Long) = false
+            override fun cancelDelivery(contactId: Long) = Unit
+            override suspend fun isDelivering(contactId: Long) = false
+        })
+    }
+
+    @After
+    fun tearDown() = db.close()
+
+    private var tts = 0L
+    private var asr = 0L
+
+    private suspend fun seed() {
+        tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "mimo-audio", name = "MiMo", baseUrl = "https://api.xiaomimimo.com/v1",
+            apiKeyEncrypted = "enc:sk-tts", defaultModel = "mimo-v2.5-tts", presetId = "mimo", voice = "茉莉"))
+        asr = db.providerDao().insert(ProviderConfig(kind = ProviderKind.ASR, provider = "openai-audio", name = "硅基", baseUrl = "https://api.siliconflow.cn/v1",
+            apiKeyEncrypted = "enc:sk-asr", defaultModel = "FunAudioLLM/SenseVoiceSmall"))
+        settings.v = settings.v.copy(voice = VoiceSettings(ReplyType.VOICE, VoiceSource.provider(tts), VoiceSource.provider(asr)))
+        db.contactDao().insert(Contact(id = 1, name = "甲", avatarColor = 1, providerId = 1, model = "m", createdAt = 10, updatedAt = 10,
+            replyType = ReplyType.FOLLOW, ttsVoice = "苏打", ttsStyle = "慢一点"))
+        db.conversationDao().upsert(Conversation(contactId = 1, lastMessageTime = 300, lastMessagePreview = "[语音]"))
+        val mine = files.newVoiceFile("m4a").apply { writeBytes(ByteArray(300) { 1 }) }
+        val theirs = files.newVoiceFile("mp3").apply { writeBytes(ByteArray(200) { 2 }) }
+        // 写库后解除固定（真实代码在写库成功后调用）
+        files.commitAvatar(mine.absolutePath)
+        files.commitAvatar(theirs.absolutePath)
+        db.messageDao().insertAll(listOf(
+            Message(contactId = 1, role = Role.USER, type = MessageType.VOICE, content = "我说的话", voicePath = mine.absolutePath, voiceMillis = 3_200,
+                voicePlayed = true, status = MessageStatus.SUCCESS, createdAt = 100),
+            Message(contactId = 1, role = Role.ASSISTANT, type = MessageType.VOICE, content = "联系人说的话", voicePath = theirs.absolutePath, voiceMillis = 5_000,
+                voicePlayed = true, voiceShowText = true, status = MessageStatus.SUCCESS, replyGroup = "g", createdAt = 200),
+            Message(contactId = 1, role = Role.ASSISTANT, type = MessageType.VOICE, content = "还在合成", status = MessageStatus.PENDING, replyGroup = "h", createdAt = 300),
+        ))
+        db.usageDao().add(20_000, 1, UsagePurpose.ASR, 3, 0)
+        db.usageDao().add(20_000, 1, UsagePurpose.TTS, 6, 5)
+    }
+
+    private suspend fun export(): File {
+        val file = File(context.cacheDir, "voice-backup.zip")
+        backup.export(file.outputStream(), null)
+        return file
+    }
+
+    @Test
+    fun export_putsVoiceFilesUnderVoiceDir_keepsExtension_noVoiceKeys_heldReplyAsText() = runBlocking {
+        seed()
+        val zip = export()
+        ZipFile(zip).use { z ->
+            val names = z.entries().toList().map(ZipEntry::getName).filter { it.startsWith(BackupFormat.VOICE_DIR) }
+            assertEquals(listOf("m4a", "mp3"), names.map { it.substringAfterLast('.') }.sorted())
+            val raw = z.getInputStream(z.getEntry(BackupFormat.DATA)).readBytes().toString(Charsets.UTF_8)
+            assertFalse("语音服务商的 Key 默认也不导出", raw.contains("sk-tts") || raw.contains("sk-asr"))
+        }
+        val data = backup.inspect(zip).data
+        assertEquals(7, backup.inspect(zip).manifest.formatVersion)
+        val messages = data.messages.sortedBy { it.createdAt }
+        assertEquals(listOf(MessageType.VOICE, MessageType.VOICE, MessageType.TEXT), messages.map { it.type })
+        assertEquals("还在合成的语音按文字、已送达写入", MessageStatus.SUCCESS, messages[2].status)
+        assertNull(messages[2].voice)
+        assertEquals(listOf(3_200L, 5_000L), messages.take(2).map { it.voiceMillis })
+        assertTrue(messages[1].voiceShowText)
+        assertEquals(Triple(ReplyType.FOLLOW, "苏打", "慢一点"), data.contacts.single().let { Triple(it.replyType, it.ttsVoice, it.ttsStyle) })
+        assertEquals(setOf(ProviderKind.LLM, ProviderKind.TTS, ProviderKind.ASR), data.providers.map { it.kind }.toSet())
+        assertEquals("茉莉", data.providers.single { it.kind == ProviderKind.TTS }.voice)
+        assertEquals(VoiceSettingsDto(ReplyType.VOICE, VoiceSource.provider(tts), VoiceSource.provider(asr)), data.settings.voice)
+    }
+
+    @Test
+    fun overwrite_restoresVoiceFilesFieldsProvidersAndSettings() = runBlocking {
+        seed()
+        val zip = export()
+        val before = db.messageDao().listByContact(1).filter { it.voicePath != null }.map { File(it.voicePath!!).readBytes().toList() }
+        // 导出后本机改了：删掉语音服务商、改了设置
+        db.providerDao().deleteAllVoice()
+        settings.v = settings.v.copy(voice = VoiceSettings())
+
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+
+        val messages = db.messageDao().listByContact(1)
+        val voices = messages.filter { it.type == MessageType.VOICE }
+        assertEquals(before, voices.map { File(it.voicePath!!).readBytes().toList() })
+        assertEquals(listOf("m4a", "mp3"), voices.map { File(it.voicePath!!).extension })
+        assertTrue("恢复到 files/voice", voices.all { File(it.voicePath!!).parentFile!!.name == "voice" })
+        assertEquals(listOf("我说的话", "联系人说的话", "还在合成"), messages.map { it.content })
+        assertEquals(MessageType.TEXT, messages[2].type)
+        val providers = db.providerDao().listConfigs().associateBy { it.kind }
+        assertEquals("茉莉", providers[ProviderKind.TTS]!!.voice)
+        assertNull("备份里没有 Key，本机也删了", providers[ProviderKind.TTS]!!.apiKeyEncrypted)
+        assertEquals(VoiceSettings(ReplyType.VOICE, VoiceSource.provider(providers[ProviderKind.TTS]!!.id), VoiceSource.provider(providers[ProviderKind.ASR]!!.id)), settings.v.voice)
+        assertEquals(setOf(UsagePurpose.ASR, UsagePurpose.TTS), db.usageDao().listAll().map { it.purpose }.toSet())
+        // 只有被引用的语音文件留下
+        assertEquals(voices.map { File(it.voicePath!!).canonicalPath }.toSet(), File(context.filesDir, "voice").listFiles()!!.map { it.canonicalPath }.toSet())
+    }
+
+    @Test
+    fun overwrite_sameVoiceProviderWithoutKeyInBackup_keepsLocalKey() = runBlocking {
+        seed()
+        val zip = export()
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        val tts = db.providerDao().listByKind(ProviderKind.TTS).single()
+        assertEquals("同一个语音服务商（格式和地址都相同）沿用本机的 Key", "sk-tts", cipher.decrypt(tts.apiKeyEncrypted!!))
+    }
+
+    @Test
+    fun merge_keepsLocalVoiceSettings_fillsEmptySourcesFromBackup() = runBlocking {
+        seed()
+        val zip = export()
+        // 本机：同一个合成服务商还在，识别服务商删了，识别来源没有选
+        db.providerDao().delete(asr)
+        settings.v = settings.v.copy(voice = VoiceSettings(ReplyType.TEXT, VoiceSource.provider(tts), ""))
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+        val asrNow = db.providerDao().listByKind(ProviderKind.ASR).single()
+        assertEquals(1, db.providerDao().listByKind(ProviderKind.TTS).size)
+        assertEquals(VoiceSettings(ReplyType.TEXT, VoiceSource.provider(tts), VoiceSource.provider(asrNow.id)), settings.v.voice)
+    }
+
+    /** zip 里缺了语音文件：联系人的语音按文字恢复（转写文字还在），用户的语音留着、没有文件 */
+    @Test
+    fun missingVoiceFile_contactVoiceBecomesText() = runBlocking {
+        seed()
+        val zip = export()
+        val stripped = File(context.cacheDir, "stripped.zip")
+        ZipFile(zip).use { input ->
+            ZipOutputStream(stripped.outputStream()).use { out ->
+                for (entry in input.entries()) {
+                    if (entry.name.startsWith(BackupFormat.VOICE_DIR)) continue
+                    out.putNextEntry(ZipEntry(entry.name))
+                    input.getInputStream(entry).use { it.copyTo(out) }
+                    out.closeEntry()
+                }
+            }
+        }
+        backup.restore(backup.inspect(stripped), RestoreMode.OVERWRITE, null)
+        val messages = db.messageDao().listByContact(1)
+        assertEquals(listOf(MessageType.VOICE, MessageType.TEXT, MessageType.TEXT), messages.map { it.type })
+        assertNull(messages[0].voicePath)
+        assertEquals("联系人说的话", messages[1].content)
+    }
+
+    @Test
+    fun v6ToV7_stepAddsVoiceDefaults_andDropsStrayVoiceSettings() {
+        val v6 = BackupFormat.json.parseToJsonElement(
+            """{"contacts":[{"id":1,"name":"甲","avatarColor":1,"providerId":1,"model":"m","temperature":1.0,"createdAt":1,"updatedAt":1}],
+               "messages":[{"id":1,"contactId":1,"role":"USER","type":"TEXT","status":"SUCCESS","createdAt":1}],
+               "providers":[{"id":1,"kind":"LLM","provider":"openai","baseUrl":"https://x.test","defaultModel":""}],
+               "settings":{"voice":{"replyType":"VOICE"}}}""",
+        ).jsonObject
+        val v7 = BackupMigrations.v6ToV7(v6)
+        val contact = (v7["contacts"] as kotlinx.serialization.json.JsonArray)[0].jsonObject
+        assertEquals(kotlinx.serialization.json.JsonNull, contact["replyType"])
+        assertEquals("", contact["ttsStyle"]!!.jsonPrimitive.content)
+        val message = (v7["messages"] as kotlinx.serialization.json.JsonArray)[0].jsonObject
+        assertEquals("0", message["voiceMillis"]!!.jsonPrimitive.content)
+        assertFalse((v7["settings"] as JsonObject).containsKey("voice"))
+        val decoded = BackupFormat.json.decodeFromJsonElement(BackupData.serializer(), v7)
+        assertNull(decoded.settings.voice)
+        assertNull(decoded.contacts.single().replyType)
+    }
+}

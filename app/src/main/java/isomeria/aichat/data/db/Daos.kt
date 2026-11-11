@@ -196,23 +196,62 @@ interface MessageDao {
     @Query("SELECT EXISTS(SELECT 1 FROM message WHERE contactId = :contactId AND status = 'PENDING')")
     suspend fun hasPending(contactId: Long): Boolean
 
-    @Query("SELECT MIN(createdAt) FROM message WHERE contactId = :contactId AND status = 'PENDING'")
+    /** 下一条能送达的待投递消息的时间；还在合成的语音回复不算（它没有语音文件，不能送达） */
+    @Query("SELECT MIN(createdAt) FROM message WHERE contactId = :contactId AND status = 'PENDING' AND NOT (type = 'VOICE' AND role = 'ASSISTANT' AND voicePath IS NULL)")
     suspend fun nextPendingAt(contactId: Long): Long?
 
     /** 最后一条待投递消息的计划时间；比现在晚就说明还要等 */
-    @Query("SELECT MAX(createdAt) FROM message WHERE contactId = :contactId AND status = 'PENDING'")
+    @Query("SELECT MAX(createdAt) FROM message WHERE contactId = :contactId AND status = 'PENDING' AND NOT (type = 'VOICE' AND role = 'ASSISTANT' AND voicePath IS NULL)")
     suspend fun lastPendingAt(contactId: Long): Long?
 
-    /** 到了计划时间、该送达的待投递回复，按时间正序 */
-    @Query("SELECT * FROM message WHERE contactId = :contactId AND status = 'PENDING' AND createdAt <= :now ORDER BY createdAt, id")
+    /** 到了计划时间、该送达的待投递回复，按时间正序。还在合成的语音回复（0.7.0，没有语音文件）不取 */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND status = 'PENDING' AND createdAt <= :now AND NOT (type = 'VOICE' AND role = 'ASSISTANT' AND voicePath IS NULL) ORDER BY createdAt, id")
     suspend fun duePending(contactId: Long, now: Long): List<Message>
 
     @Query("SELECT DISTINCT contactId FROM message WHERE status = 'PENDING'")
     suspend fun contactsWithPending(): List<Long>
 
-    /** 同一次回复里已经送达的几条，按时间正序：通知内容随投递更新 */
-    @Query("SELECT content FROM message WHERE contactId = :contactId AND replyGroup = :group AND status = 'SUCCESS' ORDER BY createdAt, id")
-    suspend fun deliveredParts(contactId: Long, group: String): List<String>
+    /** 还在等合成的语音回复（0.7.0）：已经存了文字、还没有语音文件的 PENDING，按时间正序 */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND status = 'PENDING' AND type = 'VOICE' AND role = 'ASSISTANT' AND voicePath IS NULL ORDER BY createdAt, id")
+    suspend fun awaitingSynthesis(contactId: Long): List<Message>
+
+    /** 合成好了：填上语音文件和时长，按 [time] 排进投递 */
+    @Query("UPDATE message SET voicePath = :path, voiceMillis = :millis, createdAt = :time WHERE id = :id AND status = 'PENDING'")
+    suspend fun finishSynthesis(id: Long, path: String, millis: Long, time: Long): Int
+
+    /** 合成失败或被中断：这条语音回复改成文字消息，照常投递 */
+    @Query("UPDATE message SET type = 'TEXT', voicePath = NULL, voiceMillis = 0 WHERE id IN (:ids) AND status = 'PENDING'")
+    suspend fun degradeToText(ids: List<Long>)
+
+    /** 用户的语音还没有识别出文字：等待回复前要先识别（0.7.0） */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND role = 'USER' AND type = 'VOICE' AND status = 'SENDING' AND content = '' ORDER BY createdAt, id")
+    suspend fun untranscribedVoice(contactId: Long): List<Message>
+
+    /** 识别出的文字写进 content；语音文件换成压缩后的（[path] 为空时不换） */
+    @Query("UPDATE message SET content = :text, voicePath = COALESCE(:path, voicePath) WHERE id = :id")
+    suspend fun setTranscript(id: Long, text: String, path: String?)
+
+    @Query("UPDATE message SET voicePath = :path WHERE id = :id")
+    suspend fun setVoicePath(id: Long, path: String)
+
+    @Query("UPDATE message SET voicePlayed = 1 WHERE id = :id")
+    suspend fun setVoicePlayed(id: Long)
+
+    /** 「转文字」/「取消转文字」；转过文字也算看过，红点去掉 */
+    @Query("UPDATE message SET voiceShowText = :show, voicePlayed = CASE WHEN :show THEN 1 ELSE voicePlayed END WHERE id = :id")
+    suspend fun setVoiceShowText(id: Long, show: Boolean)
+
+    /** 等待回复（标题显示「对方正在输入…」）：有 SENDING 的消息，但还在识别的语音不算（识别成功后才进入等待回复） */
+    @Query("SELECT EXISTS(SELECT 1 FROM message WHERE contactId = :contactId AND role = 'USER' AND status = 'SENDING' AND NOT (type = 'VOICE' AND content = ''))")
+    suspend fun hasWaitingReply(contactId: Long): Boolean
+
+    /** 某条之后的语音消息（连续朗读、依次播放），按时间正序；不含待投递的 */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND type = 'VOICE' AND status != 'PENDING' AND voicePath IS NOT NULL AND (createdAt > :time OR (createdAt = :time AND id > :id)) ORDER BY createdAt, id LIMIT :limit")
+    suspend fun voiceAfter(contactId: Long, time: Long, id: Long, limit: Int = 200): List<Message>
+
+    /** 同一次回复里已经送达的几条，按时间正序：通知内容随投递更新（语音在通知里显示成「[语音]」） */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND replyGroup = :group AND status = 'SUCCESS' ORDER BY createdAt, id")
+    suspend fun deliveredGroup(contactId: Long, group: String): List<Message>
 
     /** 同一次回复的第一条（不论是否已送达） */
     @Query("SELECT * FROM message WHERE contactId = :contactId AND replyGroup = :group ORDER BY createdAt, id LIMIT 1")
@@ -340,6 +379,12 @@ interface MessageDao {
     @Query("SELECT imagePath FROM message WHERE imagePath IS NOT NULL")
     suspend fun allImagePaths(): List<String>
 
+    @Query("SELECT voicePath FROM message WHERE contactId = :contactId AND voicePath IS NOT NULL")
+    suspend fun voicePaths(contactId: Long): List<String>
+
+    @Query("SELECT voicePath FROM message WHERE voicePath IS NOT NULL")
+    suspend fun allVoicePaths(): List<String>
+
     @Query("SELECT * FROM message ORDER BY id")
     suspend fun listAll(): List<Message>
 
@@ -355,25 +400,25 @@ interface MessageDao {
     @Query("SELECT imagePath FROM message WHERE id = :id")
     suspend fun imagePath(id: Long): String?
 
-    /** 全局搜索：命中的聊天记录按联系人分组，最近命中的在前。[query] 需先经 [escapeLike] 转义 */
+    /** 全局搜索：命中的聊天记录按联系人分组（0.7.0 起也搜语音的转写文字），最近命中的在前。[query] 需先经 [escapeLike] 转义 */
     @Query(
         """
         SELECT message.contactId AS contactId, COUNT(*) AS hitCount, MAX(message.createdAt) AS lastTime,
                contact.name AS contactName, contact.avatarPath AS contactAvatarPath,
                contact.avatarColor AS contactAvatarColor
         FROM message JOIN contact ON contact.id = message.contactId
-        WHERE message.type = 'TEXT' AND message.status != 'PENDING' AND message.content LIKE '%' || :query || '%' ESCAPE '\'
+        WHERE message.type IN ('TEXT', 'VOICE') AND message.status != 'PENDING' AND message.content LIKE '%' || :query || '%' ESCAPE '\'
         GROUP BY message.contactId
         ORDER BY lastTime DESC
         """,
     )
     suspend fun searchGrouped(query: String): List<MessageSearchGroup>
 
-    /** 某个聊天里命中的文字消息，最新的在前。[query] 需先经 [escapeLike] 转义 */
+    /** 某个聊天里命中的文字消息和语音的转写文字，最新的在前。[query] 需先经 [escapeLike] 转义 */
     @Query(
         """
         SELECT * FROM message
-        WHERE contactId = :contactId AND type = 'TEXT' AND status != 'PENDING' AND content LIKE '%' || :query || '%' ESCAPE '\'
+        WHERE contactId = :contactId AND type IN ('TEXT', 'VOICE') AND status != 'PENDING' AND content LIKE '%' || :query || '%' ESCAPE '\'
         ORDER BY createdAt DESC, id DESC LIMIT :limit
         """,
     )
@@ -396,6 +441,16 @@ interface ProviderDao {
 
     @Query("SELECT * FROM provider_config ORDER BY id")
     suspend fun listConfigs(): List<ProviderConfig>
+
+    /** 语音合成或识别的服务商（0.7.0） */
+    @Query("SELECT * FROM provider_config WHERE kind = :kind ORDER BY id")
+    fun observeByKind(kind: ProviderKind): Flow<List<ProviderConfig>>
+
+    @Query("SELECT * FROM provider_config WHERE kind = :kind ORDER BY id")
+    suspend fun listByKind(kind: ProviderKind): List<ProviderConfig>
+
+    @Query("DELETE FROM provider_config WHERE kind != 'LLM'")
+    suspend fun deleteAllVoice()
 
     @Insert
     suspend fun insert(config: ProviderConfig): Long

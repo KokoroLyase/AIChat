@@ -72,7 +72,7 @@ class MigrationTest {
     private fun JsonObject.sql(key: String) = this[key]!!.jsonPrimitive.content
 
     private fun open(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
         .allowMainThreadQueries()
         .build()
         .also { room = it }
@@ -353,6 +353,47 @@ class MigrationTest {
         assertFalse(db.contactDao().get(id)!!.proactiveEnabled)
         db.usageDao().add(20001, 8, UsagePurpose.PROACTIVE, 5, 2)
         assertEquals(listOf(UsagePurpose.CHAT, UsagePurpose.PROACTIVE), db.usageDao().listAll().map { it.purpose })
+    }
+
+    /**
+     * 0.7.0：v6 的库升到 v7 后旧消息都不是语音、没有语音文件；旧联系人的消息发送类型用全局设置、音色用服务商默认、
+     * 没有语气要求；服务商没有默认音色；其他字段（含 0.6.0 的主动聊天、待投递的回复）原样保留。新列可写可查
+     */
+    @Test
+    fun v6ToV7_oldRowsHaveNoVoice_contactsFollowGlobalReplyType_otherFieldsKept() = runBlocking {
+        createV1(version = 6) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com','encrypted','m',1,'deepseek','DEEPSEEK')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,thinkingOption,memoryModel,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency) VALUES(8,'甲',1,1,'m','OFF',0.4,'人设',6000,1,1,10,20,'high',NULL,'off',0,1,1,'HIGH')")
+            execSQL("INSERT INTO conversation(contactId,pinned,unreadCount,markedUnread,draft,lastMessageTime,lastMessagePreview,memoryCursor,memoryStart,muted,backgroundPath,proactiveUnanswered,lastProactiveAt) VALUES(8,1,4,1,'草稿',99,'预览',50,7,1,'/bg/8.jpg',1,77)")
+            execSQL("INSERT INTO message(id,contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,replyGroup,createdAt,origin) VALUES(1,8,'USER','TEXT','在吗',0,0,0,'SUCCESS',0,0,0,NULL,90,'NORMAL'),(2,8,'ASSISTANT','TEXT','在',0,0,0,'PENDING',0,7,3,'g',99,'PROACTIVE')")
+        }
+        val db = open()
+        val contact = db.contactDao().get(8)!!
+        assertNull("旧联系人用全局设置", contact.replyType)
+        assertNull(contact.ttsVoice)
+        assertEquals("", contact.ttsStyle)
+        assertTrue(contact.proactiveEnabled)
+        assertEquals(ProactiveFrequency.HIGH, contact.proactiveFrequency)
+        assertEquals(0.4f, contact.temperature)
+        val messages = db.messageDao().listByContact(8)
+        assertTrue(messages.all { it.type == MessageType.TEXT && it.voicePath == null && it.voiceMillis == 0L && !it.voicePlayed && !it.voiceShowText })
+        assertEquals(listOf(MessageStatus.SUCCESS, MessageStatus.PENDING), messages.map { it.status })
+        assertEquals(MessageOrigin.PROACTIVE, messages[1].origin)
+        assertEquals("旧的待投递回复照常能送达", listOf(2L), db.messageDao().duePending(8, 100).map { it.id })
+        assertEquals("", db.providerDao().get(1)!!.voice)
+        db.conversationDao().get(8)!!.let {
+            assertEquals(1, it.proactiveUnanswered)
+            assertEquals("/bg/8.jpg", it.backgroundPath)
+        }
+        // 新列和新类型可写：语音消息、语音服务商、联系人的发送类型
+        db.contactDao().update(contact.copy(replyType = ReplyType.VOICE, ttsVoice = "冰糖", ttsStyle = "温柔"))
+        assertEquals(ReplyType.VOICE, db.contactDao().get(8)!!.replyType)
+        val voiceId = db.messageDao().insert(Message(contactId = 8, role = Role.USER, type = MessageType.VOICE, voicePath = "/v/1.m4a", voiceMillis = 3200, status = MessageStatus.SUCCESS, createdAt = 120, content = "转写"))
+        assertEquals(listOf("/v/1.m4a"), db.messageDao().allVoicePaths())
+        assertEquals(3200L, db.messageDao().get(voiceId)!!.voiceMillis)
+        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "mimo-audio", baseUrl = "https://x.test/v1", defaultModel = "tts", voice = "冰糖"))
+        assertEquals(listOf(tts), db.providerDao().listByKind(ProviderKind.TTS).map { it.id })
+        assertEquals(listOf(1L), db.providerDao().llmList().map { it.id })
     }
 
     /** 清空或删除聊天时连续未回复次数清零；用户发言用的清零和主动发送的计数互不影响别的字段 */

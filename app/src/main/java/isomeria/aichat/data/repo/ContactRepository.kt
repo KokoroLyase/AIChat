@@ -74,12 +74,12 @@ class ContactRepository @Inject constructor(
         proactive.sync()
     }
 
-    /** 删除联系人，同时删除聊天记录、记忆、头像、聊天图片和聊天背景；用量并到「已删除的联系人」，总量不变 */
+    /** 删除联系人，同时删除聊天记录、记忆、头像、聊天图片、语音和聊天背景；用量并到「已删除的联系人」，总量不变 */
     suspend fun delete(id: Long) {
         replyScheduler.cancel(id)
         replyScheduler.cancelDelivery(id)
         val contact = contactDao.get(id) ?: return
-        val images = messageDao.imagePaths(id)
+        val images = messageDao.imagePaths(id) + messageDao.voicePaths(id)
         val background = conversationDao.get(id)?.backgroundPath
         db.withTransaction {
             // 外键也会级联删除，这里显式删一遍，不依赖 PRAGMA foreign_keys

@@ -29,7 +29,7 @@ class TokenEstimator(private val wideCharTokens: Double) {
 
     /** 一条消息占的 token；[withImage] 为 true 时这张图片带原图，否则按文字「[图片]」算 */
     fun message(message: Message, withImage: Boolean = false): Int = MESSAGE_OVERHEAD + when (message.type) {
-        MessageType.TEXT -> text(message.content)
+        MessageType.TEXT, MessageType.VOICE -> text(message.content)
         MessageType.IMAGE -> if (withImage) IMAGE_TOKENS else IMAGE_PLACEHOLDER_TOKENS
     }
 

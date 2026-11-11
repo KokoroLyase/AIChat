@@ -30,7 +30,8 @@ enum class FontSize(val scale: Float) {
  */
 @Singleton
 class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
-    UpdatePrefs, NicknameSource, ReplyPreferencesSource, ProactiveSettingsSource, isomeria.aichat.core.ProactiveResultLog {
+    UpdatePrefs, NicknameSource, ReplyPreferencesSource, ProactiveSettingsSource, isomeria.aichat.core.ProactiveResultLog,
+    isomeria.aichat.core.VoiceSettingsSource {
     private val mmkv: MMKV
 
     init {
@@ -112,6 +113,40 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
         mmkv.encode(KEY_PROACTIVE_LIMIT, next.dailyLimit)
         _proactiveSettings.value = next
     }
+
+    private val _voiceSettings = MutableStateFlow(
+        isomeria.aichat.core.VoiceSettings(
+            replyType = isomeria.aichat.data.db.ReplyType.entries.firstOrNull { it.name == mmkv.decodeString(KEY_VOICE_REPLY_TYPE, null) }
+                ?: isomeria.aichat.data.db.ReplyType.FOLLOW,
+            ttsSource = mmkv.decodeString(KEY_VOICE_TTS, "") ?: "",
+            asrSource = mmkv.decodeString(KEY_VOICE_ASR, "") ?: "",
+        ),
+    )
+    /** 语音消息的全局设置（0.7.0）：消息发送类型的默认值、语音合成和识别用哪个来源 */
+    val voiceSettings: StateFlow<isomeria.aichat.core.VoiceSettings> = _voiceSettings.asStateFlow()
+
+    override fun voiceSettings(): isomeria.aichat.core.VoiceSettings = _voiceSettings.value
+
+    fun setVoiceSettings(value: isomeria.aichat.core.VoiceSettings) {
+        mmkv.encode(KEY_VOICE_REPLY_TYPE, value.replyType.name)
+        mmkv.encode(KEY_VOICE_TTS, value.ttsSource)
+        mmkv.encode(KEY_VOICE_ASR, value.asrSource)
+        _voiceSettings.value = value
+    }
+
+    /** 第一次录音前的说明（录音会发给语音识别服务商）是否已经看过；和设备有关，不随备份 */
+    var voiceIntroShown: Boolean
+        get() = mmkv.decodeBool(KEY_VOICE_INTRO, false)
+        set(value) {
+            mmkv.encode(KEY_VOICE_INTRO, value)
+        }
+
+    /** 是否已经申请过麦克风权限（拒绝后再点按住说话时显示说明和设置入口） */
+    var micPermissionAsked: Boolean
+        get() = mmkv.decodeBool(KEY_MIC_ASKED, false)
+        set(value) {
+            mmkv.encode(KEY_MIC_ASKED, value)
+        }
 
     /** 第一次开启主动聊天时的说明（会自动消耗 API 额度）是否已经看过；和设备有关，不随备份 */
     override fun record(contactId: Long, at: Long, result: isomeria.aichat.core.ProactiveResult) {
@@ -233,5 +268,10 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
         const val KEY_PROACTIVE_LIMIT = "proactive_daily_limit"
         const val KEY_PROACTIVE_INTRO = "proactive_intro_shown"
         const val KEY_PROACTIVE_RESULT = "proactive_result_"
+        const val KEY_VOICE_REPLY_TYPE = "voice_reply_type"
+        const val KEY_VOICE_TTS = "voice_tts_source"
+        const val KEY_VOICE_ASR = "voice_asr_source"
+        const val KEY_VOICE_INTRO = "voice_intro_shown"
+        const val KEY_MIC_ASKED = "mic_permission_asked"
     }
 }

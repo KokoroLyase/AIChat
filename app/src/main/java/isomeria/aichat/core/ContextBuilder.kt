@@ -108,6 +108,8 @@ class ContextBuilder(
             val role = if (message.role == Role.USER) ChatRole.USER else ChatRole.ASSISTANT
             val part: ChatPart = when (message.type) {
                 MessageType.TEXT -> ChatPart.Text(message.content)
+                // 语音（0.7.0）只发转写文字；还没识别出文字的语音是空的，下面会跳过
+                MessageType.VOICE -> ChatPart.Text(message.content)
                 MessageType.IMAGE -> {
                     val data = if (message.id in imagesWithData) message.imagePath?.let(loadImage) else null
                     if (data != null) ChatPart.Image(data) else ChatPart.Text(labels.imagePlaceholder)

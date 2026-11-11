@@ -22,7 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProactiveState::class,
         ProactiveReminder::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

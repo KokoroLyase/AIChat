@@ -4,6 +4,24 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
+ * v6 → v7（0.7.0）：语音消息。消息加语音文件路径、时长、是否播放过、是否显示转写文字（旧消息都没有语音）；
+ * 联系人加消息发送类型（NULL：用全局设置，默认跟随）、音色（NULL：服务商默认）和语气风格；服务商加默认音色。
+ * 只加列，旧消息、旧联系人的行为不变；语音服务商（kind 为 TTS、ASR）由用户在设置里新建，迁移不写入。
+ */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE message ADD COLUMN voicePath TEXT")
+        db.execSQL("ALTER TABLE message ADD COLUMN voiceMillis INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE message ADD COLUMN voicePlayed INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE message ADD COLUMN voiceShowText INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE contact ADD COLUMN replyType TEXT")
+        db.execSQL("ALTER TABLE contact ADD COLUMN ttsVoice TEXT")
+        db.execSQL("ALTER TABLE contact ADD COLUMN ttsStyle TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE provider_config ADD COLUMN voice TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+/**
  * v5 → v6（0.6.0）：联系人加主动聊天开关（新旧联系人都默认关闭，用户决定）和频率（默认适中）；
  * 消息加来源（旧消息都是普通消息）；会话加连续未回复次数和最近一次主动请求时间；
  * 新建主动聊天状态表（今日已用、最近运行时间）和约定提醒表。迁移后没有任何联系人开启，不会有后台模型调用。

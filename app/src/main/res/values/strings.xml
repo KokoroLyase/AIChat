@@ -38,6 +38,7 @@
     <string name="chat_delete_confirm">删除后，将清空该聊天的消息记录，联系人和记忆会保留。</string>
     <string name="preview_draft">[草稿]</string>
     <string name="preview_image">[图片]</string>
+    <string name="preview_voice">[语音]</string>
 
     <!-- 搜索 -->
     <string name="search_hint">搜索</string>

@@ -22,7 +22,7 @@ import kotlin.math.roundToInt
 
 data class StoredImage(val path: String, val width: Int, val height: Int)
 
-enum class MediaKind { AVATAR, IMAGE, BACKGROUND }
+enum class MediaKind { AVATAR, IMAGE, BACKGROUND, VOICE }
 
 /** 聊天背景文件；没设置或文件已丢失时返回 null，界面回退到默认背景。 */
 fun chatBackgroundFile(path: String?): File? = path?.let(::File)?.takeIf { it.isFile }
@@ -39,6 +39,20 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
     private val avatarsDir get() = File(context.filesDir, "avatars").apply { mkdirs() }
     private val backgroundsDir get() = File(context.filesDir, BACKGROUND_DIR).apply { mkdirs() }
     private val cameraDir get() = File(context.cacheDir, "camera").apply { mkdirs() }
+    /** 语音消息（0.7.0）：用户的录音和联系人的语音回复 */
+    private val voiceDir get() = File(context.filesDir, VOICE_DIR).apply { mkdirs() }
+    /** 录音转文字（麦克风按钮）的临时录音，识别完就删；不是语音消息 */
+    val voiceTempDir: File get() = File(context.cacheDir, VOICE_TEMP_DIR).apply { mkdirs() }
+
+    /**
+     * 新的语音文件，文件名随机。写库前先固定，免得清理孤立文件时被当成没人用的文件删掉；
+     * 写库后调用 [commitAvatar] 解除，失败时调用 [delete]
+     */
+    fun newVoiceFile(extension: String): File {
+        val file = File(voiceDir, "${UUID.randomUUID()}.${extension.lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "bin" }}")
+        StorageOperations.pin(file)
+        return file
+    }
 
     /** 恢复数据前自动备份当前数据的位置（应用私有目录） */
     val backupsDir: File get() = File(context.filesDir, "backups").apply { mkdirs() }
@@ -102,19 +116,20 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         runCatching { file.canonicalPath.startsWith(context.filesDir.canonicalPath + File.separator) }.getOrDefault(false)
 
     /** 恢复时放导入的头像或图片的新文件，文件名随机，不会和已有文件冲突 */
-    fun newMediaFile(kind: MediaKind): File {
+    fun newMediaFile(kind: MediaKind, extension: String = "jpg"): File {
         val dir = when (kind) {
             MediaKind.AVATAR -> avatarsDir
             MediaKind.IMAGE -> imagesDir
             MediaKind.BACKGROUND -> backgroundsDir
+            MediaKind.VOICE -> voiceDir
         }
-        return File(dir, "${UUID.randomUUID()}.jpg")
+        return File(dir, "${UUID.randomUUID()}.$extension")
     }
 
-    /** 删除头像、图片和聊天背景目录里已经没有任何记录引用的文件（恢复数据后清理） */
+    /** 删除头像、图片、聊天背景和语音目录里已经没有任何记录引用的文件（恢复数据后清理） */
     fun unreferenced(referenced: Set<String>): List<File> {
         val keep = referenced.mapNotNull { runCatching { File(it).canonicalPath }.getOrNull() }.toSet() + StorageOperations.pinnedPaths()
-        return listOf(avatarsDir, imagesDir, backgroundsDir).flatMap { dir ->
+        return listOf(avatarsDir, imagesDir, backgroundsDir, voiceDir).flatMap { dir ->
             check(dir.isDirectory && !java.nio.file.Files.isSymbolicLink(dir.toPath()))
             (dir.listFiles() ?: throw java.io.IOException("MediaDirectoryUnavailable"))
                 .filter { it.isFile && !java.nio.file.Files.isSymbolicLink(it.toPath()) && isPrivate(it) && it.canonicalPath !in keep }
@@ -144,7 +159,7 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         var count = 0
         var bytes = 0L
         val pinned = StorageOperations.pinnedPaths()
-        for (name in listOf("camera", "updates", "restore", isomeria.aichat.data.logs.CrashLogs.EXPORT_DIRECTORY)) {
+        for (name in listOf("camera", "updates", "restore", isomeria.aichat.data.logs.CrashLogs.EXPORT_DIRECTORY, VOICE_TEMP_DIR)) {
             val dir = File(context.cacheDir, name)
             check(dir.canonicalPath.startsWith(context.cacheDir.canonicalPath + File.separator))
             for (file in storageFiles(dir)) {
@@ -225,6 +240,8 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
             root.listFiles().orEmpty().filter { it.isFile }.forEach { it.delete() }
         }
         const val BACKGROUND_DIR = "background"
+        const val VOICE_DIR = "voice"
+        const val VOICE_TEMP_DIR = "voice-temp"
         private const val MAX_IMAGE_SIDE = 2048
         private const val MAX_CROP_SOURCE_SIDE = 2048
         private const val JPEG_QUALITY = 85

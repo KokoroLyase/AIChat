@@ -10,6 +10,8 @@ import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.core.MemoryPolicy
 import isomeria.aichat.core.ProactiveSettings
 import isomeria.aichat.core.ReplyPreferences
+import isomeria.aichat.core.VoiceSettings
+import isomeria.aichat.core.VoiceSource
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Conversation
 import isomeria.aichat.data.db.GlobalMemoryCategory
@@ -271,14 +273,21 @@ class BackupManager @Inject constructor(
         val (contacts, rawConversations, rawMessages, configs, models) = tables
         // 待投递的回复按已送达写入：恢复后不会再投递一次；会话预览和未读也按送达后的样子
         val pending = rawMessages.filter { it.status == MessageStatus.PENDING }.groupBy { it.contactId }
-        val messages = rawMessages.map { if (it.status == MessageStatus.PENDING) it.copy(status = MessageStatus.SUCCESS) else it }
+        // 还在等合成的语音回复没有语音文件：按合成失败的样子（文字）写入
+        val messages = rawMessages.map {
+            when {
+                it.status != MessageStatus.PENDING -> it
+                it.awaitingSynthesis -> it.copy(status = MessageStatus.SUCCESS, type = MessageType.TEXT)
+                else -> it.copy(status = MessageStatus.SUCCESS)
+            }
+        }
         val conversations = rawConversations.map { conversation ->
             val rows = pending[conversation.contactId] ?: return@map conversation
             val last = rows.maxWith(compareBy<Message>({ it.createdAt }, { it.id }))
             val newer = last.createdAt >= conversation.lastMessageTime
             conversation.copy(
                 lastMessageTime = if (newer) last.createdAt else conversation.lastMessageTime,
-                lastMessagePreview = if (newer) last.content else conversation.lastMessagePreview,
+                lastMessagePreview = if (newer) previewOf(last.copy(type = if (last.awaitingSynthesis) MessageType.TEXT else last.type)) else conversation.lastMessagePreview,
                 unreadCount = conversation.unreadCount + rows.size,
             )
         }
@@ -299,7 +308,7 @@ class BackupManager @Inject constructor(
         val data = BackupData(
             contacts = contacts.map { it.toDto(media.add(it.avatarPath, BackupFormat.AVATARS_DIR)) },
             conversations = conversations.map { it.toDto(media.add(it.backgroundPath, BackupFormat.BACKGROUNDS_DIR)) },
-            messages = messages.map { it.toDto(media.add(it.imagePath, BackupFormat.IMAGES_DIR)) },
+            messages = messages.map { it.toDto(media.add(it.imagePath, BackupFormat.IMAGES_DIR), media.add(it.voicePath, BackupFormat.VOICE_DIR)) },
             providers = providers,
             memories = tables.memories.map { it.toDto() },
             usage = tables.usage.map { it.toDto() },
@@ -334,7 +343,7 @@ class BackupManager @Inject constructor(
             encodeData(data, NonClosingOutputStream(zip))
             zip.closeEntry()
 
-            // 图片本身已经是 JPEG，再压缩没有意义
+            // 图片本身已经是 JPEG、语音是 AAC/MP3，再压缩没有意义
             zip.setLevel(Deflater.NO_COMPRESSION)
             for ((name, file) in media.entries) {
                 try {
@@ -368,7 +377,10 @@ class BackupManager @Inject constructor(
             val canonical = file.canonicalPath
             byPath[canonical]?.let { return it }
             var name = dir + file.name
-            if (!BackupFormat.mediaNamePattern.matches(name) || name in entries) name = dir + "${UUID.randomUUID()}.jpg"
+            if (!BackupFormat.mediaNamePattern.matches(name) || name in entries) {
+                val extension = file.extension.lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "jpg" }
+                name = dir + "${UUID.randomUUID()}.$extension"
+            }
             entries[name] = file
             byPath[canonical] = name
             return name
@@ -461,7 +473,13 @@ class BackupManager @Inject constructor(
             conversations = data.conversations.filter { it.contactId in ids }.distinctBy { it.contactId }
                 .map { it.copy(background = it.background?.takeIf { name -> name.startsWith(BackupFormat.BACKGROUNDS_DIR) && BackupFormat.mediaNamePattern.matches(name) }) },
             messages = data.messages.filter { it.contactId in ids }.distinctBy { it.id }
-                .map { it.copy(image = it.image?.takeIf(BackupFormat.mediaNamePattern::matches)) },
+                .map {
+                    it.copy(
+                        image = it.image?.takeIf(BackupFormat.mediaNamePattern::matches),
+                        voice = it.voice?.takeIf { name -> name.startsWith(BackupFormat.VOICE_DIR) && BackupFormat.mediaNamePattern.matches(name) },
+                        voiceMillis = it.voiceMillis.coerceAtLeast(0),
+                    )
+                },
             settings = data.settings.copy(avatar = data.settings.avatar?.takeIf(BackupFormat.mediaNamePattern::matches)),
         )
     }
@@ -512,9 +530,9 @@ class BackupManager @Inject constructor(
         val created = ArrayList<File>()
         try {
             val paths = ZipFile(preview.file).use { zip -> extractMedia(zip, preview.data, created) }
-            val summary = writeDatabase(preview.data, mode, paths, apiKeys, exactKey, keepGlobalMemory)
+            val (summary, providerIds) = writeDatabase(preview.data, mode, paths, apiKeys, exactKey, keepGlobalMemory)
             try {
-                writeSettings(preview.data.settings, mode, paths)
+                writeSettings(preview.data.settings, mode, paths, providerIds)
             } catch (e: Exception) {
                 if (rollback != null) rollbackFrom(rollback)
                 throw e
@@ -542,15 +560,19 @@ class BackupManager @Inject constructor(
         data.messages.mapNotNullTo(names) { it.image }
         data.settings.avatar?.let(names::add)
         data.conversations.mapNotNullTo(names) { it.background }
+        data.messages.mapNotNullTo(names) { it.voice }
         val result = HashMap<String, String>()
         for (name in names) {
             val entry = zip.getEntry(name) ?: continue
             val kind = when {
                 name.startsWith(BackupFormat.AVATARS_DIR) -> MediaKind.AVATAR
                 name.startsWith(BackupFormat.BACKGROUNDS_DIR) -> MediaKind.BACKGROUND
+                name.startsWith(BackupFormat.VOICE_DIR) -> MediaKind.VOICE
                 else -> MediaKind.IMAGE
             }
-            val target = files.newMediaFile(kind)
+            // 语音保留原来的扩展名（m4a、mp3、wav），播放时按它识别格式
+            val extension = if (kind == MediaKind.VOICE) name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "m4a" } else "jpg"
+            val target = files.newMediaFile(kind, extension)
             created += target
             zip.getInputStream(entry).use { input ->
                 target.outputStream().use { LimitedInputStream(input, MAX_MEDIA_BYTES).copyTo(it) }
@@ -567,13 +589,18 @@ class BackupManager @Inject constructor(
         apiKeys: Map<Long, String>,
         exactKey: Boolean,
         keepGlobalMemory: Boolean,
-    ): RestoreSummary = db.withTransaction {
-        val sources = data.providers.filter { it.kind == ProviderKind.LLM }
+    ): Pair<RestoreSummary, ProviderIds> = db.withTransaction {
         when (mode) {
-            RestoreMode.OVERWRITE -> overwrite(data, sources, paths, apiKeys, exactKey, keepGlobalMemory)
-            RestoreMode.MERGE -> merge(data, sources, paths, apiKeys)
+            RestoreMode.OVERWRITE -> overwrite(data, data.providers, paths, apiKeys, exactKey, keepGlobalMemory)
+            RestoreMode.MERGE -> merge(data, data.providers, paths, apiKeys)
         }
     }
+
+    /**
+     * 恢复后服务商 id 的对应关系，用来改写语音来源（provider:{id}）：
+     * [fromBackup] 是备份里的 id → 本机的 id；[fromLocal] 是覆盖恢复时保留下来、换了 id 的本机语音服务商
+     */
+    private data class ProviderIds(val fromBackup: Map<Long, Long>, val fromLocal: Map<Long, Long> = emptyMap())
 
     private suspend fun overwrite(
         data: BackupData,
@@ -582,7 +609,7 @@ class BackupManager @Inject constructor(
         apiKeys: Map<Long, String>,
         exactKey: Boolean,
         keepGlobalMemory: Boolean,
-    ): RestoreSummary {
+    ): Pair<RestoreSummary, ProviderIds> {
         messageDao.deleteAll()
         memoryDao.deleteAll()
         usageDao.deleteAll()
@@ -600,7 +627,8 @@ class BackupManager @Inject constructor(
             globalDao.insertItems(data.globalItems.map { it.toEntity(it.topicId) })
         }
 
-        val providerIds = overwriteProviders(sources, apiKeys, exactKey)
+        val ids = overwriteProviders(sources, apiKeys, exactKey)
+        val providerIds = ids.fromBackup
         val fallback = providerDao.llmList().firstOrNull()?.id ?: error("缺少服务商配置")
 
         contactDao.insertAll(
@@ -611,48 +639,62 @@ class BackupManager @Inject constructor(
             data.conversations.map { it.toEntity(it.background?.let(paths::get)) } +
                 data.contacts.filter { it.id !in withConversation }.map { Conversation(contactId = it.id, memoryCursor = null) },
         )
-        messageDao.insertAll(data.messages.map { it.toEntity(it.contactId, it.image?.let(paths::get)) })
+        messageDao.insertAll(data.messages.map { it.toEntity(it.contactId, it.image?.let(paths::get), it.voice?.let(paths::get)) })
         memoryDao.insertAll(data.memories.map { it.toEntity(it.contactId) })
         usageDao.insertIgnore(data.usage.map { it.toEntity(it.contactId) })
-        return RestoreSummary(data.contacts.size, data.messages.size, apiKeys.isNotEmpty())
+        return RestoreSummary(data.contacts.size, data.messages.size, apiKeys.isNotEmpty()) to ids
     }
 
     /**
-     * 服务商换成备份里的，id 不变。备份里没有服务商时（不应该出现）保留本机的。
+     * 服务商换成备份里的，id 不变。备份里没有大语言模型服务商时（不应该出现）保留本机的；
+     * 备份里没有语音服务商时（0.6.0 及更早的备份）保留本机的语音服务商，换成新 id（免得和备份里的 id 撞上），
+     * 对应关系记在 [ProviderIds.fromLocal]。
      * 备份没带 Key 时保留本机同一个服务商的 Key：Key 不算聊天数据，导出默认也不带。
      */
     private suspend fun overwriteProviders(
         sources: List<ProviderDto>,
         apiKeys: Map<Long, String>,
         exactKey: Boolean,
-    ): Map<Long, Long> {
-        if (sources.isEmpty()) return emptyMap()
-        val local = providerDao.llmList()
-        local.forEach { providerDao.deleteModels(it.id) }
-        providerDao.deleteAllLlm()
-        return sources.associate { source ->
+    ): ProviderIds {
+        val llmSources = sources.filter { it.kind == ProviderKind.LLM }
+        val voiceSources = sources.filter { it.kind != ProviderKind.LLM }
+        val local = providerDao.listConfigs()
+        val localVoice = local.filter { it.kind != ProviderKind.LLM }
+        if (llmSources.isNotEmpty()) {
+            local.filter { it.kind == ProviderKind.LLM }.forEach { providerDao.deleteModels(it.id) }
+            providerDao.deleteAllLlm()
+        }
+        localVoice.forEach { providerDao.deleteModels(it.id) }
+        providerDao.deleteAllVoice()
+        val fromBackup = (llmSources + voiceSources).associate { source ->
             val key = apiKeys[source.id]
                 ?: if (exactKey) null else local.firstOrNull { it.isSameAs(source) }?.apiKeyEncrypted
             val id = insertProvider(source, key, keepId = true)
             source.id to id
         }
+        val fromLocal = if (voiceSources.isNotEmpty()) emptyMap() else localVoice.associate { old ->
+            old.id to providerDao.insert(old.copy(id = 0))
+        }
+        return ProviderIds(fromBackup, fromLocal)
     }
 
     private suspend fun insertProvider(source: ProviderDto, apiKey: String?, keepId: Boolean): Long {
-        val id = providerDao.insert(source.toEntity(if (keepId) source.id else 0, apiKey))
+        // 沿用原 id 时先看有没有被占用（保留下来的本机服务商）；被占用就换新 id
+        val keep = keepId && providerDao.get(source.id) == null
+        val id = providerDao.insert(source.toEntity(if (keep) source.id else 0, apiKey))
         providerDao.upsertModels(source.models.map { it.toEntity(id) })
         return id
     }
 
     private fun ProviderConfig.isSameAs(source: ProviderDto) =
-        provider == source.provider && BaseUrlRules.isSameUrl(baseUrl, source.baseUrl)
+        kind == source.kind && provider == source.provider && BaseUrlRules.isSameUrl(baseUrl, source.baseUrl)
 
     /**
      * 合并服务商：同一个服务商保留本机的配置，只补本机没有的 Key 和模型；其他的作为新服务商加入。
      * 返回备份里的 id → 本机的 id，以及有没有恢复 Key。
      */
     private suspend fun mergeProviders(sources: List<ProviderDto>, apiKeys: Map<Long, String>): Pair<Map<Long, Long>, Boolean> {
-        val local = providerDao.llmList().toMutableList()
+        val local = providerDao.listConfigs().toMutableList()
         val ids = HashMap<Long, Long>()
         var keyRestored = false
         for (source in sources) {
@@ -681,7 +723,7 @@ class BackupManager @Inject constructor(
         sources: List<ProviderDto>,
         paths: Map<String, String>,
         apiKeys: Map<Long, String>,
-    ): RestoreSummary {
+    ): Pair<RestoreSummary, ProviderIds> {
         val (providerIds, keyRestored) = mergeProviders(sources, apiKeys)
         val fallback = providerDao.llmList().firstOrNull()?.id ?: error("缺少服务商配置")
         fun providerOf(contact: ContactDto) = providerIds[contact.providerId] ?: fallback
@@ -730,7 +772,7 @@ class BackupManager @Inject constructor(
             if (message.contactId in same && MessageKey(message.id, target, message.createdAt) in localKeys) {
                 return@mapNotNull null
             }
-            message.toEntity(target, message.image?.let(paths::get)).copy(id = 0)
+            message.toEntity(target, message.image?.let(paths::get), message.voice?.let(paths::get)).copy(id = 0)
         }
         messageDao.insertAll(newMessages)
         // 已有的联系人多了消息：重新算聊天列表里的最后一条
@@ -754,7 +796,7 @@ class BackupManager @Inject constructor(
             },
         )
         mergeGlobalMemory(data)
-        return RestoreSummary(contactsAdded, newMessages.size, keyRestored)
+        return RestoreSummary(contactsAdded, newMessages.size, keyRestored) to ProviderIds(providerIds)
     }
 
     /**
@@ -791,15 +833,27 @@ class BackupManager @Inject constructor(
 
     private suspend fun refreshLastMessage(contactId: Long) {
         val latest = messageDao.latestVisible(contactId) ?: return
-        val preview = when (latest.type) {
-            MessageType.TEXT -> latest.content
-            MessageType.IMAGE -> context.getString(R.string.preview_image)
-        }
-        conversationDao.setLastMessage(contactId, latest.createdAt, preview)
+        conversationDao.setLastMessage(contactId, latest.createdAt, previewOf(latest))
     }
 
-    private fun writeSettings(dto: SettingsDto, mode: RestoreMode, paths: Map<String, String>) {
+    private fun previewOf(message: Message): String = when (message.type) {
+        MessageType.TEXT -> message.content
+        MessageType.IMAGE -> context.getString(R.string.preview_image)
+        MessageType.VOICE -> context.getString(R.string.preview_voice)
+    }
+
+    private fun writeSettings(dto: SettingsDto, mode: RestoreMode, paths: Map<String, String>, ids: ProviderIds) {
         val current = settings.read()
+        // 语音来源里的服务商 id 换成本机的；对应不上的（服务商不在了）当作没有选
+        fun remap(source: String, map: Map<Long, Long>): String {
+            val parsed = VoiceSource.parse(source) as? VoiceSource.Provider ?: return source
+            return map[parsed.id]?.let(VoiceSource::provider).orEmpty()
+        }
+        val backupVoice = dto.voice?.let { VoiceSettings(it.replyType, remap(it.ttsSource, ids.fromBackup), remap(it.asrSource, ids.fromBackup)) }
+        val keptVoice = if (ids.fromLocal.isEmpty()) current.voice else current.voice.copy(
+            ttsSource = remap(current.voice.ttsSource, ids.fromLocal),
+            asrSource = remap(current.voice.asrSource, ids.fromLocal),
+        )
         val next = when (mode) {
             RestoreMode.OVERWRITE -> AppSettingsSnapshot(
                 themeMode = dto.themeMode?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } } ?: current.themeMode,
@@ -811,10 +865,17 @@ class BackupManager @Inject constructor(
                 autoCheckUpdate = dto.autoCheckUpdate ?: current.autoCheckUpdate,
                 replyPreferences = dto.replyPreferences?.toModel() ?: current.replyPreferences,
                 proactive = dto.proactive?.toModel() ?: current.proactive,
+                // 备份里没有语音设置时保留本机的（本机的语音服务商换了 id，来源跟着换）
+                voice = backupVoice ?: keptVoice,
             )
             RestoreMode.MERGE -> current.copy(
                 nickname = current.nickname.ifBlank { dto.nickname.orEmpty() },
                 avatarPath = current.avatarPath ?: dto.avatar?.let(paths::get),
+                // 合并时保留本机的；本机还没选来源时才用备份里的
+                voice = current.voice.copy(
+                    ttsSource = current.voice.ttsSource.ifEmpty { backupVoice?.ttsSource.orEmpty() },
+                    asrSource = current.voice.asrSource.ifEmpty { backupVoice?.asrSource.orEmpty() },
+                ),
             )
         }
         if (next != current) settings.write(next)
@@ -825,6 +886,7 @@ class BackupManager @Inject constructor(
         contactDao.listAll().mapNotNullTo(referenced) { it.avatarPath }
         referenced += messageDao.allImagePaths()
         referenced += conversationDao.backgroundPaths()
+        referenced += messageDao.allVoicePaths()
         settings.read().avatarPath?.let(referenced::add)
         files.deleteUnreferenced(referenced)
     }
@@ -838,6 +900,7 @@ class BackupManager @Inject constructor(
         thinkingOption = thinkingOption, memoryModel = memoryModel, memoryThinkingOption = memoryThinkingOption,
         useGlobalMemory = useGlobalMemory, useReplyPreferences = useReplyPreferences,
         proactiveEnabled = proactiveEnabled, proactiveFrequency = proactiveFrequency,
+        replyType = replyType, ttsVoice = ttsVoice, ttsStyle = ttsStyle,
     )
 
     private fun ContactDto.toEntity(providerId: Long, avatarPath: String?) = Contact(
@@ -848,6 +911,7 @@ class BackupManager @Inject constructor(
         thinkingOption = thinkingOption, memoryModel = memoryModel, memoryThinkingOption = memoryThinkingOption,
         useGlobalMemory = useGlobalMemory, useReplyPreferences = useReplyPreferences,
         proactiveEnabled = proactiveEnabled, proactiveFrequency = proactiveFrequency,
+        replyType = replyType, ttsVoice = ttsVoice?.take(Contact.VOICE_MAX_LENGTH), ttsStyle = ttsStyle.take(Contact.STYLE_MAX_LENGTH),
     )
 
     // 会话的连续未回复次数和最近一次主动请求时间是设备状态：不导出，恢复出来的会话从 0 开始
@@ -908,18 +972,24 @@ class BackupManager @Inject constructor(
         completionTokens = completionTokens, requests = requests,
     )
 
-    private fun Message.toDto(image: String?) = MessageDto(
+    private fun Message.toDto(image: String?, voice: String?) = MessageDto(
         id = id, contactId = contactId, role = role, type = type, content = content, image = image,
         imageWidth = imageWidth, imageHeight = imageHeight, reasoning = reasoning, reasoningMillis = reasoningMillis,
         status = status, errorCode = errorCode, model = model, promptTokens = promptTokens,
         completionTokens = completionTokens, replyGroup = replyGroup, createdAt = createdAt, origin = origin,
+        voice = voice, voiceMillis = voiceMillis, voicePlayed = voicePlayed, voiceShowText = voiceShowText,
     )
 
-    /** 导出时还在等待回复的消息：恢复后标记为失败，可以点击重试；待投递的按已送达（导出时已经这样写，这里再兜一次） */
-    private fun MessageDto.toEntity(contactId: Long, imagePath: String?): Message {
+    /**
+     * 导出时还在等待回复的消息：恢复后标记为失败，可以点击重试；待投递的按已送达（导出时已经这样写，这里再兜一次）。
+     * 语音文件在备份里缺失时，联系人的语音按文字显示（转写文字还在）；用户的语音留着，显示文件丢失
+     */
+    private fun MessageDto.toEntity(contactId: Long, imagePath: String?, voicePath: String? = null): Message {
         val sending = status == MessageStatus.SENDING
+        val lostVoice = type == MessageType.VOICE && voicePath == null && role == isomeria.aichat.data.db.Role.ASSISTANT
         return Message(
-            id = id, contactId = contactId, role = role, type = type, content = content, imagePath = imagePath,
+            id = id, contactId = contactId, role = role, type = if (lostVoice) MessageType.TEXT else type, content = content, imagePath = imagePath,
+            voicePath = voicePath, voiceMillis = voiceMillis, voicePlayed = voicePlayed, voiceShowText = voiceShowText,
             imageWidth = imageWidth, imageHeight = imageHeight, reasoning = reasoning, reasoningMillis = reasoningMillis,
             status = when (status) {
                 MessageStatus.SENDING -> MessageStatus.FAILED
@@ -934,7 +1004,7 @@ class BackupManager @Inject constructor(
 
     private fun ProviderConfig.toDto(models: List<ProviderModel>, apiKey: SecretDto?) = ProviderDto(
         id = id, kind = kind, provider = provider, name = name, baseUrl = baseUrl, defaultModel = defaultModel,
-        enabled = enabled, presetId = presetId, compatibility = compatibility,
+        enabled = enabled, presetId = presetId, compatibility = compatibility, voice = voice,
         models = models.map {
             ProviderModelDto(
                 it.modelId, it.displayName, it.imageInput, it.imageInputUserMark, it.sortOrder,
@@ -946,7 +1016,7 @@ class BackupManager @Inject constructor(
 
     private fun ProviderDto.toEntity(id: Long, apiKey: String?) = ProviderConfig(
         id = id, kind = kind, provider = provider, name = name, baseUrl = baseUrl, apiKeyEncrypted = apiKey,
-        defaultModel = defaultModel, enabled = enabled, presetId = presetId, compatibility = compatibility,
+        defaultModel = defaultModel, enabled = enabled, presetId = presetId, compatibility = compatibility, voice = voice,
     )
 
     private fun ProviderModelDto.toEntity(providerId: Long) = ProviderModel(
@@ -961,6 +1031,7 @@ class BackupManager @Inject constructor(
         notifyEnabled = notifyEnabled, notifyPreview = notifyPreview, autoCheckUpdate = autoCheckUpdate,
         replyPreferences = replyPreferences.toDto(),
         proactive = proactive.toDto(),
+        voice = VoiceSettingsDto(voice.replyType, voice.ttsSource, voice.asrSource),
     )
 
     /** 读取时限制大小，防止异常文件把内存或存储撑满 */

@@ -53,6 +53,7 @@ class BackupMigrations(
             3 to { data -> v3ToV4(data) },
             4 to { data -> v4ToV5(data) },
             5 to { data -> v5ToV6(data) },
+            6 to { data -> v6ToV7(data) },
         )
 
         /**
@@ -133,6 +134,30 @@ class BackupMigrations(
                 result["messages"] = JsonArray(messages.map { JsonObject(it.jsonObject + ("origin" to JsonPrimitive("NORMAL"))) })
             }
             (data["settings"] as? JsonObject)?.let { settings -> result["settings"] = JsonObject(settings - "proactive") }
+            return JsonObject(result)
+        }
+
+        /**
+         * 与 Room v6→v7 的默认值一致：旧联系人的消息发送类型用全局设置（默认跟随）、音色用服务商默认、没有语气要求；
+         * 旧消息都不是语音；旧服务商没有默认音色。旧备份里没有语音消息的全局设置，恢复时保留本机的。
+         */
+        fun v6ToV7(data: JsonObject): JsonObject {
+            val result = data.toMutableMap()
+            data.arrayOf("contacts")?.let { contacts ->
+                result["contacts"] = JsonArray(contacts.map {
+                    JsonObject(it.jsonObject + ("replyType" to JsonNull) + ("ttsVoice" to JsonNull) + ("ttsStyle" to JsonPrimitive("")))
+                })
+            }
+            data.arrayOf("messages")?.let { messages ->
+                result["messages"] = JsonArray(messages.map {
+                    JsonObject(it.jsonObject + ("voice" to JsonNull) + ("voiceMillis" to JsonPrimitive(0)) +
+                        ("voicePlayed" to JsonPrimitive(false)) + ("voiceShowText" to JsonPrimitive(false)))
+                })
+            }
+            data.arrayOf("providers")?.let { providers ->
+                result["providers"] = JsonArray(providers.map { JsonObject(it.jsonObject + ("voice" to JsonPrimitive(""))) })
+            }
+            (data["settings"] as? JsonObject)?.let { settings -> result["settings"] = JsonObject(settings - "voice") }
             return JsonObject(result)
         }
 

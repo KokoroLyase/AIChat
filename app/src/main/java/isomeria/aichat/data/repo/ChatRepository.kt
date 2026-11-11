@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
-import isomeria.aichat.R
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.ContactDao
@@ -35,6 +34,7 @@ class ChatRepository @Inject constructor(
     private val files: FileStorage,
     private val replyScheduler: ReplyQueue,
     private val notifier: ReplyNotifications,
+    private val previews: MessagePreviewer = MessagePreviewer.PLAIN,
 ) {
     private val paging = ChatPaging(db)
     private val messageActions = ChatMessageActions(db)
@@ -72,6 +72,47 @@ class ChatRepository @Inject constructor(
         conversationDao.setDraft(contactId, "")
         replyScheduler.enqueue(contactId)
     }
+
+    /**
+     * 发送一条语音（0.7.0）。录音文件 [file] 已经在 files/voice 里并固定着；先显示语音条（等待识别，content 为空），
+     * 回复任务先识别出文字、识别成功后才进入等待回复，识别失败时这条标为失败、不请求模型，点击可重试
+     */
+    suspend fun sendVoice(contactId: Long, file: java.io.File, millis: Long) = StorageOperations.gate.activity {
+        try {
+            insertUserMessages(
+                contactId,
+                listOf(
+                    Message(
+                        contactId = contactId,
+                        role = Role.USER,
+                        type = MessageType.VOICE,
+                        voicePath = file.absolutePath,
+                        voiceMillis = millis,
+                        voicePlayed = true,
+                        status = MessageStatus.SENDING,
+                        createdAt = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        } catch (e: Throwable) {
+            files.delete(file.absolutePath)
+            throw e
+        } finally {
+            files.commitAvatar(file.absolutePath)
+        }
+        replyScheduler.enqueue(contactId)
+    }
+
+    /** 点开播放过（或转了文字）：红点去掉 */
+    suspend fun markVoicePlayed(id: Long) = messageDao.setVoicePlayed(id)
+
+    /** 「转文字」/「取消转文字」 */
+    suspend fun setVoiceShowText(id: Long, show: Boolean) = messageDao.setVoiceShowText(id, show)
+
+    /** 连续朗读、依次播放：某条之后的语音消息 */
+    suspend fun voiceAfter(message: Message): List<Message> = messageDao.voiceAfter(message.contactId, message.createdAt, message.id)
+
+    suspend fun message(id: Long): Message? = messageDao.get(id)
 
     /** 一次可选多张，每张单独成一条消息 */
     suspend fun sendImages(contactId: Long, uris: List<Uri>): Int = StorageOperations.gate.activity { sendImagesProtected(contactId, uris) }
@@ -132,6 +173,7 @@ class ChatRepository @Inject constructor(
             refreshLastMessage(message.contactId)
         }
         files.delete(message.imagePath)
+        files.delete(message.voicePath)
         // 删掉的是最后一条等待中的消息时，取消这次请求
         if (message.status == MessageStatus.SENDING && messageDao.sendingIds(message.contactId).isEmpty()) {
             replyScheduler.cancel(message.contactId)
@@ -142,7 +184,7 @@ class ChatRepository @Inject constructor(
     suspend fun deleteConversation(contactId: Long) {
         replyScheduler.cancel(contactId)
         replyScheduler.cancelDelivery(contactId)
-        val images = messageDao.imagePaths(contactId)
+        val images = messageDao.imagePaths(contactId) + messageDao.voicePaths(contactId)
         val background = conversationDao.get(contactId)?.backgroundPath
         db.withTransaction {
             messageDao.deleteByContact(contactId)
@@ -155,11 +197,11 @@ class ChatRepository @Inject constructor(
         notifier.cancelReply(contactId)
     }
 
-    /** 聊天信息页「清空聊天记录」：删掉消息和图片，聊天仍留在列表里（置顶和草稿保留） */
+    /** 聊天信息页「清空聊天记录」：删掉消息、图片和语音，聊天仍留在列表里（置顶和草稿保留） */
     suspend fun clearHistory(contactId: Long) {
         replyScheduler.cancel(contactId)
         replyScheduler.cancelDelivery(contactId)
-        val images = messageDao.imagePaths(contactId)
+        val images = messageDao.imagePaths(contactId) + messageDao.voicePaths(contactId)
         db.withTransaction {
             ensureConversation(contactId)
             messageDao.deleteByContact(contactId)
@@ -175,7 +217,7 @@ class ChatRepository @Inject constructor(
         val contacts = contactDao.listAll().map { it.id }
         contacts.forEach(replyScheduler::cancel)
         contacts.forEach(replyScheduler::cancelDelivery)
-        val images = messageDao.allImagePaths()
+        val images = messageDao.allImagePaths() + messageDao.allVoicePaths()
         db.withTransaction {
             messageDao.deleteAll()
             conversationDao.resetAll()
@@ -283,10 +325,7 @@ class ChatRepository @Inject constructor(
         }
     }
 
-    private fun previewOf(message: Message): String = when (message.type) {
-        MessageType.TEXT -> message.content
-        MessageType.IMAGE -> context.getString(R.string.preview_image)
-    }
+    private fun previewOf(message: Message): String = previews.preview(message)
 }
 
 /** 全局搜索里的一个聊天；[single] 是只命中一条时的那条消息 */

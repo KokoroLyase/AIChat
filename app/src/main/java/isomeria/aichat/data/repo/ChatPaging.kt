@@ -70,7 +70,8 @@ class ChatPaging(private val db: AppDatabase) {
     fun timeline(contactId: Long): Flow<ChatTimeline> = messages.observeLatest(contactId).mapLatest {
         db.withTransaction {
             val visible = messages.latestVisible(contactId)
-            val waiting = messages.hasSending(contactId)
+            // 还在识别的语音（0.7.0）不算等待回复：识别成功后才显示「对方正在输入…」
+            val waiting = messages.hasWaitingReply(contactId)
             val pending = messages.hasPending(contactId)
             val allowed = visible?.role == isomeria.aichat.data.db.Role.ASSISTANT && !waiting && !pending &&
                 ChatMessageActions(db).regenerationTurn(contactId, visible).isNotEmpty()
