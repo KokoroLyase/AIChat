@@ -116,7 +116,7 @@ App 自己加密的只有 API Key 和设了密码的导出文件。手机上的�
 
 以 0.7.0 为准，详细范围见[路线图 0.7.0 小节](docs/roadmap.md#070-语音消息调用-api-的部分已发布)；更早的见[0.6.0 小节](docs/roadmap.md#060-联系人主动聊天已发布)、[0.5.0 小节](docs/roadmap.md#050-全局记忆回复偏好与可靠投递已发布)、[0.4.2 小节](docs/roadmap.md#042-界面逻辑优化已发布)和[第二节](docs/roadmap.md#二现状基线v041-已发布)。
 
-- **0.7.0：** 无缓存门禁通过：1094 项 JVM 测试（含截图、两种格式的合成和识别对本机模拟服务器的请求、0.6.0 导出的明文和加密备份恢复、语音模式下请求与不用语音时逐字一致）、lint 0 个错误，debug、release（证书指纹已核对）、perf 包构建成功；每批行为改动都做了反向确认。作者用 perf 包在真机上实测基本没有问题（perf 包已卸载）。**没有做的**：设备端测试（新增的 Room 6→7 迁移和 0.6.0 备份恢复只在 JVM 上通过）、正式版 0.6.0 → 0.7.0 覆盖升级；开发过程中没有调用真实的语音服务商。
+- **0.7.0：** 无缓存门禁通过：1094 项 JVM 测试（含截图、两种格式的合成和识别对本机模拟服务器的请求、0.6.0 导出的明文和加密备份恢复、语音模式下请求与不用语音时逐字一致）、lint 0 个错误，debug、release（证书指纹已核对）、perf 包构建成功；每批行为改动都做了反向确认。作者用 perf 包在真机上实测基本没有问题（perf 包已卸载）；GitHub CI 和 Release 流程通过，正式 APK 的版本、签名证书和 SHA-256 已核对。**没有做的**：设备端测试（新增的 Room 6→7 迁移和 0.6.0 备份恢复只在 JVM 上通过）、正式版 0.6.0 → 0.7.0 覆盖升级；开发过程中没有调用真实的语音服务商。
 - **0.6.0：** 969 项 JVM 测试和 lint、无缓存构建和 release 签名核对已通过；用 v0.5.0 导出代码生成的明文和加密备份恢复（JVM）。真机（只用测试包、虚构数据和本机模拟接口）：25 项设备端测试、0.5.0 debug 覆盖升级、0.5.0 备份恢复、主动聊天的发送 / `[SKIP]` / 失败 / 暂停与恢复 / 免打扰时段 / 每日上限 / 约定标记 / 消息免打扰都通过。**后台没有通过**：测试手机（HyperOS，默认设置）上 App 退到后台后进程被冻结，周期检查和约好的提醒都没有自动运行，只在回到 App 时补发。用户给测试包允许自启动并关闭电池优化后，用真实服务商实测一次约定提醒，按时收到（此前因请求超时 90 秒太短没收到，已改为 4 分钟），作者用 perf 包实测其余重要功能基本没有问题；GitHub CI 和 Release 流程通过。周期检查的长期后台表现没有单独验证。详见[路线图 0.6.0 小节](docs/roadmap.md#060-联系人主动聊天已发布)。
 - **0.5.0：** 867 项 JVM 测试和 lint；22 项设备端测试（含 Room 4→5、0.4.2 明文和加密备份恢复）；0.4.2 覆盖升级到 0.5.0；真机上用模拟接口验证分条间隔、杀进程后恢复、插话、后台投递和通知、免打扰、全局记忆开关和全部关闭时与 0.4.2 相同的请求；作者用 perf 包实测了重要功能；GitHub CI 和 Release 流程。未验证：真实服务商调用、第一条通知的实际响铃。
 - **0.4.2：** 745 项 JVM 测试（含截图）和 lint；19 项设备端测试（Room 3→4、聊天背景、带背景的加密导出恢复、免打扰）；0.4.1 覆盖升级到 0.4.2；0.4.1 导出的明文和加密备份恢复；GitHub CI 和 Release 流程。更早补测过真实 v0.2.0、v0.3.0 导出文件的恢复，以及本机假 Release 上的更新下载和 SHA 校验。
@@ -159,7 +159,7 @@ adb shell am start -n isomeria.aichat.perf/isomeria.aichat.testtools.TestToolsAc
 
 0.6.0 起另有 `proactive_run`（立即运行一次主动聊天检查：不掷概率，其余条件和额度照常，会调用模型）和 `proactive_state`（查看状态）。
 
-0.7.0 起，debug 和 perf 包的应用私有目录里有 `files/test-voice-input.wav`（16 kHz 单声道 16 位 WAV）时，按住说话和录音转文字用这段音频代替麦克风（按实际时长读入，不录手机周围的声音）；release 不含这个开关。放文件的方法：先 `adb push` 到 `/data/local/tmp`，再用 `adb shell run-as isomeria.aichat.debug cp` 复制到 `files/` 下，用完删掉。`tools/mock_llm.py` 0.7.0 起也模拟两种格式的语音合成和识别（`--tts-mode` / `--asr-mode` 取 `ok`、`fail`、`empty`、`timeout`、`fail-once`）。
+0.7.0 起，debug 和 perf 包的应用私有目录里有 `files/test-voice-input.wav`（16 kHz 单声道 16 位 WAV）时，按住说话和录音转文字用这段音频代替麦克风（按实际时长读入，不录手机周围的声音）；release 里这个开关是关的（`TEST_TOOLS` 为 false），不会读这个文件。放文件的方法：先 `adb push` 到 `/data/local/tmp`，再用 `adb shell run-as isomeria.aichat.debug cp` 复制到 `files/` 下，用完删掉。`tools/mock_llm.py` 0.7.0 起也模拟两种格式的语音合成和识别（`--tts-mode` / `--asr-mode` 取 `ok`、`fail`、`empty`、`timeout`、`fail-once`）。
 
 新页面的浅色/深色截图：`./gradlew recordRoborazziDebug`。如果 Hilt 生成文件与 lint 并发分析冲突，先 `./gradlew --stop`，再为同一套验收加 `--no-parallel --max-workers=1`；不能把分析器崩溃当作 lint 通过。
 
