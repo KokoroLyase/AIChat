@@ -811,8 +811,8 @@
     <string name="voice_providers_tts_title">语音合成</string>
     <string name="voice_providers_asr_title">语音识别</string>
     <string name="voice_providers_empty">还没有服务商，点右上角「添加」。</string>
-    <string name="voice_providers_tts_hint">把联系人的回复读成语音。支持两种请求格式：聊天接口带音频（按 Xiaomi MiMo 的文档实现）和 OpenAI 标准音频接口（/audio/speech）。只用打勾的那一个。</string>
-    <string name="voice_providers_asr_hint">把你的语音转成文字再发给联系人。支持两种请求格式：聊天接口带音频（按 Xiaomi MiMo 的文档实现）和 OpenAI 标准音频接口（/audio/transcriptions）。只用打勾的那一个。</string>
+    <string name="voice_providers_tts_hint">把联系人的回复读成语音。支持两种请求格式：聊天接口带音频（按 Xiaomi MiMo 的文档实现）和 OpenAI 标准音频接口（/audio/speech）。只用标着“正在使用”的那一个，在服务商里打开“使用这个服务商”切换。</string>
+    <string name="voice_providers_asr_hint">把你的语音转成文字再发给联系人。支持两种请求格式：聊天接口带音频（按 Xiaomi MiMo 的文档实现）和 OpenAI 标准音频接口（/audio/transcriptions）。只用标着“正在使用”的那一个，在服务商里打开“使用这个服务商”切换。</string>
     <string name="voice_provider_in_use">正在使用</string>
     <string name="voice_provider_add_tts">添加语音合成服务商</string>
     <string name="voice_provider_add_asr">添加语音识别服务商</string>
