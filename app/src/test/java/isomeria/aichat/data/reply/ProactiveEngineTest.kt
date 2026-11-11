@@ -367,8 +367,10 @@ class ProactiveEngineTest {
         assertEquals("暂停期间不调用模型", 2, requests.size)
         assertEquals(2, used())
 
-        // 用户发言：恢复
-        h.now = at(11, 10)
+        // 用户发言：恢复。sendText 用真实时间记用户消息，假时钟要跟到真实时间之后、关掉免打扰时段，
+        // 否则写死的日期过了某个时刻，回复会排在假时钟之后送不到，测试从那天起一直失败
+        h.proactiveSettings = ProactiveSettings(quietEnabled = false)
+        h.now = System.currentTimeMillis()
         chat.sendText(id, "刚才在忙")
         assertEquals(0, conversation().proactiveUnanswered)
         h.provider.reply = "没事"
