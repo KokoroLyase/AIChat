@@ -31,7 +31,7 @@ enum class FontSize(val scale: Float) {
 @Singleton
 class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
     UpdatePrefs, NicknameSource, ReplyPreferencesSource, ProactiveSettingsSource, isomeria.aichat.core.ProactiveResultLog,
-    isomeria.aichat.core.VoiceSettingsSource {
+    isomeria.aichat.core.VoiceSettingsSource, isomeria.aichat.core.LocalVoicePrefs {
     private val mmkv: MMKV
 
     init {
@@ -133,6 +133,13 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
         mmkv.encode(KEY_VOICE_ASR, value.asrSource)
         _voiceSettings.value = value
     }
+
+    /** 系统语音合成用的音色（0.7.1）；和这台手机的引擎有关，不随备份 */
+    override var systemTtsVoice: String
+        get() = mmkv.decodeString(KEY_SYSTEM_TTS_VOICE, "") ?: ""
+        set(value) {
+            mmkv.encode(KEY_SYSTEM_TTS_VOICE, value)
+        }
 
     /** 第一次录音前的说明（录音会发给语音识别服务商）是否已经看过；和设备有关，不随备份 */
     var voiceIntroShown: Boolean
@@ -272,6 +279,7 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
         const val KEY_VOICE_TTS = "voice_tts_source"
         const val KEY_VOICE_ASR = "voice_asr_source"
         const val KEY_VOICE_INTRO = "voice_intro_shown"
+        const val KEY_SYSTEM_TTS_VOICE = "voice_system_tts_voice"
         const val KEY_MIC_ASKED = "mic_permission_asked"
     }
 }

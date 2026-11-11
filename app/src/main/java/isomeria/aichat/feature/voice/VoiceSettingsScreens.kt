@@ -49,6 +49,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import isomeria.aichat.BuildConfig
 import isomeria.aichat.R
 import isomeria.aichat.core.VoiceSettings
+import isomeria.aichat.core.VoiceSource
 import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderKind
 import isomeria.aichat.data.db.ReplyType
@@ -112,6 +113,9 @@ data class VoiceSettingsUiState(
     val voice: VoiceSettings = VoiceSettings(),
     val ttsName: String? = null,
     val asrName: String? = null,
+    /** 选用的是本机来源时（0.7.1）显示它的名称 */
+    val ttsLocal: VoiceSource.Local? = null,
+    val asrLocal: VoiceSource.Local? = null,
 )
 
 @HiltViewModel
@@ -123,13 +127,17 @@ class VoiceSettingsViewModel @Inject constructor(
         settings.voiceSettings,
         voices.observe(ProviderKind.TTS, settings.voiceSettings),
         voices.observe(ProviderKind.ASR, settings.voiceSettings),
-    ) { voice, tts, asr -> VoiceSettingsUiState(voice, tts.selectedName(), asr.selectedName()) }
+    ) { voice, tts, asr -> VoiceSettingsUiState(voice, tts.selectedName(), asr.selectedName(), tts.local, asr.local) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VoiceSettingsUiState(settings.voiceSettings.value))
 
     fun setReplyType(type: ReplyType) = settings.setVoiceSettings(settings.voiceSettings.value.copy(replyType = type))
 }
 
 internal fun VoiceProviders.selectedName(): String? = providers.firstOrNull { it.id == selectedId }?.name
+
+/** 正在用的来源的显示名：本机来源（0.7.1）或服务商的名称；没有选时为 null */
+@Composable
+internal fun voiceSourceName(name: String?, local: VoiceSource.Local?): String? = local?.let { stringResource(localSourceLabel(it)) } ?: name
 
 /**
  * 「我 → 语音消息」（0.7.0）：消息发送类型的全局默认（联系人可以单独设置），以及语音合成、识别各用哪个服务商。
@@ -173,13 +181,13 @@ fun VoiceSettingsContent(
             GroupSpacer()
             WeListRow(
                 title = stringResource(R.string.voice_tts_source),
-                value = state.ttsName ?: stringResource(R.string.voice_source_unset),
+                value = voiceSourceName(state.ttsName, state.ttsLocal) ?: stringResource(R.string.voice_source_unset),
                 onClick = { onOpenProviders(ProviderKind.TTS) },
                 showDivider = true,
             )
             WeListRow(
                 title = stringResource(R.string.voice_asr_source),
-                value = state.asrName ?: stringResource(R.string.voice_source_unset),
+                value = voiceSourceName(state.asrName, state.asrLocal) ?: stringResource(R.string.voice_source_unset),
                 onClick = { onOpenProviders(ProviderKind.ASR) },
             )
             FootnoteText(stringResource(R.string.voice_privacy_note))
@@ -207,10 +215,11 @@ fun VoiceProviderListScreen(
     onBack: () -> Unit,
     onOpen: (ProviderKind, Long) -> Unit,
     onAdd: (ProviderKind) -> Unit,
+    onOpenLocal: (ProviderKind) -> Unit,
     viewModel: VoiceProviderListViewModel = hiltViewModel(),
 ) {
     val providers by viewModel.providers.collectAsStateWithLifecycle()
-    VoiceProviderListContent(viewModel.kind, providers, onBack, { onOpen(viewModel.kind, it) }, { onAdd(viewModel.kind) })
+    VoiceProviderListContent(viewModel.kind, providers, onBack, { onOpen(viewModel.kind, it) }, { onAdd(viewModel.kind) }, onOpenLocal = { onOpenLocal(viewModel.kind) })
 }
 
 @Composable
@@ -220,6 +229,8 @@ fun VoiceProviderListContent(
     onBack: () -> Unit,
     onOpen: (Long) -> Unit,
     onAdd: () -> Unit,
+    localSummary: String? = null,
+    onOpenLocal: () -> Unit = {},
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -231,7 +242,36 @@ fun VoiceProviderListContent(
             WeSmallButton(stringResource(R.string.action_add), onAdd)
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
-            GroupSpacer()
+            // 0.7.1：本机来源（系统语音合成、离线识别），没有 Key 和地址，单独一组放在服务商前面
+            if (kind == ProviderKind.TTS) {
+            SectionHeader(stringResource(R.string.voice_local_group))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(colors.listBackground)
+                    .clickable(role = Role.Button, onClick = onOpenLocal)
+                    .heightIn(min = dimens.listRowHeight)
+                    .padding(horizontal = dimens.horizontalPadding, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    val local = if (kind == ProviderKind.TTS) VoiceSource.SYSTEM_TTS else VoiceSource.OFFLINE_ASR
+                    Text(stringResource(localSourceLabel(local)), style = WeTheme.typography.listTitle, color = colors.textPrimary)
+                    if (state.local == local) {
+                        Text(stringResource(R.string.voice_provider_in_use), style = WeTheme.typography.listTime, color = colors.brandText)
+                    }
+                    Text(
+                        localSummary ?: stringResource(if (kind == ProviderKind.TTS) R.string.voice_local_system_tts_summary else R.string.voice_local_offline_asr_summary),
+                        style = WeTheme.typography.listTime,
+                        color = colors.textTertiary,
+                    )
+                }
+                Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+            }
+            SectionHeader(stringResource(R.string.voice_providers_group))
+            } else {
+                GroupSpacer()
+            }
             if (state.providers.isEmpty()) FootnoteText(stringResource(R.string.voice_providers_empty))
             state.providers.forEachIndexed { index, provider ->
                 Row(
@@ -308,7 +348,8 @@ class VoiceProviderEditViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             if (route.providerId == NEW_PROVIDER) {
-                val first = voices.selected(kind) == null
+                // 还没有选用任何来源（服务商或本机）时，新建的默认选用
+                val first = voices.selected(kind) == null && voices.selectedLocal(kind) == null
                 val preset = VoicePresets.forKind(kind).first()
                 _state.update { it.copy(loaded = true, use = first) }
                 selectPreset(preset)

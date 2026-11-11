@@ -178,7 +178,9 @@ class AndroidAudioCodec @Inject constructor() : AudioCodec {
     }
 
     private fun encode(wav: File, out: File) {
-        val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, WavFormat.SAMPLE_RATE, WavFormat.CHANNELS).apply {
+        // 0.7.1：按文件头里的格式编码（系统语音合成的 WAV 不一定是 16 kHz 单声道）；只编 16 位 PCM
+        val wavInfo = WavFormat.parse(wav)?.takeIf { it.bits == 16 && it.channels <= 2 } ?: throw java.io.IOException("UnsupportedWav")
+        val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, wavInfo.sampleRate, wavInfo.channels).apply {
             setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
             setInteger(MediaFormat.KEY_BIT_RATE, 32_000)
             setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16_384)
@@ -189,7 +191,7 @@ class AndroidAudioCodec @Inject constructor() : AudioCodec {
             codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             codec.start()
             RandomAccessFile(wav, "r").use { input ->
-                input.seek(WavFormat.HEADER_BYTES.toLong())
+                input.seek(wavInfo.dataOffset)
                 val info = MediaCodec.BufferInfo()
                 var track = -1
                 var inputDone = false
@@ -199,9 +201,12 @@ class AndroidAudioCodec @Inject constructor() : AudioCodec {
                         val index = codec.dequeueInputBuffer(10_000)
                         if (index >= 0) {
                             val buffer = codec.getInputBuffer(index)!!
-                            val chunk = ByteArray(buffer.remaining().coerceAtMost(8_192))
-                            val read = input.read(chunk)
-                            val time = presentedBytes * 1_000_000 / WavFormat.BYTES_PER_SECOND
+                            val left = (wavInfo.dataBytes - presentedBytes).coerceAtLeast(0)
+                            // 按整帧读，免得一帧的两个字节分到两次输入里
+                            val frame = wavInfo.channels * 2
+                            val chunk = ByteArray((buffer.remaining().coerceAtMost(8_192).toLong().coerceAtMost(left).toInt() / frame) * frame)
+                            val read = if (chunk.isEmpty()) -1 else input.read(chunk)
+                            val time = presentedBytes * 1_000_000 / wavInfo.bytesPerSecond
                             if (read <= 0) {
                                 codec.queueInputBuffer(index, 0, 0, time, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                                 inputDone = true
@@ -238,7 +243,7 @@ class AndroidAudioCodec @Inject constructor() : AudioCodec {
 
     override fun durationMillis(file: File): Long {
         if (!file.isFile) return 0
-        if (file.extension.equals("wav", ignoreCase = true)) return WavFormat.durationMillis(file.length())
+        if (file.extension.equals("wav", ignoreCase = true)) return WavFormat.parse(file)?.durationMillis ?: WavFormat.durationMillis(file.length())
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(file.absolutePath)

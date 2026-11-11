@@ -141,9 +141,12 @@ class ContactEditViewModel @Inject constructor(
         .map { it.replyType }
         .stateIn(viewModelScope, SharingStarted.Eagerly, settings.voiceSettings.value.replyType)
 
-    /** 正在用的语音合成服务商的音色：音色留空时用它 */
+    /** 正在用的语音合成来源的默认音色：音色留空时用它（0.7.1 起系统语音用「系统语音」页选的音色） */
     val providerVoice: StateFlow<String> = voices.observe(isomeria.aichat.data.db.ProviderKind.TTS, settings.voiceSettings)
-        .map { list -> list.providers.firstOrNull { it.id == list.selectedId }?.voice.orEmpty() }
+        .map { list ->
+            if (list.local == isomeria.aichat.core.VoiceSource.SYSTEM_TTS) settings.systemTtsVoice
+            else list.providers.firstOrNull { it.id == list.selectedId }?.voice.orEmpty()
+        }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val state: StateFlow<ContactEditState> = _state.asStateFlow()
 

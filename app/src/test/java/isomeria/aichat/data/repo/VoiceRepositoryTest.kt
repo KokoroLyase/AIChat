@@ -11,6 +11,10 @@ import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.ProviderKind
 import isomeria.aichat.data.db.UsagePurpose
 import isomeria.aichat.data.llm.LlmEndpoint
+import isomeria.aichat.data.llm.LlmError
+import isomeria.aichat.data.llm.LlmException
+import isomeria.aichat.data.voice.SystemTtsInfo
+import isomeria.aichat.data.voice.SystemTtsStatus
 import isomeria.aichat.data.voice.AsrRequest
 import isomeria.aichat.data.voice.AsrResult
 import isomeria.aichat.data.voice.TtsAudio
@@ -40,6 +44,9 @@ import org.robolectric.annotation.Config
 class VoiceRepositoryTest {
     private lateinit var db: AppDatabase
     private lateinit var voices: VoiceRepository
+    private val systemTts = isomeria.aichat.data.voice.FakeSystemTts()
+    private val localPrefs = isomeria.aichat.data.voice.FakeLocalVoicePrefs()
+
     private val settings = object : VoiceSettingsSource {
         val flow = MutableStateFlow(VoiceSettings())
         override fun voiceSettings() = flow.value
@@ -66,7 +73,7 @@ class VoiceRepositoryTest {
     @Before
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).addCallback(AppDatabase.seedCallback).allowMainThreadQueries().build()
-        voices = VoiceRepository(db, cipher, settings, api, UsageRepository(db.usageDao()))
+        voices = VoiceRepository(db, cipher, settings, api, UsageRepository(db.usageDao()), systemTts, localPrefs)
     }
 
     @After
@@ -174,6 +181,67 @@ class VoiceRepositoryTest {
             voices.create(ProviderKind.TTS, "deepseek", "x", "https://x", null, "m", "", null)
             fail()
         } catch (_: IllegalArgumentException) {
+        }
+    }
+
+    // ---------- 0.7.1 系统语音（本机） ----------
+
+    @Test
+    fun systemTts_selection_isSeparateFromProviders_newProviderDoesNotTakeOver() = runBlocking {
+        voices.selectLocal(ProviderKind.TTS, VoiceSource.SYSTEM_TTS, true)
+        assertEquals("local:system-tts", settings.flow.value.ttsSource)
+        assertEquals(VoiceSource.SYSTEM_TTS, voices.selectedLocal(ProviderKind.TTS))
+        assertNull(voices.selected(ProviderKind.TTS))
+        val id = tts()
+        assertEquals("已经选用本机时，新建的服务商不自动选用", VoiceSource.SYSTEM_TTS, voices.selectedLocal(ProviderKind.TTS))
+        voices.observe(ProviderKind.TTS, settings.flow).first().let {
+            assertNull(it.selectedId)
+            assertEquals(VoiceSource.SYSTEM_TTS, it.local)
+        }
+        voices.select(ProviderKind.TTS, id)
+        voices.selectLocal(ProviderKind.TTS, VoiceSource.SYSTEM_TTS, false)
+        assertEquals("关掉没在用的本机来源不影响服务商", id, voices.selected(ProviderKind.TTS)!!.id)
+        voices.selectLocal(ProviderKind.TTS, VoiceSource.SYSTEM_TTS, true)
+        voices.selectLocal(ProviderKind.TTS, VoiceSource.SYSTEM_TTS, false)
+        assertEquals("", settings.flow.value.ttsSource)
+    }
+
+    @Test
+    fun systemTts_availableFollowsEngine_wrongKindOrUnknownLocalIsNone() = runBlocking {
+        voices.selectLocal(ProviderKind.TTS, VoiceSource.SYSTEM_TTS, true)
+        assertTrue(voices.available(ProviderKind.TTS))
+        systemTts.info = SystemTtsInfo(SystemTtsStatus.NO_CHINESE, "引擎")
+        assertFalse(voices.available(ProviderKind.TTS))
+        systemTts.info = SystemTtsInfo(SystemTtsStatus.NO_ENGINE)
+        assertFalse(voices.available(ProviderKind.TTS))
+        // 识别的本机来源写在合成里、以后版本的新来源：都按没有选处理
+        settings.setVoiceSettings(VoiceSettings(ttsSource = "local:offline-asr", asrSource = "local:future-engine"))
+        assertNull(voices.selectedLocal(ProviderKind.TTS))
+        assertNull(voices.selectedLocal(ProviderKind.ASR))
+        assertFalse(voices.available(ProviderKind.TTS))
+        assertFalse(voices.available(ProviderKind.ASR))
+    }
+
+    @Test
+    fun systemTts_synthesize_usesContactVoiceThenPrefs_notBillable_failureIsLlmException() = runBlocking {
+        tts()
+        voices.selectLocal(ProviderKind.TTS, VoiceSource.SYSTEM_TTS, true)
+        localPrefs.systemTtsVoice = "zh-voice-b"
+        val audio = voices.synthesize(contact, "你好")
+        assertEquals("wav", audio.extension)
+        assertFalse("本机合成不记用量", audio.billable)
+        assertTrue(WavFormat.isWav(audio.bytes))
+        voices.synthesize(contact.copy(ttsVoice = "zh-voice-a"), "再见")
+        localPrefs.systemTtsVoice = ""
+        voices.synthesize(contact, "空")
+        assertEquals(listOf("你好" to "zh-voice-b", "再见" to "zh-voice-a", "空" to null), systemTts.calls)
+        assertTrue("不调用服务商", api.tts.isEmpty())
+        systemTts.fail = true
+        try {
+            voices.synthesize(contact, "失败")
+            fail()
+        } catch (e: LlmException) {
+            assertEquals(LlmError.UNKNOWN, e.error)
         }
     }
 }

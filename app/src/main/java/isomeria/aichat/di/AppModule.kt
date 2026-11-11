@@ -219,6 +219,10 @@ abstract class BindingsModule {
 
     @Binds abstract fun audioCodec(impl: isomeria.aichat.data.voice.AndroidAudioCodec): isomeria.aichat.data.voice.AudioCodec
 
+    @Binds abstract fun localVoicePrefs(impl: SettingsStore): isomeria.aichat.core.LocalVoicePrefs
+
+    @Binds abstract fun systemTts(impl: isomeria.aichat.data.voice.AndroidSystemTts): isomeria.aichat.data.voice.SystemTts
+
     @Binds abstract fun replyControl(impl: ReplyScheduler): ReplyControl
 
     @Binds abstract fun proactiveControl(impl: isomeria.aichat.data.reply.ProactiveScheduler): isomeria.aichat.data.reply.ProactiveControl

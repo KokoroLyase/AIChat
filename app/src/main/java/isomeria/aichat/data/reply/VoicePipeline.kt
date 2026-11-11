@@ -78,14 +78,19 @@ class VoicePipeline @Inject constructor(
         return null
     }
 
-    /** WAV 压成 AAC，返回新文件；压缩失败时为 null */
-    private fun compress(wav: File): String? {
+    /**
+     * WAV 压成 AAC，返回新文件；压缩失败时为 null。
+     * [keepPinned] 为 true 时新文件保持固定（调用方写库后再解除），免得写库前被当成孤立文件清理掉
+     */
+    private fun compress(wav: File, keepPinned: Boolean = false): String? {
         if (!wav.extension.equals("wav", ignoreCase = true)) return null
         val out = files.newVoiceFile("m4a")
+        var ok = false
         return try {
-            if (codec.encodeAac(wav, out) && out.length() > 0) out.absolutePath else null.also { out.delete() }
+            ok = codec.encodeAac(wav, out) && out.length() > 0
+            if (ok) out.absolutePath else null.also { out.delete() }
         } finally {
-            files.commitAvatar(out.absolutePath)
+            if (!ok || !keepPinned) files.commitAvatar(out.absolutePath)
         }
     }
 
@@ -175,14 +180,24 @@ class VoicePipeline @Inject constructor(
         true
     }
 
-    /** 合成一条：写文件、量时长、填进消息，按 [at] 送达。消息在这期间被删了或改成文字时删掉文件（仍算成功，不再降级） */
+    /**
+     * 合成一条：写文件、量时长、填进消息，按 [at] 送达。消息在这期间被删了或改成文字时删掉文件（仍算成功，不再降级）。
+     * 合成出 WAV 时（0.7.1 系统语音）压成 AAC 省空间，压缩失败就留 WAV
+     */
     private suspend fun synthesizeOne(contact: Contact, message: Message, at: Long): Boolean {
         val audio = voices.synthesize(contact, message.content)
-        val file = files.newVoiceFile(audio.extension)
+        var file = files.newVoiceFile(audio.extension)
         try {
             file.writeBytes(audio.bytes)
+            if (audio.extension.equals("wav", ignoreCase = true)) {
+                compress(file, keepPinned = true)?.let { m4a ->
+                    files.delete(file.absolutePath)
+                    files.commitAvatar(file.absolutePath)
+                    file = File(m4a)
+                }
+            }
             val millis = codec.durationMillis(file).takeIf { it > 0 } ?: estimateMillis(message.content)
-            voices.recordSynthesis(contact.id, message.content.length, millis)
+            if (audio.billable) voices.recordSynthesis(contact.id, message.content.length, millis)
             if (messages.finishSynthesis(message.id, file.absolutePath, millis, at) == 0) files.delete(file.absolutePath)
             return true
         } catch (e: Throwable) {

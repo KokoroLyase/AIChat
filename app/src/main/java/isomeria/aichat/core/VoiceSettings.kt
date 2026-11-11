@@ -24,7 +24,7 @@ interface VoiceSettingsSource {
  * 语音合成或识别的来源。存成字符串（MMKV 和备份里都是这样），以后加新的来源不用改表和备份格式：
  *
  * - `provider:{id}`：「我 → 模型服务」里配置的语音服务商（provider_config 的一行，kind 为 TTS 或 ASR）
- * - 0.7.1 起还有本机来源（系统语音合成、离线识别模型），没有 Key 和地址，用别的前缀表示
+ * - `local:{name}`（0.7.1）：本机来源，没有 Key 和地址：[SYSTEM_TTS] 系统语音合成、[OFFLINE_ASR] 离线识别模型
  *
  * 认不出的值（例如更新的 App 写进备份的新来源）按“没有选”处理。
  */
@@ -50,7 +50,22 @@ sealed interface VoiceSource {
         }
 
         fun provider(id: Long): String = of(Provider(id))
+
+        /** 系统语音合成（0.7.1） */
+        val SYSTEM_TTS = Local("system-tts")
+
+        /** 本机离线识别模型（0.7.1） */
+        val OFFLINE_ASR = Local("offline-asr")
     }
+}
+
+/**
+ * 本机来源的设置（0.7.1）：和这台手机的引擎、模型有关，存 MMKV，**不随备份**。
+ *
+ * - [systemTtsVoice]：系统语音合成用的音色（引擎给的名字）；空串表示用引擎默认的中文音色
+ */
+interface LocalVoicePrefs {
+    var systemTtsVoice: String
 }
 
 /**

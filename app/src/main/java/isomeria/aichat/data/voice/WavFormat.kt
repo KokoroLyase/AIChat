@@ -51,4 +51,60 @@ object WavFormat {
 
     fun isWav(bytes: ByteArray): Boolean =
         bytes.size >= 12 && String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" && String(bytes, 8, 4, Charsets.US_ASCII) == "WAVE"
+
+    /**
+     * 读文件头里的格式（0.7.1）：系统语音合成写出的 WAV 不一定是 16 kHz 单声道、文件头也不一定是 44 字节，
+     * 按块查找 `fmt ` 和 `data`。只认 PCM（格式 1 或 0xFFFE）；读不出或不是 PCM 时为 null。
+     * `data` 块的长度是 0 或超出文件时按文件实际剩下的长度算（有的引擎边写边出，不回填长度）
+     */
+    fun parse(file: File): WavInfo? = try {
+        RandomAccessFile(file, "r").use { raf ->
+            val head = ByteArray(minOf(raf.length(), PARSE_LIMIT.toLong()).toInt())
+            raf.readFully(head)
+            parse(head, raf.length())
+        }
+    } catch (_: java.io.IOException) {
+        null
+    }
+
+    /** 同 [parse]，[bytes] 是文件开头（至少包含 `data` 块的块头），[totalBytes] 是整个文件的长度 */
+    fun parse(bytes: ByteArray, totalBytes: Long = bytes.size.toLong()): WavInfo? {
+        if (!isWav(bytes)) return null
+        fun int(at: Int): Long = (0 until 4).fold(0L) { acc, i -> acc or ((bytes[at + i].toLong() and 0xFF) shl (8 * i)) }
+        fun short(at: Int): Int = (bytes[at].toInt() and 0xFF) or ((bytes[at + 1].toInt() and 0xFF) shl 8)
+        var format: IntArray? = null
+        var at = 12
+        while (at + 8 <= bytes.size) {
+            val id = String(bytes, at, 4, Charsets.US_ASCII)
+            val size = int(at + 4)
+            val body = at + 8
+            when (id) {
+                "fmt " -> {
+                    if (size < 16 || body + 16 > bytes.size) return null
+                    val audioFormat = short(body)
+                    if (audioFormat != 1 && audioFormat != 0xFFFE) return null
+                    format = intArrayOf(short(body + 2), int(body + 4).toInt(), short(body + 14))
+                }
+                "data" -> {
+                    val f = format ?: return null
+                    val remaining = (totalBytes - body).coerceAtLeast(0)
+                    val data = if (size == 0L || size > remaining) remaining else size
+                    val info = WavInfo(sampleRate = f[1], channels = f[0], bits = f[2], dataOffset = body.toLong(), dataBytes = data)
+                    return info.takeIf { it.sampleRate in 1..384_000 && it.channels in 1..8 && it.bits in listOf(8, 16, 24, 32) }
+                }
+            }
+            if (size > Int.MAX_VALUE / 2) return null
+            // 块按偶数字节对齐
+            at = body + size.toInt() + (size % 2).toInt()
+        }
+        return null
+    }
+
+    private const val PARSE_LIMIT = 64 * 1024
+}
+
+/** WAV 文件的格式和 PCM 数据的位置（[WavFormat.parse]）。 */
+data class WavInfo(val sampleRate: Int, val channels: Int, val bits: Int, val dataOffset: Long, val dataBytes: Long) {
+    val bytesPerSecond: Int get() = sampleRate * channels * bits / 8
+    val durationMillis: Long get() = if (bytesPerSecond == 0) 0 else dataBytes * 1000 / bytesPerSecond
 }

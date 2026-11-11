@@ -54,8 +54,11 @@ data class TtsRequest(val model: String, val text: String, val voice: String, va
     override fun toString() = "TtsRequest(model=$model, chars=${text.length}, voice=$voice)"
 }
 
-/** 合成出的音频：[extension] 按文件头判断（mp3、wav、ogg、m4a），播放器靠它认格式。 */
-class TtsAudio(val bytes: ByteArray, val extension: String) {
+/**
+ * 合成出的音频：[extension] 按文件头判断（mp3、wav、ogg、m4a），播放器靠它认格式。
+ * [billable] 为 false 表示本机合成的（0.7.1 系统语音），不记用量
+ */
+class TtsAudio(val bytes: ByteArray, val extension: String, val billable: Boolean = true) {
     override fun toString() = "TtsAudio(${bytes.size} bytes, $extension)"
 }
 

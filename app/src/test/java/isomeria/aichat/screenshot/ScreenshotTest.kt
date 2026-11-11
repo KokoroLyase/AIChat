@@ -895,6 +895,36 @@ class ScreenshotTest {
     @Test fun recordingLarge() = large("73-recording-large", false) { ChatPageSample(voiceMode = true, recording = rec(toggled = true)) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun recordingNarrow() = large("73-recording-narrow", true) { ChatPageSample(voiceMode = true, recording = rec(toggled = true)) }
 
+    // ---------- 0.7.1 系统语音（本机） ----------
+
+    private val systemTtsReady = isomeria.aichat.feature.voice.SystemTtsUiState(
+        info = isomeria.aichat.data.voice.SystemTtsInfo(
+            isomeria.aichat.data.voice.SystemTtsStatus.READY, "小米语音引擎",
+            listOf(isomeria.aichat.data.voice.SystemTtsVoice("zh-CN-xiaoai-local", "zh-CN"), isomeria.aichat.data.voice.SystemTtsVoice("yue-HK-local", "yue-HK")),
+        ),
+        inUse = true,
+        voice = "zh-CN-xiaoai-local",
+    )
+    private val systemTtsNoChinese = isomeria.aichat.feature.voice.SystemTtsUiState(
+        info = isomeria.aichat.data.voice.SystemTtsInfo(isomeria.aichat.data.voice.SystemTtsStatus.NO_CHINESE, "Speech Services by Google"),
+    )
+    @Composable private fun SystemTtsPage(state: isomeria.aichat.feature.voice.SystemTtsUiState = systemTtsReady) =
+        isomeria.aichat.feature.voice.SystemTtsContent(state, {}, {}, {}, {})
+    @Test fun systemTtsLight() = shot("78-system-tts", false) { SystemTtsPage() }
+    @Test fun systemTtsDark() = shot("78-system-tts", true) { SystemTtsPage() }
+    @Test fun systemTtsLarge() = large("78-system-tts-large", false) { SystemTtsPage() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun systemTtsNarrow() = large("78-system-tts-narrow", true) { SystemTtsPage() }
+    @Test fun systemTtsNoChineseLight() = shot("78-system-tts-no-chinese", false) { SystemTtsPage(systemTtsNoChinese) }
+    @Test fun voiceProvidersLocalInUseLight() = shot("70-voice-providers-local", false) {
+        isomeria.aichat.feature.voice.VoiceProviderListContent(
+            isomeria.aichat.data.db.ProviderKind.TTS,
+            isomeria.aichat.data.repo.VoiceProviders(isomeria.aichat.feature.voice.previewVoiceProviders, null, isomeria.aichat.core.VoiceSource.SYSTEM_TTS), {}, {}, {},
+        )
+    }
+    @Test fun voiceSettingsLocalDark() = shot("69-voice-settings-local", true) {
+        isomeria.aichat.feature.voice.VoiceSettingsContent(voiceSettingsSample.copy(ttsName = null, ttsLocal = isomeria.aichat.core.VoiceSource.SYSTEM_TTS), {}, {}, {})
+    }
+
     // ---------- 0.7.0 语音条和长按菜单 ----------
 
     @Test fun voiceBubblesLight() = shot("74-chat-voice", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.voiceRows, playingId = 13) }

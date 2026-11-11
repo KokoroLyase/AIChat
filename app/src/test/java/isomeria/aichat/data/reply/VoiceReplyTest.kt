@@ -73,6 +73,9 @@ class VoiceReplyTest {
     private var ttsId = 0L
     private var asrId = 0L
 
+    private val systemTts = isomeria.aichat.data.voice.FakeSystemTts()
+    private val localPrefs = isomeria.aichat.data.voice.FakeLocalVoicePrefs()
+
     private val settings = object : VoiceSettingsSource {
         var value = VoiceSettings()
         override fun voiceSettings() = value
@@ -127,7 +130,7 @@ class VoiceReplyTest {
             db.conversationDao().upsert(Conversation(contactId = contactId, lastMessageTime = start - 10_000))
         }
         settings.value = VoiceSettings(ttsSource = VoiceSource.provider(ttsId), asrSource = VoiceSource.provider(asrId))
-        val voices = VoiceRepository(db, cipher, settings, api, UsageRepository(db.usageDao()))
+        val voices = VoiceRepository(db, cipher, settings, api, UsageRepository(db.usageDao()), systemTts, localPrefs)
         pipeline = VoicePipeline(db, voices, codec, FileStorage(context), settings, { h.preferences }, Clock { h.now }, h.random)
         engine = ReplyEngine(
             db = db, contactDao = db.contactDao(), messageDao = db.messageDao(), conversationDao = db.conversationDao(), memoryDao = db.memoryDao(),
@@ -326,7 +329,7 @@ class VoiceReplyTest {
                 return api.synthesize(protocol, endpoint, request)
             }
         }
-        val voices = VoiceRepository(db, cipher, settings, slow, UsageRepository(db.usageDao()))
+        val voices = VoiceRepository(db, cipher, settings, slow, UsageRepository(db.usageDao()), isomeria.aichat.data.voice.FakeSystemTts(), isomeria.aichat.data.voice.FakeLocalVoicePrefs())
         val slowPipeline = VoicePipeline(db, voices, codec, FileStorage(context), settings, { h.preferences }, Clock { h.now }, h.random)
         settings.value = settings.value.copy(replyType = ReplyType.VOICE)
         sendText("讲个长的")
@@ -441,5 +444,62 @@ class VoiceReplyTest {
         assertEquals(null, replies().single().voicePath)
         h.delivery.run(contactId)
         assertEquals(MessageStatus.SUCCESS, replies().single().status)
+    }
+
+    // ---------- 0.7.1 系统语音（本机） ----------
+
+    private fun useSystemTts() {
+        settings.value = settings.value.copy(replyType = ReplyType.VOICE, ttsSource = VoiceSource.of(VoiceSource.SYSTEM_TTS))
+    }
+
+    @Test
+    fun systemTts_voiceReply_compressedToM4a_noUsage_noProviderRequest() = runBlocking {
+        useSystemTts()
+        localPrefs.systemTtsVoice = "zh-voice-b"
+        sendText("在吗")
+        engine.run(contactId)
+        val reply = replies().single()
+        assertEquals(MessageType.VOICE, reply.type)
+        assertTrue("WAV 压成 AAC", reply.voicePath!!.endsWith(".m4a"))
+        assertTrue(File(reply.voicePath!!).isFile)
+        assertEquals("合成的 WAV 不留下", 0, File(context.filesDir, "voice").listFiles()!!.count { it.extension == "wav" })
+        assertEquals(listOf("好的\n马上来" to "zh-voice-b"), systemTts.calls)
+        assertTrue("不调用语音服务商", api.tts.isEmpty())
+        assertTrue("本机合成不记用量", db.usageDao().listAll().none { it.purpose == UsagePurpose.TTS })
+        h.delivery.run(contactId)
+        assertEquals(MessageStatus.SUCCESS, replies().single().status)
+    }
+
+    @Test
+    fun systemTts_compressionFails_keepsWav() = runBlocking {
+        useSystemTts()
+        codec.encodeOk = false
+        sendText("在吗")
+        engine.run(contactId)
+        assertTrue(replies().single().voicePath!!.endsWith(".wav"))
+        assertTrue(File(replies().single().voicePath!!).isFile)
+        assertEquals("压缩失败的 m4a 不留下", 0, File(context.filesDir, "voice").listFiles()!!.count { it.extension == "m4a" })
+    }
+
+    @Test
+    fun systemTts_failure_degradesToText_noSecondModelRequest() = runBlocking {
+        useSystemTts()
+        systemTts.fail = true
+        sendText("在吗")
+        engine.run(contactId)
+        assertTrue(replies().isNotEmpty())
+        assertTrue(replies().all { it.type == MessageType.TEXT })
+        assertEquals(1, h.provider.requests.size)
+        assertTrue(File(context.filesDir, "voice").listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun systemTts_withoutChineseVoice_repliesText_withoutTrying() = runBlocking {
+        useSystemTts()
+        systemTts.info = isomeria.aichat.data.voice.SystemTtsInfo(isomeria.aichat.data.voice.SystemTtsStatus.NO_CHINESE, "引擎")
+        sendText("在吗")
+        engine.run(contactId)
+        assertTrue(replies().all { it.type == MessageType.TEXT })
+        assertTrue(systemTts.calls.isEmpty())
     }
 }

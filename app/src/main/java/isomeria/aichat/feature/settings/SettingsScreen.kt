@@ -34,6 +34,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import isomeria.aichat.BuildConfig
 import isomeria.aichat.R
+import isomeria.aichat.feature.voice.selectedName
 import isomeria.aichat.data.reply.ReplyNotifier
 import isomeria.aichat.data.repo.ChatRepository
 import isomeria.aichat.data.repo.ProviderRepository
@@ -73,11 +74,11 @@ class SettingsViewModel @Inject constructor(
     providers: ProviderRepository,
     voices: isomeria.aichat.data.repo.VoiceRepository,
 ) : ViewModel() {
-    /** 正在用的语音合成、识别服务商的名称 */
-    val voiceNames: StateFlow<Pair<String?, String?>> = kotlinx.coroutines.flow.combine(
+    /** 正在用的语音合成、识别来源（服务商或 0.7.1 的本机来源） */
+    val voiceSources: StateFlow<Pair<isomeria.aichat.data.repo.VoiceProviders?, isomeria.aichat.data.repo.VoiceProviders?>> = kotlinx.coroutines.flow.combine(
         voices.observe(isomeria.aichat.data.db.ProviderKind.TTS, settings.voiceSettings),
         voices.observe(isomeria.aichat.data.db.ProviderKind.ASR, settings.voiceSettings),
-    ) { tts, asr -> tts.providers.firstOrNull { it.id == tts.selectedId }?.name to asr.providers.firstOrNull { it.id == asr.selectedId }?.name }
+    ) { tts, asr -> tts to asr }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null to null)
 
     val themeMode = settings.themeMode
@@ -185,7 +186,7 @@ fun SettingsSectionScreen(
     val hasKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
     val autoCheckUpdate by viewModel.autoCheckUpdate.collectAsStateWithLifecycle()
     val newerRelease by viewModel.newerRelease.collectAsStateWithLifecycle()
-    val voiceNames by viewModel.voiceNames.collectAsStateWithLifecycle()
+    val voiceSources by viewModel.voiceSources.collectAsStateWithLifecycle()
     var showTheme by remember { mutableStateOf(false) }
     var showFont by remember { mutableStateOf(false) }
     var confirmClearAll by remember { mutableStateOf(false) }
@@ -222,8 +223,8 @@ fun SettingsSectionScreen(
             canNotify = canNotify,
             autoCheckUpdate = autoCheckUpdate,
             newerVersion = newerRelease?.version,
-            ttsName = voiceNames.first,
-            asrName = voiceNames.second,
+            ttsName = voiceSources.first?.let { isomeria.aichat.feature.voice.voiceSourceName(it.selectedName(), it.local) },
+            asrName = voiceSources.second?.let { isomeria.aichat.feature.voice.voiceSourceName(it.selectedName(), it.local) },
         ),
         onBack = onBack,
         navigation = navigation,

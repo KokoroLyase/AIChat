@@ -90,6 +90,8 @@ import kotlinx.serialization.Serializable
 /** [kind] 是 ProviderKind 的名字：TTS 或 ASR */
 @Serializable data class VoiceProviderListRoute(val kind: String)
 @Serializable data class VoiceProviderEditRoute(val kind: String, val providerId: Long = NEW_PROVIDER)
+/** 0.7.1：系统语音（本机） */
+@Serializable data object SystemTtsRoute
 @Serializable data object SearchRoute
 @Serializable data class ChatInfoRoute(val contactId: Long)
 
@@ -180,9 +182,11 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onBack = nav::popBackStackSafely,
                 onOpen = { kind, id -> nav.navigate(VoiceProviderEditRoute(kind.name, id)) },
                 onAdd = { nav.navigate(VoiceProviderEditRoute(it.name)) },
+                onOpenLocal = { if (it == isomeria.aichat.data.db.ProviderKind.TTS) nav.navigate(SystemTtsRoute) },
             )
         }
         page<VoiceProviderEditRoute>(nav) { isomeria.aichat.feature.voice.VoiceProviderEditScreen(onBack = nav::popBackStackSafely) }
+        page<SystemTtsRoute>(nav) { isomeria.aichat.feature.voice.SystemTtsScreen(onBack = nav::popBackStackSafely) }
         page<SettingsSectionRoute>(nav) { entry ->
             SettingsSectionScreen(
                 section = SettingsSection.valueOf(entry.toRoute<SettingsSectionRoute>().section),
