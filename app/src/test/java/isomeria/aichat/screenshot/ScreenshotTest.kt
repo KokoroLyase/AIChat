@@ -727,7 +727,7 @@ class ScreenshotTest {
         PromptRow(longPrompt, isomeria.aichat.feature.contactedit.PromptUsage(2_300, 4_000)) {}
         GroupSpacer()
         PromptRow(longPrompt, isomeria.aichat.feature.contactedit.PromptUsage(640, 4_000)) {}
-        isomeria.aichat.feature.contactedit.GlobalSwitchRows(isomeria.aichat.feature.contactedit.ContactForm()) {}
+        isomeria.aichat.feature.contactedit.GlobalSwitchRows(isomeria.aichat.feature.contactedit.ContactForm(), {})
     }
     @Test fun contactSwitchesLight() = shot("64-contact-global-switches", false) { ContactSwitches() }
     @Test fun contactSwitchesDark() = shot("64-contact-global-switches", true) { ContactSwitches() }
@@ -1060,19 +1060,47 @@ class ScreenshotTest {
         }
         captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
+    /** 0.7.2：语音合成、识别来源可以单独选；第一组跟随全局，第二组单独选了系统语音和一个识别服务商 */
+    private val voiceChoices = isomeria.aichat.feature.contactedit.ContactVoiceChoices(
+        tts = listOf(isomeria.aichat.data.db.ProviderConfig(id = 3, kind = isomeria.aichat.data.db.ProviderKind.TTS, provider = "chat-audio", name = "Xiaomi MiMo", baseUrl = "https://a.test", defaultModel = "m")),
+        asr = listOf(isomeria.aichat.data.db.ProviderConfig(id = 4, kind = isomeria.aichat.data.db.ProviderKind.ASR, provider = "volc-asr", name = "火山引擎（豆包）", baseUrl = "https://a.test", defaultModel = "m")),
+        globalTts = "provider:3",
+        globalAsr = "local:offline-asr",
+    )
     @Composable private fun ContactVoice() = Column {
         GroupSpacer()
-        isomeria.aichat.feature.contactedit.ContactVoiceRows(isomeria.aichat.feature.contactedit.ContactForm(), isomeria.aichat.data.db.ReplyType.FOLLOW, "mimo_default", {}, {}, canPickVoice = true)
+        isomeria.aichat.feature.contactedit.ContactVoiceRows(
+            isomeria.aichat.feature.contactedit.ContactForm(), isomeria.aichat.data.db.ReplyType.FOLLOW, "mimo_default", {}, {}, canPickVoice = true,
+            choices = voiceChoices,
+        )
         GroupSpacer()
         isomeria.aichat.feature.contactedit.ContactVoiceRows(
-            isomeria.aichat.feature.contactedit.ContactForm(replyType = isomeria.aichat.data.db.ReplyType.VOICE, ttsVoice = "default_zh", ttsStyle = "温柔一点，语速慢一些，像睡前聊天"),
-            isomeria.aichat.data.db.ReplyType.FOLLOW, "", {}, {},
+            isomeria.aichat.feature.contactedit.ContactForm(
+                replyType = isomeria.aichat.data.db.ReplyType.VOICE, ttsVoice = "default_zh", ttsStyle = "温柔一点，语速慢一些，像睡前聊天",
+                ttsSource = "local:system-tts", asrSource = "provider:4",
+            ),
+            isomeria.aichat.data.db.ReplyType.FOLLOW, "", {}, {}, choices = voiceChoices,
         )
     }
     @Test fun usageVoiceLight() = shot("77-usage-voice", false) { UsageContent(isomeria.aichat.feature.usage.previewVoiceUsageState, {}, {}, {}, {}) }
     @Test fun usageVoiceDark() = shot("77-usage-voice", true) { UsageContent(isomeria.aichat.feature.usage.previewVoiceUsageState, {}, {}, {}, {}) }
     @Test fun usageVoiceLarge() = large("77-usage-voice-large", false) { UsageContent(isomeria.aichat.feature.usage.previewVoiceUsageState, {}, {}, {}, {}) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun usageVoiceNarrow() = large("77-usage-voice-narrow", true) { UsageContent(isomeria.aichat.feature.usage.previewVoiceUsageState, {}, {}, {}, {}) }
+
+    /** 0.7.2 联系人单独设置回复偏好：单独设置（各项可调）和跟随全局（写出全局现在的值） */
+    @Composable private fun ContactReplyCustom() = isomeria.aichat.feature.contactedit.ContactReplyPreferencesContent(
+        isomeria.aichat.feature.contactedit.ContactForm(name = "小雨", replyPreferences = isomeria.aichat.core.ReplyPreferences(waitSeconds = 3, targetLength = 30, maxCount = 2)),
+        isomeria.aichat.core.ReplyPreferences(), {}, {}, {},
+    )
+    @Composable private fun ContactReplyFollow() = isomeria.aichat.feature.contactedit.ContactReplyPreferencesContent(
+        isomeria.aichat.feature.contactedit.ContactForm(name = "小雨"), isomeria.aichat.core.ReplyPreferences(), {}, {}, {},
+    )
+    @Test fun contactReplyCustomLight() = shot("81-contact-reply-preferences-custom", false) { ContactReplyCustom() }
+    @Test fun contactReplyCustomDark() = shot("81-contact-reply-preferences-custom", true) { ContactReplyCustom() }
+    @Test fun contactReplyCustomLarge() = large("81-contact-reply-preferences-custom-large", false) { ContactReplyCustom() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contactReplyCustomNarrow() = large("81-contact-reply-preferences-custom-narrow", true) { ContactReplyCustom() }
+    @Test fun contactReplyFollowLight() = shot("81-contact-reply-preferences-follow", false) { ContactReplyFollow() }
+    @Test fun contactReplyFollowDark() = shot("81-contact-reply-preferences-follow", true) { ContactReplyFollow() }
 
     @Test fun contactVoiceLight() = shot("76-contact-voice", false) { ContactVoice() }
     @Test fun contactVoiceDark() = shot("76-contact-voice", true) { ContactVoice() }

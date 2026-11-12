@@ -688,7 +688,7 @@ class BackupManager @Inject constructor(
             contactDao.insertAll(
                 data.contacts.map { contact ->
                     val provider = providerIds[contact.providerId] ?: fallback.also { needModel++ }
-                    contact.toEntity(provider, contact.avatar?.let(paths::get))
+                    contact.toEntity(provider, contact.avatar?.let(paths::get), providerIds)
                 },
             )
             val withConversation = data.conversations.mapTo(HashSet()) { it.contactId }
@@ -703,7 +703,13 @@ class BackupManager @Inject constructor(
             // 保留本机联系人、替换了服务商：联系人改用替换后的同一个服务商，找不到时用第一个
             for (contact in contactDao.listAll()) {
                 val provider = ids.fromLocal[contact.providerId] ?: fallback.also { needModel++ }
-                if (provider != contact.providerId) contactDao.update(contact.copy(providerId = provider))
+                // 单独选的语音服务商也换成替换后的同一个，找不到时改为跟随全局（0.7.2）
+                val updated = contact.copy(
+                    providerId = provider,
+                    ttsSource = contactSource(contact.ttsSource, ids.fromLocal),
+                    asrSource = contactSource(contact.asrSource, ids.fromLocal),
+                )
+                if (updated != contact) contactDao.update(updated)
             }
         }
         return RestoreSummary(data.contacts.size, data.messages.size, apiKeys.isNotEmpty(), contactsNeedModel = needModel) to ids
@@ -817,7 +823,7 @@ class BackupManager @Inject constructor(
                     same += contact.id
                 }
                 existing == null -> {
-                    contactDao.insert(contact.toEntity(providerOf(contact), contact.avatar?.let(paths::get)))
+                    contactDao.insert(contact.toEntity(providerOf(contact), contact.avatar?.let(paths::get), providerIds))
                     idMap[contact.id] = contact.id
                     contactsAdded++
                 }
@@ -825,7 +831,7 @@ class BackupManager @Inject constructor(
             }
         }
         for (contact in needNewId) {
-            idMap[contact.id] = contactDao.insert(contact.toEntity(providerOf(contact), contact.avatar?.let(paths::get)).copy(id = 0))
+            idMap[contact.id] = contactDao.insert(contact.toEntity(providerOf(contact), contact.avatar?.let(paths::get), providerIds).copy(id = 0))
             contactsAdded++
         }
 
@@ -986,9 +992,14 @@ class BackupManager @Inject constructor(
         useGlobalMemory = useGlobalMemory, useReplyPreferences = useReplyPreferences,
         proactiveEnabled = proactiveEnabled, proactiveFrequency = proactiveFrequency,
         replyType = replyType, ttsVoice = ttsVoice, ttsStyle = ttsStyle,
+        replyPreferences = replyPreferences?.toDto(), ttsSource = ttsSource, asrSource = asrSource,
     )
 
-    private fun ContactDto.toEntity(providerId: Long, avatarPath: String?) = Contact(
+    /**
+     * [providerIds] 是备份里的服务商 id → 本机的 id，用来改写联系人单独选的语音来源（0.7.2）；
+     * 对应不上的服务商改为跟随全局，本机来源（系统语音、离线识别）原样保留
+     */
+    private fun ContactDto.toEntity(providerId: Long, avatarPath: String?, providerIds: Map<Long, Long>) = Contact(
         id = id, name = name, avatarPath = avatarPath, avatarColor = avatarColor, providerId = providerId, model = model,
         thinking = thinking, temperature = temperature, systemPrompt = systemPrompt,
         contextTokens = contextTokens.coerceIn(Contact.MIN_CONTEXT_TOKENS, Contact.MAX_CONTEXT_TOKENS),
@@ -997,7 +1008,17 @@ class BackupManager @Inject constructor(
         useGlobalMemory = useGlobalMemory, useReplyPreferences = useReplyPreferences,
         proactiveEnabled = proactiveEnabled, proactiveFrequency = proactiveFrequency,
         replyType = replyType, ttsVoice = ttsVoice?.take(Contact.VOICE_MAX_LENGTH), ttsStyle = ttsStyle.take(Contact.STYLE_MAX_LENGTH),
+        replyPreferences = replyPreferences?.toModel(),
+        ttsSource = contactSource(ttsSource, providerIds),
+        asrSource = contactSource(asrSource, providerIds),
     )
+
+    /** 联系人单独选的来源换成本机的：服务商按 [map] 换 id，换不到时为 null（跟随全局）；本机来源原样；认不出的为 null */
+    private fun contactSource(source: String?, map: Map<Long, Long>): String? = when (val parsed = source?.let(VoiceSource::parse)) {
+        is VoiceSource.Provider -> map[parsed.id]?.let(VoiceSource::provider)
+        is VoiceSource.Local -> source
+        null -> null
+    }
 
     // 会话的连续未回复次数和最近一次主动请求时间是设备状态：不导出，恢复出来的会话从 0 开始
 

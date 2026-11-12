@@ -5,6 +5,7 @@ import isomeria.aichat.core.Clock
 import isomeria.aichat.core.GlobalMemoryEntry
 import isomeria.aichat.core.PromptGlobals
 import isomeria.aichat.core.ReplyPreferencesSource
+import isomeria.aichat.core.forContact
 import isomeria.aichat.data.db.AppDatabase
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.GlobalMemoryCategory
@@ -68,7 +69,7 @@ class GlobalMemoryRepository @Inject constructor(
 
     override suspend fun forContact(contact: Contact): PromptGlobals = PromptGlobals(
         globalMemory = if (contact.useGlobalMemory) snapshot().entries() else emptyList(),
-        replyStyle = if (contact.useReplyPreferences) preferences.replyPreferences() else null,
+        replyStyle = preferences.forContact(contact),
         reminderHint = contact.proactiveEnabled,
     )
 

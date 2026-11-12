@@ -90,6 +90,17 @@ data class Contact(
     val ttsVoice: String? = null,
     /** 语气和风格要求（0.7.0），只对 MiMo 这类支持的服务商生效，不会被读出来 */
     @ColumnInfo(defaultValue = "''") val ttsStyle: String = "",
+    /**
+     * 单独设置的回复偏好（0.7.2）：null 表示跟随「我 → 回复偏好」。只在 [useReplyPreferences] 开着时生效，
+     * 关掉再打开时还在
+     */
+    val replyPreferences: isomeria.aichat.core.ReplyPreferences? = null,
+    /**
+     * 单独选的语音合成、识别来源（0.7.2）：和全局设置同样的写法（`provider:{id}`、`local:system-tts`、`local:offline-asr`），
+     * null 表示跟随「我 → 语音消息」。选的来源用不了时不换成全局的（录音和回复内容不发给没选的服务商）
+     */
+    val ttsSource: String? = null,
+    val asrSource: String? = null,
 ) {
     companion object {
         /** DeepSeek 官方对「通用对话」建议的温度 */

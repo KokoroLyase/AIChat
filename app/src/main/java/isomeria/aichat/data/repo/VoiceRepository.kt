@@ -41,7 +41,10 @@ class VoiceUnavailableException(val reason: Reason) : Exception(reason.name) {
  * 「我 → 模型服务」里一类语音服务商（合成或识别）和现在选用的是哪个。
  * 选用的是本机来源（0.7.1）时 [selectedId] 为 null，[local] 是那个来源
  */
-data class VoiceProviders(val providers: List<ProviderConfig>, val selectedId: Long?, val local: VoiceSource.Local? = null)
+data class VoiceProviders(val providers: List<ProviderConfig>, val selectedId: Long?, val local: VoiceSource.Local? = null) {
+    /** 选用的来源写成字符串（和 [VoiceSettings] 里一样）；没选时是空串 */
+    val source: String get() = local?.let(VoiceSource::of) ?: selectedId?.let(VoiceSource::provider).orEmpty()
+}
 
 /**
  * 语音合成和识别的服务商（0.7.0）：provider_config 里 kind 为 TTS、ASR 的行，和选用哪个（[VoiceSettings] 的来源）。
@@ -80,24 +83,64 @@ class VoiceRepository @Inject constructor(
         return key.take(4) + "••••••" + key.takeLast(4)
     }
 
-    /** 现在选用的服务商；没选、选的不在了或类型不对时为 null */
-    suspend fun selected(kind: ProviderKind): ProviderConfig? {
-        val source = VoiceSource.parse(source(kind, settings.voiceSettings())) as? VoiceSource.Provider ?: return null
-        return dao.get(source.id)?.takeIf { it.kind == kind }
+    /**
+     * 这个联系人这一类实际用的来源（0.7.2）：单独选了就用自己的，否则用「我 → 语音消息」里的；[contact] 为 null 时是全局的。
+     * 联系人选的来源用不了时不换成全局的：录音和回复内容不发给没给这个联系人选的服务商
+     */
+    fun sourceFor(kind: ProviderKind, contact: Contact?): String = contactSource(kind, contact) ?: source(kind, settings.voiceSettings())
+
+    /** 联系人单独选的来源；跟随全局时为 null */
+    private fun contactSource(kind: ProviderKind, contact: Contact?): String? = when (kind) {
+        ProviderKind.TTS -> contact?.ttsSource
+        ProviderKind.ASR -> contact?.asrSource
+        ProviderKind.LLM -> null
+    }?.takeIf { it.isNotBlank() }
+
+    /** 选用的服务商（[contact] 不为 null 时是这个联系人实际用的）；没选、选的不在了或类型不对时为 null */
+    suspend fun selected(kind: ProviderKind, contact: Contact? = null): ProviderConfig? = providerOf(kind, sourceFor(kind, contact))
+
+    /** [source] 指的服务商（0.7.2 联系人编辑页按表单里的来源用）；不是服务商、不在了或类型不对时为 null */
+    suspend fun providerOf(kind: ProviderKind, source: String): ProviderConfig? {
+        val parsed = VoiceSource.parse(source) as? VoiceSource.Provider ?: return null
+        return dao.get(parsed.id)?.takeIf { it.kind == kind }
     }
 
-    /** 现在选用的本机来源（0.7.1）；选的是服务商或没选时为 null */
-    fun selectedLocal(kind: ProviderKind): VoiceSource.Local? = selectedLocal(kind, settings.voiceSettings())
+    /** 选用的本机来源（0.7.1；[contact] 同上）；选的是服务商或没选时为 null */
+    fun selectedLocal(kind: ProviderKind, contact: Contact? = null): VoiceSource.Local? = localOf(kind, sourceFor(kind, contact))
 
     /**
-     * 现在能不能合成或识别（不发请求）：选了服务商，有 Key，地址合规；
+     * 能不能合成或识别（不发请求，[contact] 同上）：选了服务商，有 Key，地址合规；
      * 系统语音合成要有引擎和不联网的中文音色；离线识别要这台手机支持、模型已经下好
      */
-    suspend fun available(kind: ProviderKind): Boolean = when (selectedLocal(kind)) {
-        VoiceSource.SYSTEM_TTS -> runCatching { systemTts.info().status == SystemTtsStatus.READY }.getOrDefault(false)
-        VoiceSource.OFFLINE_ASR -> offlineAsr.supported() && models.installed()
-        null -> runCatching { endpoint(kind) }.isSuccess
-        else -> false
+    suspend fun available(kind: ProviderKind, contact: Contact? = null): Boolean {
+        val source = sourceFor(kind, contact)
+        return when (localOf(kind, source)) {
+            VoiceSource.SYSTEM_TTS -> runCatching { systemTts.info().status == SystemTtsStatus.READY }.getOrDefault(false)
+            VoiceSource.OFFLINE_ASR -> offlineAsr.supported() && models.installed()
+            null -> runCatching { endpoint(kind, source) }.isSuccess
+            else -> false
+        }
+    }
+
+    /**
+     * 有几位联系人单独选了这个来源（0.7.2）：删除服务商、删除离线模型前提示，删除后他们改为跟随全局（[releaseContacts]）
+     */
+    suspend fun contactsUsing(kind: ProviderKind, source: String): Int = db.contactDao().listAll().count { contactSource(kind, it) == source }
+
+    /** 单独选了 [source] 的联系人改为跟随全局 */
+    suspend fun releaseContacts(kind: ProviderKind, source: String) {
+        db.withTransaction {
+            for (contact in db.contactDao().listAll()) {
+                if (contactSource(kind, contact) != source) continue
+                db.contactDao().update(
+                    when (kind) {
+                        ProviderKind.TTS -> contact.copy(ttsSource = null)
+                        ProviderKind.ASR -> contact.copy(asrSource = null)
+                        ProviderKind.LLM -> contact
+                    },
+                )
+            }
+        }
     }
 
     /**
@@ -143,10 +186,13 @@ class VoiceRepository @Inject constructor(
         )
     }
 
-    /** 删除；删的是正在用的，这一类就变成没有选 */
+    /** 删除；删的是正在用的，这一类就变成没有选；单独选了它的联系人改为跟随全局（0.7.2） */
     suspend fun delete(id: Long) {
         val config = dao.get(id) ?: return
-        db.withTransaction { dao.delete(id) }
+        db.withTransaction {
+            dao.delete(id)
+            releaseContacts(config.kind, VoiceSource.provider(id))
+        }
         val voice = settings.voiceSettings()
         if (VoiceSource.parse(source(config.kind, voice)) == VoiceSource.Provider(id)) setSource(config.kind, "")
     }
@@ -159,6 +205,14 @@ class VoiceRepository @Inject constructor(
             use -> setSource(kind, VoiceSource.of(source))
             selectedLocal(kind) == source -> setSource(kind, "")
         }
+    }
+
+    /**
+     * 本机来源不能再用时（离线模型删掉了，0.7.2）：全局用的是它就改成没有选，单独选了它的联系人改为跟随全局
+     */
+    suspend fun releaseLocal(kind: ProviderKind, source: VoiceSource.Local) {
+        selectLocal(kind, source, use = false)
+        releaseContacts(kind, VoiceSource.of(source))
     }
 
     private fun setSource(kind: ProviderKind, value: String) {
@@ -177,7 +231,8 @@ class VoiceRepository @Inject constructor(
      * 失败时抛 [VoiceUnavailableException] 或 [isomeria.aichat.data.llm.LlmException]
      */
     suspend fun synthesize(contact: Contact, text: String): TtsAudio {
-        if (selectedLocal(ProviderKind.TTS) == VoiceSource.SYSTEM_TTS) {
+        val source = sourceFor(ProviderKind.TTS, contact)
+        if (localOf(ProviderKind.TTS, source) == VoiceSource.SYSTEM_TTS) {
             // 联系人填的音色是这台手机上的系统音色时用它，否则用「系统语音」页选的（引擎里没有时用默认中文音色）
             // （联系人可能填的是服务商的音色 ID，比如以前给 MiMo 填的，这时不能拿去当系统音色）
             val listed = runCatching { systemTts.info().voices.map { it.name } }.getOrDefault(emptyList())
@@ -189,7 +244,7 @@ class VoiceRepository @Inject constructor(
             }
             return TtsAudio(wav, "wav", billable = false)
         }
-        val (config, endpoint) = endpoint(ProviderKind.TTS)
+        val (config, endpoint) = endpoint(ProviderKind.TTS, source)
         val request = TtsRequest(
             model = config.defaultModel,
             text = text,
@@ -204,11 +259,12 @@ class VoiceRepository @Inject constructor(
         usage.record(contactId, UsagePurpose.TTS, chars, seconds(millis))
 
     /**
-     * 识别一段 16 kHz 单声道 WAV，记用量（服务商报告了时长就用它，否则按 WAV 长度算）。
+     * 识别一段 16 kHz 单声道 WAV，记用量（服务商报告了时长就用它，否则按 WAV 长度算）。用这个联系人实际的识别来源（0.7.2）。
      * 选用离线识别（0.7.1）时在手机上识别，不发请求、不记用量；识别不出文字时和服务商返回空内容一样算失败
      */
     suspend fun transcribe(contactId: Long, wav: ByteArray): AsrResult {
-        if (selectedLocal(ProviderKind.ASR) == VoiceSource.OFFLINE_ASR) {
+        val source = sourceFor(ProviderKind.ASR, db.contactDao().get(contactId))
+        if (localOf(ProviderKind.ASR, source) == VoiceSource.OFFLINE_ASR) {
             if (!offlineAsr.supported()) throw VoiceUnavailableException(VoiceUnavailableException.Reason.UNSUPPORTED)
             if (!models.installed()) throw VoiceUnavailableException(VoiceUnavailableException.Reason.NO_MODEL)
             val text = try {
@@ -220,15 +276,15 @@ class VoiceRepository @Inject constructor(
             if (text.isBlank()) throw isomeria.aichat.data.llm.LlmException(isomeria.aichat.data.llm.LlmError.UNKNOWN, message = "EmptyResult")
             return AsrResult(text.trim())
         }
-        val (config, endpoint) = endpoint(ProviderKind.ASR)
+        val (config, endpoint) = endpoint(ProviderKind.ASR, source)
         val result = api.transcribe(config.provider, endpoint, AsrRequest(config.defaultModel, wav))
         val seconds = result.seconds?.let { ceil(it).toInt() } ?: seconds(WavFormat.durationMillis(wav.size.toLong()))
         usage.record(contactId, UsagePurpose.ASR, seconds, 0)
         return result
     }
 
-    private suspend fun endpoint(kind: ProviderKind): Pair<ProviderConfig, LlmEndpoint> {
-        val config = selected(kind) ?: throw VoiceUnavailableException(VoiceUnavailableException.Reason.NO_SOURCE)
+    private suspend fun endpoint(kind: ProviderKind, source: String): Pair<ProviderConfig, LlmEndpoint> {
+        val config = providerOf(kind, source) ?: throw VoiceUnavailableException(VoiceUnavailableException.Reason.NO_SOURCE)
         val url = BaseUrlRules.normalize(config.baseUrl, BuildConfig.DEBUG) ?: throw VoiceUnavailableException(VoiceUnavailableException.Reason.BAD_URL)
         val key = apiKey(config)?.takeIf { it.isNotEmpty() } ?: throw VoiceUnavailableException(VoiceUnavailableException.Reason.NO_KEY)
         return config to LlmEndpoint(url, key)
@@ -240,8 +296,11 @@ class VoiceRepository @Inject constructor(
         ProviderKind.LLM -> ""
     }
 
-    private fun selectedLocal(kind: ProviderKind, voice: VoiceSettings): VoiceSource.Local? {
-        val local = VoiceSource.parse(source(kind, voice)) as? VoiceSource.Local ?: return null
+    private fun selectedLocal(kind: ProviderKind, voice: VoiceSettings): VoiceSource.Local? = localOf(kind, source(kind, voice))
+
+    /** [source] 指的本机来源；合成只认系统语音，识别只认离线识别 */
+    fun localOf(kind: ProviderKind, source: String): VoiceSource.Local? {
+        val local = VoiceSource.parse(source) as? VoiceSource.Local ?: return null
         // 合成只认系统语音，识别只认离线模型；别的（例如以后版本写进备份的新来源）按没有选处理
         return local.takeIf { (kind == ProviderKind.TTS && it == VoiceSource.SYSTEM_TTS) || (kind == ProviderKind.ASR && it == VoiceSource.OFFLINE_ASR) }
     }

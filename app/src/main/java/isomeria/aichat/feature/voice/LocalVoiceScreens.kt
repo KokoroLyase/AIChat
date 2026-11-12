@@ -211,6 +211,8 @@ data class OfflineAsrUiState(
     val work: ModelDownloadWork = ModelDownloadWork.NONE,
     val inUse: Boolean = false,
     val totalBytes: Long = OfflineAsrModel.TOTAL_BYTES,
+    /** 单独选了离线识别的联系人数（0.7.2）：删除模型后他们改为跟随全局 */
+    val contactsUsing: Int = 0,
 ) {
     val installed: Boolean get() = model == ModelState.Installed
 
@@ -230,7 +232,10 @@ class OfflineAsrViewModel @Inject constructor(
     private val supported = engine.supported()
 
     val state: StateFlow<OfflineAsrUiState> = combine(store.state, downloads.work, settings.voiceSettings) { model, work, _ ->
-        OfflineAsrUiState(supported, model, work, voices.selectedLocal(ProviderKind.ASR) == VoiceSource.OFFLINE_ASR, store.totalBytes)
+        OfflineAsrUiState(
+            supported, model, work, voices.selectedLocal(ProviderKind.ASR) == VoiceSource.OFFLINE_ASR, store.totalBytes,
+            contactsUsing = voices.contactsUsing(ProviderKind.ASR, VoiceSource.of(VoiceSource.OFFLINE_ASR)),
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OfflineAsrUiState(supported, store.state.value, totalBytes = store.totalBytes))
 
     /** 现在用的是不是按流量计费的网络（下载前的提示里提醒） */
@@ -242,11 +247,13 @@ class OfflineAsrViewModel @Inject constructor(
 
     fun setUse(use: Boolean) = voices.selectLocal(ProviderKind.ASR, VoiceSource.OFFLINE_ASR, use)
 
-    /** 删除模型（含没下完的部分）；正在用离线识别时改成没有选 */
+    /** 删除模型（含没下完的部分）；正在用离线识别时改成没有选，单独选了它的联系人改为跟随全局（0.7.2） */
     fun delete() {
         downloads.cancel()
-        voices.selectLocal(ProviderKind.ASR, VoiceSource.OFFLINE_ASR, false)
-        viewModelScope.launch { store.delete() }
+        viewModelScope.launch {
+            voices.releaseLocal(ProviderKind.ASR, VoiceSource.OFFLINE_ASR)
+            store.delete()
+        }
     }
 }
 
@@ -355,7 +362,8 @@ fun OfflineAsrContent(state: OfflineAsrUiState, onBack: () -> Unit, actions: Off
     }
     if (confirmDelete) {
         WeDialog(
-            message = stringResource(R.string.offline_asr_delete_confirm),
+            message = stringResource(R.string.offline_asr_delete_confirm) +
+                if (state.contactsUsing > 0) "\n\n" + stringResource(R.string.voice_delete_contacts_using, state.contactsUsing) else "",
             confirmText = stringResource(R.string.action_delete),
             destructive = true,
             onDismiss = { confirmDelete = false },

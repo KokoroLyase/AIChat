@@ -5,6 +5,7 @@ import androidx.room.withTransaction
 import isomeria.aichat.BuildConfig
 import isomeria.aichat.core.Clock
 import isomeria.aichat.core.ReplyPreferencesSource
+import isomeria.aichat.core.forContact
 import isomeria.aichat.core.ReplyTypeRule
 import isomeria.aichat.core.VoiceChunks
 import isomeria.aichat.core.VoiceSettingsSource
@@ -94,12 +95,12 @@ class VoicePipeline @Inject constructor(
         }
     }
 
-    /** 这一轮回语音吗：见 [ReplyTypeRule]；没有可用的语音合成时回文字 */
+    /** 这一轮回语音吗：见 [ReplyTypeRule]；这个联系人实际用的语音合成（0.7.2 可以单独选）用不了时回文字 */
     suspend fun replyAsVoice(contact: Contact, lastWaitingIsVoice: Boolean?): Boolean {
         val voice = settings.voiceSettings()
         // 文字模式时不用查语音服务（省一次数据库读取，请求和 0.6.0 一样）
         if ((contact.replyType ?: voice.replyType) == isomeria.aichat.data.db.ReplyType.TEXT) return false
-        return ReplyTypeRule.voiceReply(contact.replyType, voice.replyType, lastWaitingIsVoice, voices.available(ProviderKind.TTS))
+        return ReplyTypeRule.voiceReply(contact.replyType, voice.replyType, lastWaitingIsVoice, voices.available(ProviderKind.TTS, contact))
     }
 
     /**
@@ -222,7 +223,7 @@ class VoicePipeline @Inject constructor(
             startedAt = now,
             firstContentAt = 0,
             finishedAt = now,
-            preferences = if (contact.useReplyPreferences) preferences.replyPreferences() else null,
+            preferences = preferences.forContact(contact),
             random = random,
             origin = first.origin,
         ).mapIndexed { index, row -> if (index == 0) row.copy(reasoningMillis = first.reasoningMillis) else row }

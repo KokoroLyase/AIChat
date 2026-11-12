@@ -101,7 +101,7 @@ sealed interface ChatEvent {
 class ChatViewModel @Inject constructor(
     savedState: SavedStateHandle,
     private val chats: ChatRepository,
-    contacts: ContactRepository,
+    private val contacts: ContactRepository,
     private val providers: ProviderRepository,
     private val settings: SettingsStore,
     private val files: FileStorage,
@@ -348,15 +348,18 @@ class ChatViewModel @Inject constructor(
     /** 录音转文字正在识别 */
     val transcribing: StateFlow<Boolean> = voiceRecording.transcribing
 
-    /** 语音识别有没有设置好（选了服务商、有 Key）；没有时语音入口提示去设置 */
-    val asrAvailable: StateFlow<Boolean> = voices.observe(isomeria.aichat.data.db.ProviderKind.ASR, settings.voiceSettings)
-        .map { voices.available(isomeria.aichat.data.db.ProviderKind.ASR) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /** 这个联系人用的语音识别（0.7.2 可以单独选）有没有设置好（选了服务商、有 Key）；没有时语音入口提示去设置 */
+    val asrAvailable: StateFlow<Boolean> =
+        combine(voices.observe(isomeria.aichat.data.db.ProviderKind.ASR, settings.voiceSettings), contactFlow) { _, contact -> contact }
+            .map { contact -> voices.available(isomeria.aichat.data.db.ProviderKind.ASR, contact) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    /** 正在用的语音识别服务商的名称（第一次录音前的说明里写明录音发给谁）；用的是本机离线识别（0.7.1）时为空串 */
-    suspend fun asrName(): String =
-        if (voices.selectedLocal(isomeria.aichat.data.db.ProviderKind.ASR) != null) ""
-        else voices.selected(isomeria.aichat.data.db.ProviderKind.ASR)?.name.orEmpty()
+    /** 这个联系人用的语音识别服务商的名称（第一次录音前的说明里写明录音发给谁）；用的是本机离线识别（0.7.1）时为空串 */
+    suspend fun asrName(): String {
+        val contact = contacts.get(contactId)
+        return if (voices.selectedLocal(isomeria.aichat.data.db.ProviderKind.ASR, contact) != null) ""
+        else voices.selected(isomeria.aichat.data.db.ProviderKind.ASR, contact)?.name.orEmpty()
+    }
 
     var voiceIntroShown: Boolean
         get() = settings.voiceIntroShown

@@ -799,7 +799,7 @@
 
     <!-- 0.5.0 回复偏好 -->
     <string name="reply_pref_title">回复偏好</string>
-    <string name="reply_pref_notice">开启「使用回复偏好」的联系人按这里的设置回复：等你说完再回，一次分几条发，每条之间隔几秒。条数和字数写进提示词，只是风格引导；拆条、去标点和间隔由 App 处理。</string>
+    <string name="reply_pref_notice">使用回复偏好、没有单独设置的联系人按这里的设置回复：等你说完再回，一次分几条发，每条之间隔几秒。条数和字数写进提示词，只是风格引导；拆条、去标点和间隔由 App 处理。</string>
     <string name="reply_pref_wait">等待时间</string>
     <string name="reply_pref_wait_hint">你发出消息后先等这么久，期间没有再发消息才开始回复。</string>
     <string name="reply_pref_seconds">%1$d 秒</string>
@@ -816,15 +816,29 @@
     <string name="reply_pref_interval_hint">按每条的字数估算打字时间，限制在这个范围内；第一条会扣掉模型生成已经用掉的时间。</string>
     <string name="reply_pref_reset">恢复默认</string>
     <string name="reply_pref_contacts">使用回复偏好的联系人</string>
+    <string name="reply_pref_contacts_custom" tools:ignore="PluralsCandidate">其中 %1$d 位联系人单独设置了回复偏好，这里的改动对他们不生效；可以在联系人资料里改回跟随这里。</string>
     <string name="reply_pref_decrease">减少%1$s</string>
     <string name="reply_pref_increase">增加%1$s</string>
 
     <!-- 0.5.0 编辑联系人 -->
     <string name="contact_use_global_memory">使用全局记忆</string>
     <string name="contact_use_global_memory_hint">带上「我 → 全局记忆」里已启用的内容。这些内容会发给这个联系人所用的服务商。</string>
-    <string name="contact_use_reply_preferences">使用回复偏好</string>
-    <string name="contact_use_reply_preferences_hint">按「我 → 回复偏好」等你说完再回、分条并带间隔回复。</string>
-    <string name="contact_split_hint_overridden">已使用回复偏好，回复按回复偏好拆条；关闭回复偏好后才按这里的设置。</string>
+    <!-- 0.7.2 联系人单独设置回复偏好 -->
+    <string name="contact_reply_preferences">回复偏好</string>
+    <string name="contact_reply_mode_follow">跟随全局</string>
+    <string name="contact_reply_mode_custom">单独设置</string>
+    <string name="contact_reply_mode_off">不使用</string>
+    <string name="contact_reply_mode_follow_desc">按「我 → 回复偏好」的设置回复，那里改了这里跟着变</string>
+    <string name="contact_reply_mode_custom_desc">这个联系人用自己的一套，不受「我 → 回复偏好」影响</string>
+    <string name="contact_reply_mode_off_desc">不等待、不加间隔，回复按「分条显示」拆分</string>
+    <string name="contact_reply_follow_summary">「我 → 回复偏好」现在是：等待 %1$d 秒，每条约 %2$d 字，每轮 %3$d–%4$d 条，每条间隔 %5$d–%6$d 秒。</string>
+    <string name="contact_reply_off_summary">不使用回复偏好时，收到消息马上开始回复；回复里有空行时是否拆成多条，看联系人资料里的「分条显示」。之前单独设置的值会保留，改回「单独设置」时还在。</string>
+    <!-- 0.7.2 联系人单独选语音来源 -->
+    <string name="contact_tts_source_sheet">「%1$s」的语音合成</string>
+    <string name="contact_asr_source_sheet">和「%1$s」聊天时的语音识别</string>
+    <string name="contact_source_sheet_this">这个联系人</string>
+    <string name="contact_use_reply_preferences_hint">回复偏好决定等你说完再回、一次分几条、每条隔几秒：可以跟随「我 → 回复偏好」，也可以给这个联系人单独设置。</string>
+    <string name="contact_split_hint_overridden">使用回复偏好时按回复偏好拆条；回复偏好选「不使用」后才按这里的设置。</string>
     <string name="contact_profile_item_global_memory">全局记忆</string>
     <string name="contact_profile_item_reply_preferences">回复偏好</string>
     <string name="contact_prompt_usage" tools:ignore="PluralsCandidate">系统提示词合计约 %1$d token，占上下文上限的 %2$d%%（含全局记忆、记忆和回复偏好）。</string>
@@ -936,6 +950,7 @@
     <string name="voice_voice_note">音色可以从列表里选，也可以按服务商文档手填 ID。联系人可以在「朋友资料」里单独换音色。</string>
     <string name="voice_use_this">使用这个服务商</string>
     <string name="voice_delete_provider">删除服务商</string>
+    <string name="voice_delete_contacts_using" tools:ignore="PluralsCandidate">有 %1$d 位联系人单独选了它，删除后改为跟随「我 → 语音消息」。</string>
     <string name="voice_delete_confirm">删除「%1$s」？删除后需要重新填写 API Key。</string>
     <string name="voice_price_mimo_tts">MiMo 语音合成官方写着“限时免费”，没有写截止日期；免费期结束或额度不足时合成会失败，联系人改回文字消息。</string>
     <string name="voice_price_mimo_asr">MiMo 语音识别按音频时长收费（官方价格约 0.5 元每小时），以服务商为准。</string>
@@ -1010,7 +1025,7 @@
     <string name="contact_tts_voice_hint_empty">用默认音色</string>
     <string name="contact_tts_style">语气和风格</string>
     <string name="contact_tts_style_hint">例如：温柔、慢一些</string>
-    <string name="contact_voice_hint">联系人回复你时发文字还是语音，默认跟「我 → 语音消息」一致。音色填语音合成服务商提供的音色名，也可以从列表里选，留空用服务商设置的音色；语气和风格只有部分服务商支持（Xiaomi MiMo、火山引擎、阿里云百炼、硅基流动，以及 OpenRouter 上的部分模型），其他的会忽略。</string>
+    <string name="contact_voice_hint">联系人回复你时发文字还是语音、用哪个语音合成和语音识别，默认跟「我 → 语音消息」一致；单独选的来源用不了时不会换成全局的，回复改发文字、录音提示去设置。换语音合成来源会清空音色。音色填语音合成服务商提供的音色名，也可以从列表里选，留空用这个来源设置的音色；语气和风格只有部分服务商支持（Xiaomi MiMo、火山引擎、阿里云百炼、硅基流动，以及 OpenRouter 上的部分模型），其他的会忽略。</string>
     <!-- 0.7.0 语音消息：语音条和播放 -->
     <string name="voice_bubble_desc">语音，%1$d 秒</string>
     <string name="voice_state_playing">正在播放</string>

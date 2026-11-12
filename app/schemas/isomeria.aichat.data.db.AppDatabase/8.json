@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 8,
-    "identityHash": "21b0f1ca52306e493bf5eaaf734a5e56",
+    "identityHash": "4e5e41d64b52d482a91c666780dffc67",
     "entities": [
       {
         "tableName": "contact",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `avatarPath` TEXT, `avatarColor` INTEGER NOT NULL, `providerId` INTEGER NOT NULL, `model` TEXT NOT NULL, `thinking` TEXT NOT NULL, `temperature` REAL NOT NULL, `systemPrompt` TEXT NOT NULL, `contextTokens` INTEGER NOT NULL DEFAULT 4000, `splitReplies` INTEGER NOT NULL, `autoMemory` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `thinkingOption` TEXT, `memoryModel` TEXT, `memoryThinkingOption` TEXT NOT NULL DEFAULT 'off', `useGlobalMemory` INTEGER NOT NULL DEFAULT 1, `useReplyPreferences` INTEGER NOT NULL DEFAULT 1, `proactiveEnabled` INTEGER NOT NULL DEFAULT 0, `proactiveFrequency` TEXT NOT NULL DEFAULT 'MEDIUM', `replyType` TEXT, `ttsVoice` TEXT, `ttsStyle` TEXT NOT NULL DEFAULT '')",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `avatarPath` TEXT, `avatarColor` INTEGER NOT NULL, `providerId` INTEGER NOT NULL, `model` TEXT NOT NULL, `thinking` TEXT NOT NULL, `temperature` REAL NOT NULL, `systemPrompt` TEXT NOT NULL, `contextTokens` INTEGER NOT NULL DEFAULT 4000, `splitReplies` INTEGER NOT NULL, `autoMemory` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `thinkingOption` TEXT, `memoryModel` TEXT, `memoryThinkingOption` TEXT NOT NULL DEFAULT 'off', `useGlobalMemory` INTEGER NOT NULL DEFAULT 1, `useReplyPreferences` INTEGER NOT NULL DEFAULT 1, `proactiveEnabled` INTEGER NOT NULL DEFAULT 0, `proactiveFrequency` TEXT NOT NULL DEFAULT 'MEDIUM', `replyType` TEXT, `ttsVoice` TEXT, `ttsStyle` TEXT NOT NULL DEFAULT '', `replyPreferences` TEXT, `ttsSource` TEXT, `asrSource` TEXT)",
         "fields": [
           {
             "fieldPath": "id",
@@ -154,6 +154,21 @@
             "affinity": "TEXT",
             "notNull": true,
             "defaultValue": "''"
+          },
+          {
+            "fieldPath": "replyPreferences",
+            "columnName": "replyPreferences",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "ttsSource",
+            "columnName": "ttsSource",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "asrSource",
+            "columnName": "asrSource",
+            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
@@ -1081,7 +1096,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '21b0f1ca52306e493bf5eaaf734a5e56')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4e5e41d64b52d482a91c666780dffc67')"
     ]
   }
 }

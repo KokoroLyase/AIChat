@@ -70,6 +70,48 @@ data class ContactForm(
     val replyType: isomeria.aichat.data.db.ReplyType? = null,
     val ttsVoice: String = "",
     val ttsStyle: String = "",
+    /** 单独设置的回复偏好（0.7.2）：null 跟随「我 → 回复偏好」；只在 [useReplyPreferences] 时生效 */
+    val replyPreferences: isomeria.aichat.core.ReplyPreferences? = null,
+    /** 单独选的语音合成、识别来源（0.7.2）：null 跟随「我 → 语音消息」 */
+    val ttsSource: String? = null,
+    val asrSource: String? = null,
+) {
+    val replyMode: ReplyPreferencesMode
+        get() = when {
+            !useReplyPreferences -> ReplyPreferencesMode.OFF
+            replyPreferences != null -> ReplyPreferencesMode.CUSTOM
+            else -> ReplyPreferencesMode.FOLLOW
+        }
+}
+
+/** 联系人的回复偏好（0.7.2）：跟随全局、单独设置、不使用（按分条显示的旧行为） */
+enum class ReplyPreferencesMode { FOLLOW, CUSTOM, OFF }
+
+/**
+ * 换回复偏好的方式。单独设置第一次打开时复制 [global]，之前单独设置过的值还在就接着用；
+ * 跟随全局时丢掉单独设置的值，不使用时保留（之后再选单独设置还在）
+ */
+internal fun ContactForm.withReplyMode(mode: ReplyPreferencesMode, global: isomeria.aichat.core.ReplyPreferences): ContactForm = when (mode) {
+    ReplyPreferencesMode.FOLLOW -> copy(useReplyPreferences = true, replyPreferences = null)
+    ReplyPreferencesMode.CUSTOM -> copy(useReplyPreferences = true, replyPreferences = replyPreferences ?: global)
+    ReplyPreferencesMode.OFF -> copy(useReplyPreferences = false)
+}
+
+/**
+ * 换语音合成来源（0.7.2，null 跟随全局，[global] 是全局现在用的）：实际用的来源变了时清空音色——一家的音色 ID 拿到另一家用不了
+ */
+internal fun ContactForm.withTtsSource(source: String?, global: String): ContactForm {
+    val before = ttsSource ?: global
+    val after = source ?: global
+    return copy(ttsSource = source, ttsVoice = if (before == after) ttsVoice else "")
+}
+
+/** 联系人编辑页可选的语音来源（0.7.2）：各类的服务商，和「我 → 语音消息」现在用的来源 */
+data class ContactVoiceChoices(
+    val tts: List<ProviderConfig> = emptyList(),
+    val asr: List<ProviderConfig> = emptyList(),
+    val globalTts: String = "",
+    val globalAsr: String = "",
 )
 
 /**
@@ -143,33 +185,72 @@ class ContactEditViewModel @Inject constructor(
         .map { it.replyType }
         .stateIn(viewModelScope, SharingStarted.Eagerly, settings.voiceSettings.value.replyType)
 
-    /** 正在用的语音合成来源的默认音色：音色留空时用它（0.7.1 起系统语音用「系统语音」页选的音色） */
-    val providerVoice: StateFlow<String> = voices.observe(isomeria.aichat.data.db.ProviderKind.TTS, settings.voiceSettings)
-        .map { list ->
-            if (list.local == isomeria.aichat.core.VoiceSource.SYSTEM_TTS) settings.systemTtsVoice
-            else list.providers.firstOrNull { it.id == list.selectedId }?.voice.orEmpty()
+    /** 「我 → 回复偏好」现在的值（0.7.2）：联系人跟随全局时写出来，单独设置第一次打开时复制 */
+    val globalReplyPreferences: StateFlow<isomeria.aichat.core.ReplyPreferences> = settings.replyPreferences
+
+    /** 可选的语音来源和全局现在用的（0.7.2） */
+    val voiceChoices: StateFlow<ContactVoiceChoices> = combine(
+        voices.observe(isomeria.aichat.data.db.ProviderKind.TTS, settings.voiceSettings),
+        voices.observe(isomeria.aichat.data.db.ProviderKind.ASR, settings.voiceSettings),
+    ) { tts, asr -> ContactVoiceChoices(tts.providers, asr.providers, tts.source, asr.source) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ContactVoiceChoices())
+
+    /** 这个联系人实际用的语音合成来源：表单里单独选的，或者全局的 */
+    private val ttsSource: kotlinx.coroutines.flow.Flow<Pair<String, ContactVoiceChoices>> =
+        combine(_state.map { it.form.ttsSource }.distinctUntilChanged(), voiceChoices) { own, choices -> (own ?: choices.globalTts) to choices }
+
+    /** 实际用的语音合成来源的默认音色：音色留空时用它（0.7.1 起系统语音用「系统语音」页选的音色） */
+    val providerVoice: StateFlow<String> = ttsSource
+        .map { (source, choices) ->
+            when (val parsed = isomeria.aichat.core.VoiceSource.parse(source)) {
+                isomeria.aichat.core.VoiceSource.SYSTEM_TTS -> settings.systemTtsVoice
+                is isomeria.aichat.core.VoiceSource.Provider -> choices.tts.firstOrNull { it.id == parsed.id }?.voice.orEmpty()
+                else -> ""
+            }
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
-    /** 正在用的语音合成来源能不能打开选音色页（0.7.2）：系统语音，或有音色列表的服务商 */
-    val canPickVoice: StateFlow<Boolean> = voices.observe(isomeria.aichat.data.db.ProviderKind.TTS, settings.voiceSettings)
-        .map { list ->
-            list.local == isomeria.aichat.core.VoiceSource.SYSTEM_TTS ||
-                list.providers.firstOrNull { it.id == list.selectedId }?.let { isomeria.aichat.data.voice.VoiceCatalog.supports(it.presetId, it.provider) } == true
+    /** 实际用的语音合成来源能不能打开选音色页（0.7.2）：系统语音，或有音色列表的服务商 */
+    val canPickVoice: StateFlow<Boolean> = ttsSource
+        .map { (source, choices) ->
+            when (val parsed = isomeria.aichat.core.VoiceSource.parse(source)) {
+                isomeria.aichat.core.VoiceSource.SYSTEM_TTS -> true
+                is isomeria.aichat.core.VoiceSource.Provider ->
+                    choices.tts.firstOrNull { it.id == parsed.id }?.let { isomeria.aichat.data.voice.VoiceCatalog.supports(it.presetId, it.provider) } == true
+                else -> false
+            }
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    /** 选音色页（0.7.2）：列的是正在用的合成来源的音色 */
+    /** 选音色页（0.7.2）：列的是这个联系人实际用的合成来源的音色 */
     val picker = isomeria.aichat.feature.voice.VoicePickerController(viewModelScope, catalog, preview, context.getString(R.string.voice_preview_text))
+
+    /** 换回复偏好的方式（0.7.2）；单独设置第一次打开时复制全局现在的值 */
+    fun setReplyMode(mode: ReplyPreferencesMode) = update { it.withReplyMode(mode, settings.replyPreferences.value) }
+
+    /** 改单独设置的回复偏好（0.7.2） */
+    fun updateReplyPreferences(transform: (isomeria.aichat.core.ReplyPreferences) -> isomeria.aichat.core.ReplyPreferences) =
+        update { form -> form.replyPreferences?.let { form.copy(replyPreferences = transform(it).normalized()) } ?: form }
+
+    /** 单独选语音来源（0.7.2）；null 跟随全局。合成来源实际变了时清空音色 */
+    fun setVoiceSource(kind: isomeria.aichat.data.db.ProviderKind, source: String?) = update { form ->
+        when (kind) {
+            isomeria.aichat.data.db.ProviderKind.TTS -> form.withTtsSource(source, voiceChoices.value.globalTts)
+            isomeria.aichat.data.db.ProviderKind.ASR -> form.copy(asrSource = source)
+            isomeria.aichat.data.db.ProviderKind.LLM -> form
+        }
+    }
 
     fun openVoicePicker() {
         val current = _state.value.form.ttsVoice
+        val kind = isomeria.aichat.data.db.ProviderKind.TTS
+        val source = _state.value.form.ttsSource ?: voices.sourceFor(kind, null)
         viewModelScope.launch {
-            if (voices.selectedLocal(isomeria.aichat.data.db.ProviderKind.TTS) == isomeria.aichat.core.VoiceSource.SYSTEM_TTS) {
+            if (voices.localOf(kind, source) == isomeria.aichat.core.VoiceSource.SYSTEM_TTS) {
                 picker.open(isomeria.aichat.data.voice.VoiceTarget(null, "", "", null, "", systemTts = true), current)
                 return@launch
             }
-            val config = voices.selected(isomeria.aichat.data.db.ProviderKind.TTS)
+            val config = voices.providerOf(kind, source)
             if (config == null) {
                 picker.open(null, current, R.string.voice_picker_no_source)
                 return@launch
@@ -214,7 +295,7 @@ class ContactEditViewModel @Inject constructor(
         val chosen = MemoryPolicy.forRequest(memoryRows, MemoryPolicy.memoryBudget(form.contextTokens), estimator)
         val promptGlobals = PromptGlobals(
             globalMemory = if (form.useGlobalMemory) tree.entries() else emptyList(),
-            replyStyle = if (form.useReplyPreferences) prefs else null,
+            replyStyle = if (form.useReplyPreferences) form.replyPreferences ?: prefs else null,
             reminderHint = form.proactiveEnabled,
         )
         val prompt = contextBuilder.systemPrompt(contact, nickname, clock.now(), chosen, promptGlobals)
@@ -255,6 +336,9 @@ class ContactEditViewModel @Inject constructor(
                         replyType = it.replyType,
                         ttsVoice = it.ttsVoice.orEmpty(),
                         ttsStyle = it.ttsStyle,
+                        replyPreferences = it.replyPreferences,
+                        ttsSource = it.ttsSource,
+                        asrSource = it.asrSource,
                     )
                 } ?: ContactForm(avatarColor = randomAvatarColor())
             }
@@ -378,6 +462,9 @@ class ContactEditViewModel @Inject constructor(
                     replyType = form.replyType,
                     ttsVoice = form.ttsVoice.trim().ifEmpty { null },
                     ttsStyle = form.ttsStyle.trim(),
+                    replyPreferences = form.replyPreferences,
+                    ttsSource = form.ttsSource,
+                    asrSource = form.asrSource,
                 ),
             )
             old.id
@@ -402,6 +489,9 @@ class ContactEditViewModel @Inject constructor(
                 replyType = form.replyType,
                 ttsVoice = form.ttsVoice.trim().ifEmpty { null },
                 ttsStyle = form.ttsStyle.trim(),
+                replyPreferences = form.replyPreferences,
+                ttsSource = form.ttsSource,
+                asrSource = form.asrSource,
                 createdAt = now,
                 updatedAt = now,
             ),

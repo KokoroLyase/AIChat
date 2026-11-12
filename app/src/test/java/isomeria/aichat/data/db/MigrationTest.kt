@@ -396,7 +396,7 @@ class MigrationTest {
         assertEquals(listOf(1L), db.providerDao().llmList().map { it.id })
     }
 
-    /** 0.7.2：旧记忆都成为近期记忆，内容、时间范围、是否改过原样保留；核心记忆可以写入 */
+    /** 0.7.2：旧记忆都成为近期记忆，内容、时间范围、是否改过原样保留；核心记忆可以写入；联系人的单独设置为空（跟随全局） */
     @Test
     fun v7ToV8_oldMemoriesBecomeRecent_otherFieldsKept() = runBlocking {
         createV1(version = 7) {
@@ -411,6 +411,14 @@ class MigrationTest {
         assertEquals(listOf(false, true), memories.map { it.edited })
         assertEquals(listOf(100L to 200L, 400L to 500L), memories.map { it.fromTime to it.toTime })
         assertEquals("冰糖", db.contactDao().get(8)!!.ttsVoice)
+        // 联系人新加的单独设置都是 NULL：跟随全局
+        val contact = db.contactDao().get(8)!!
+        assertNull(contact.replyPreferences)
+        assertNull(contact.ttsSource)
+        assertNull(contact.asrSource)
+        db.contactDao().update(contact.copy(replyPreferences = isomeria.aichat.core.ReplyPreferences(waitSeconds = 4), ttsSource = "local:system-tts"))
+        assertEquals(4, db.contactDao().get(8)!!.replyPreferences!!.waitSeconds)
+        assertEquals("local:system-tts", db.contactDao().get(8)!!.ttsSource)
         db.memoryDao().insert(Memory(contactId = 8, content = "核心", fromTime = 100, toTime = 500, createdAt = 800, updatedAt = 800, core = true))
         assertEquals(1, db.memoryDao().listByContact(8).count { it.core })
     }

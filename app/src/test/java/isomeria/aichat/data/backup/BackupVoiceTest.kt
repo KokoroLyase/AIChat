@@ -185,6 +185,67 @@ class BackupVoiceTest {
         assertEquals(VoiceSettings(ReplyType.TEXT, VoiceSource.provider(tts), VoiceSource.provider(asrNow.id)), settings.v.voice)
     }
 
+    /** 0.7.2：联系人单独设置的回复偏好和语音来源 */
+    private val ownPrefs = isomeria.aichat.core.ReplyPreferences(waitSeconds = 7, targetLength = 50, stripPunctuation = false)
+
+    private suspend fun withOverrides() {
+        val contact = db.contactDao().get(1)!!
+        db.contactDao().update(
+            contact.copy(replyPreferences = ownPrefs, ttsSource = VoiceSource.provider(tts), asrSource = VoiceSource.of(VoiceSource.OFFLINE_ASR)),
+        )
+    }
+
+    @Test
+    fun contactOverrides_roundTrip_providerIdsRemappedOnMerge() = runBlocking {
+        seed()
+        withOverrides()
+        val zip = export()
+        val dto = backup.inspect(zip).data.contacts.single()
+        assertEquals(VoiceSource.provider(tts), dto.ttsSource)
+        assertEquals(7, dto.replyPreferences!!.waitSeconds)
+        // 本机：联系人和语音服务商都删了，另一个合成服务商占了 id
+        db.contactDao().delete(1)
+        db.providerDao().deleteAllVoice()
+        db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "openai-audio", name = "别的", baseUrl = "https://other.test", defaultModel = "x"))
+
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+        val restored = db.contactDao().get(1)!!
+        val mimo = db.providerDao().listByKind(ProviderKind.TTS).single { it.baseUrl == "https://api.xiaomimimo.com/v1" }
+        assertFalse("合并时新加的服务商换了 id", mimo.id == tts)
+        assertEquals("单独选的服务商换成本机的 id", VoiceSource.provider(mimo.id), restored.ttsSource)
+        assertEquals("本机来源原样", VoiceSource.of(VoiceSource.OFFLINE_ASR), restored.asrSource)
+        assertEquals(ownPrefs, restored.replyPreferences)
+    }
+
+    @Test
+    fun restoreWithoutProviders_unmatchedContactSourceFollowsGlobal() = runBlocking {
+        seed()
+        db.contactDao().update(db.contactDao().get(1)!!.copy(ttsSource = VoiceSource.provider(tts), asrSource = VoiceSource.provider(asr)))
+        val zip = export()
+        // 本机的合成服务商换了地址（不再是同一个），识别服务商没变
+        db.providerDao().update(db.providerDao().get(tts)!!.copy(baseUrl = "https://changed.test"))
+
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null, BackupModule.ALL - BackupModule.PROVIDERS)
+        val restored = db.contactDao().listAll().single()
+        assertNull("找不到同一个服务商：跟随全局", restored.ttsSource)
+        assertEquals("按格式和地址找到本机的同一个", VoiceSource.provider(asr), restored.asrSource)
+    }
+
+    @Test
+    fun overwriteProvidersOnly_localContactSourcesFollowReplacedProviders() = runBlocking {
+        seed()
+        val zip = export()
+        // 导出后本机加了一个合成服务商，联系人单独选了它；识别单独选了备份里也有的那个
+        val extra = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "openai-audio", name = "新加的", baseUrl = "https://extra.test", defaultModel = "x"))
+        db.contactDao().update(db.contactDao().get(1)!!.copy(ttsSource = VoiceSource.provider(extra), asrSource = VoiceSource.provider(asr)))
+
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null, setOf(BackupModule.PROVIDERS))
+        val contact = db.contactDao().get(1)!!
+        assertNull("替换后没有这个服务商了：跟随全局", contact.ttsSource)
+        val asrNow = db.providerDao().listByKind(ProviderKind.ASR).single()
+        assertEquals("替换后同一个服务商的 id", VoiceSource.provider(asrNow.id), contact.asrSource)
+    }
+
     /** 0.7.1：本机来源原样导出和恢复（不改数据格式）；离线识别模型和系统音色不进备份 */
     @Test
     fun localSources_roundTripUnchanged_modelFilesNotExported() = runBlocking {

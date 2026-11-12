@@ -45,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -121,6 +122,10 @@ fun ContactEditScreen(
     val globalReplyType by viewModel.globalReplyType.collectAsStateWithLifecycle()
     val providerVoice by viewModel.providerVoice.collectAsStateWithLifecycle()
     val canPickVoice by viewModel.canPickVoice.collectAsStateWithLifecycle()
+    val voiceChoices by viewModel.voiceChoices.collectAsStateWithLifecycle()
+    val globalReplyPreferences by viewModel.globalReplyPreferences.collectAsStateWithLifecycle()
+    var sourceSheet by remember { mutableStateOf<isomeria.aichat.data.db.ProviderKind?>(null) }
+    var showReplyPreferences by rememberSaveable { mutableStateOf(false) }
     val picker by viewModel.picker.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -137,6 +142,14 @@ fun ContactEditScreen(
         BackHandler { viewModel.picker.close() }
         isomeria.aichat.feature.voice.VoicePickerContent(
             picker, viewModel.picker::setQuery, viewModel.picker::search, viewModel::pickVoice, viewModel.picker::preview, viewModel.picker::close,
+        )
+        return
+    }
+    // 0.7.2 联系人的回复偏好：同样盖住整页，改动跟着联系人的「保存」
+    if (showReplyPreferences && state.loaded) {
+        BackHandler { showReplyPreferences = false }
+        ContactReplyPreferencesContent(
+            form, globalReplyPreferences, viewModel::setReplyMode, viewModel::updateReplyPreferences, onBack = { showReplyPreferences = false },
         )
         return
     }
@@ -233,7 +246,7 @@ fun ContactEditScreen(
             GroupSpacer()
             ContextBudgetRow(form.contextTokens, viewModel::setContextValue, state.contextInput,
                 viewModel::setContextInput, viewModel::finishContextInput, state.contextFocusRequest)
-            GlobalSwitchRows(form, viewModel::update)
+            GlobalSwitchRows(form, viewModel::update, onOpenReplyPreferences = { showReplyPreferences = true })
             GroupSpacer()
             WeListRow(
                 title = stringResource(R.string.contact_auto_memory),
@@ -259,6 +272,7 @@ fun ContactEditScreen(
             ContactVoiceRows(
                 form, globalReplyType, providerVoice, onPickReplyType = { showReplyTypeSheet = true }, onUpdate = viewModel::update,
                 canPickVoice = canPickVoice, onPickVoice = viewModel::openVoicePicker,
+                choices = voiceChoices, onPickSource = { sourceSheet = it },
             )
 
             if (!state.isNew) {
@@ -292,6 +306,9 @@ fun ContactEditScreen(
             },
             onDismiss = { showAvatarSheet = false },
         )
+    }
+    sourceSheet?.let { kind ->
+        VoiceSourceSheet(kind, form, voiceChoices, onPick = { source -> viewModel.setVoiceSource(kind, source) }) { sourceSheet = null }
     }
     if (showReplyTypeSheet) {
         ReplyTypeSheet(form.replyType, globalReplyType, onPick = { type -> viewModel.update { it.copy(replyType = type) } }) {
@@ -358,7 +375,7 @@ fun ContactEditScreen(
  * 开启回复偏好时由它拆条，分条显示的说明随之改变。
  */
 @Composable
-internal fun GlobalSwitchRows(form: ContactForm, update: ((ContactForm) -> ContactForm) -> Unit) {
+internal fun GlobalSwitchRows(form: ContactForm, update: ((ContactForm) -> ContactForm) -> Unit, onOpenReplyPreferences: () -> Unit = {}) {
     GroupSpacer()
     WeListRow(
         title = stringResource(R.string.contact_use_global_memory),
@@ -369,13 +386,12 @@ internal fun GlobalSwitchRows(form: ContactForm, update: ((ContactForm) -> Conta
     )
     FootnoteText(stringResource(R.string.contact_use_global_memory_hint))
     GroupSpacer()
-    WeListRow(
-        title = stringResource(R.string.contact_use_reply_preferences),
-        showArrow = false,
+    // 0.7.2：跟随全局、单独设置或不使用，点开子页选
+    isomeria.aichat.feature.settings.ConfigActionRow(
+        title = stringResource(R.string.contact_reply_preferences),
+        value = replyModeName(form.replyMode),
         showDivider = true,
-        trailing = {
-            WeSwitch(form.useReplyPreferences, { on -> update { it.copy(useReplyPreferences = on) } }, label = stringResource(R.string.contact_use_reply_preferences))
-        },
+        onClick = onOpenReplyPreferences,
     )
     WeListRow(
         title = stringResource(R.string.contact_split),
@@ -399,12 +415,21 @@ internal fun ContactVoiceRows(
     onUpdate: ((ContactForm) -> ContactForm) -> Unit,
     canPickVoice: Boolean = false,
     onPickVoice: () -> Unit = {},
+    choices: ContactVoiceChoices = ContactVoiceChoices(),
+    onPickSource: (isomeria.aichat.data.db.ProviderKind) -> Unit = {},
 ) {
     isomeria.aichat.feature.settings.ConfigActionRow(
         title = stringResource(R.string.contact_reply_type),
         value = replyTypeLabel(form.replyType, globalType),
         showDivider = true,
         onClick = onPickReplyType,
+    )
+    // 0.7.2：单独选语音合成来源；音色、语气和风格跟着这个来源
+    isomeria.aichat.feature.settings.ConfigActionRow(
+        title = stringResource(R.string.voice_tts_source),
+        value = contactSourceLabel(isomeria.aichat.data.db.ProviderKind.TTS, form.ttsSource, choices),
+        showDivider = true,
+        onClick = { onPickSource(isomeria.aichat.data.db.ProviderKind.TTS) },
     )
     FormRow(stringResource(R.string.contact_tts_voice), showDivider = true) {
         InlineField(
@@ -422,7 +447,56 @@ internal fun ContactVoiceRows(
             hint = stringResource(R.string.contact_tts_style_hint),
         )
     }
+    isomeria.aichat.feature.settings.ConfigActionRow(
+        title = stringResource(R.string.voice_asr_source),
+        value = contactSourceLabel(isomeria.aichat.data.db.ProviderKind.ASR, form.asrSource, choices),
+        onClick = { onPickSource(isomeria.aichat.data.db.ProviderKind.ASR) },
+    )
     FootnoteText(stringResource(R.string.contact_voice_hint))
+}
+
+/** 一个来源的名称：系统语音、离线识别、服务商名称；没选或服务商不在了是「未设置」 */
+@Composable
+internal fun voiceSourceName(kind: isomeria.aichat.data.db.ProviderKind, source: String, choices: ContactVoiceChoices): String {
+    val providers = if (kind == isomeria.aichat.data.db.ProviderKind.TTS) choices.tts else choices.asr
+    return when (val parsed = isomeria.aichat.core.VoiceSource.parse(source)) {
+        isomeria.aichat.core.VoiceSource.SYSTEM_TTS -> stringResource(R.string.voice_local_system_tts)
+        isomeria.aichat.core.VoiceSource.OFFLINE_ASR -> stringResource(R.string.voice_local_offline_asr)
+        is isomeria.aichat.core.VoiceSource.Provider -> providers.firstOrNull { it.id == parsed.id }?.name
+        else -> null
+    } ?: stringResource(R.string.voice_source_unset)
+}
+
+/** 联系人那一行的值：单独选了写来源名称，跟随时写「使用全局设置（全局的来源）」 */
+@Composable
+internal fun contactSourceLabel(kind: isomeria.aichat.data.db.ProviderKind, own: String?, choices: ContactVoiceChoices): String {
+    val global = if (kind == isomeria.aichat.data.db.ProviderKind.TTS) choices.globalTts else choices.globalAsr
+    return if (own == null) stringResource(R.string.voice_reply_global_value, voiceSourceName(kind, global, choices))
+    else voiceSourceName(kind, own, choices)
+}
+
+/** 选语音合成或识别来源（0.7.2）：使用全局设置、本机来源、各个服务商 */
+@Composable
+private fun VoiceSourceSheet(
+    kind: isomeria.aichat.data.db.ProviderKind,
+    form: ContactForm,
+    choices: ContactVoiceChoices,
+    onPick: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tts = kind == isomeria.aichat.data.db.ProviderKind.TTS
+    val global = if (tts) choices.globalTts else choices.globalAsr
+    val local = if (tts) isomeria.aichat.core.VoiceSource.SYSTEM_TTS else isomeria.aichat.core.VoiceSource.OFFLINE_ASR
+    val providers = if (tts) choices.tts else choices.asr
+    WeActionSheet(
+        title = stringResource(if (tts) R.string.contact_tts_source_sheet else R.string.contact_asr_source_sheet, form.name.trim().ifEmpty { stringResource(R.string.contact_source_sheet_this) }),
+        options = buildList {
+            add(SheetOption(stringResource(R.string.voice_reply_global_value, voiceSourceName(kind, global, choices))) { onPick(null) })
+            add(SheetOption(stringResource(if (tts) R.string.voice_local_system_tts else R.string.voice_local_offline_asr)) { onPick(isomeria.aichat.core.VoiceSource.of(local)) })
+            providers.forEach { provider -> add(SheetOption(provider.name) { onPick(isomeria.aichat.core.VoiceSource.provider(provider.id)) }) }
+        },
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable

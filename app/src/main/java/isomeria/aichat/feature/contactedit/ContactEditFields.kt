@@ -21,13 +21,16 @@ enum class ContactEditField(@StringRes val label: Int, @StringRes val hint: Int 
     PROMPT(R.string.contact_prompt),
     CONTEXT(R.string.contact_context_tokens, R.string.contact_profile_item_context),
     GLOBAL_MEMORY(R.string.contact_use_global_memory, R.string.contact_profile_item_global_memory),
-    REPLY_PREFERENCES(R.string.contact_use_reply_preferences, R.string.contact_profile_item_reply_preferences),
+    REPLY_PREFERENCES(R.string.contact_reply_preferences, R.string.contact_profile_item_reply_preferences),
     SPLIT(R.string.contact_split, R.string.contact_profile_item_split),
     AUTO_MEMORY(R.string.contact_auto_memory),
     PROACTIVE(R.string.contact_proactive),
     REPLY_TYPE(R.string.contact_reply_type),
+    /** 0.7.2：单独选语音合成、识别来源 */
+    TTS_SOURCE(R.string.voice_tts_source),
     TTS_VOICE(R.string.contact_tts_voice),
     TTS_STYLE(R.string.contact_tts_style),
+    ASR_SOURCE(R.string.voice_asr_source),
 }
 
 /**

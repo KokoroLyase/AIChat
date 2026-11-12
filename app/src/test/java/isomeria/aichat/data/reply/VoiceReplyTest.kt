@@ -304,6 +304,23 @@ class VoiceReplyTest {
         assertTrue(api.tts.isEmpty())
     }
 
+    /** 0.7.2：联系人单独选的合成来源用不了时回文字，不换成全局的（全局的可以用） */
+    @Test
+    fun contactOwnTtsUnavailable_voiceModeFallsBackToText_globalNotUsed() = runBlocking {
+        val noKey = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = VoiceProtocol.CHAT_AUDIO, name = "没 Key", baseUrl = "https://own.example.com/v1", defaultModel = "m"))
+        settings.value = settings.value.copy(replyType = ReplyType.VOICE)
+        setContact { it.copy(ttsSource = VoiceSource.provider(noKey)) }
+        // 判断这一轮回不回语音时就按联系人自己的来源：用不了就直接回文字，不先写等合成的语音消息
+        assertFalse(pipeline.replyAsVoice(db.contactDao().get(contactId)!!, lastWaitingIsVoice = false))
+        setContact { it.copy(ttsSource = VoiceSource.provider(ttsId)) }
+        assertTrue(pipeline.replyAsVoice(db.contactDao().get(contactId)!!, lastWaitingIsVoice = false))
+        setContact { it.copy(ttsSource = VoiceSource.provider(noKey)) }
+        sendText("在吗")
+        engine.run(contactId)
+        assertTrue(replies().all { it.type == MessageType.TEXT })
+        assertTrue("回复内容没有发给全局的合成服务商", api.tts.isEmpty())
+    }
+
     @Test
     fun longReply_twoVoices_partialFailure_degradesThatOne_keepsOrder_noSecondModelRequest() = runBlocking {
         h.provider.reply = longReply
@@ -364,6 +381,19 @@ class VoiceReplyTest {
         // 再跑一次回复任务：不会再合成
         engine.run(contactId)
         assertEquals(2, api.tts.size)
+    }
+
+    /** 0.7.2：全部合成失败时，单独设置了回复偏好的联系人按自己的重新拆成文字 */
+    @Test
+    fun allSynthesisFails_reSplitsByTheContactsOwnPreferences() = runBlocking {
+        setContact { it.copy(useReplyPreferences = true, replyPreferences = h.preferences.copy(minCount = 1, maxCount = 1)) }
+        h.provider.reply = longReply
+        api.ttsFailOn = setOf(1, 2)
+        sendVoice()
+        engine.run(contactId)
+        val rows = replies()
+        assertTrue(rows.all { it.type == MessageType.TEXT })
+        assertEquals("自己的最多条数是 1：都接在一条里", 1, rows.size)
     }
 
     @Test

@@ -25,7 +25,7 @@ import kotlinx.serialization.json.Json
  *                   免打扰时段和每日上限。今日已用次数、暂停计数和约定提醒是设备状态，不导出。
  *                   v7 起消息带语音文件和状态、联系人带消息发送类型和音色、服务商包括语音合成和识别的（Key 同样默认不导出）、
  *                   设置带语音消息的全局设置
- *                   v8 起记忆带「是否核心记忆」；可以只导出一部分（[BackupModule]），manifest 记下导出了哪些，
+ *                   v8 起记忆带「是否核心记忆」，联系人带单独设置的回复偏好和语音来源；可以只导出一部分（[BackupModule]），manifest 记下导出了哪些，
  *                   没导出服务商时用 providerRefs 记下联系人和语音来源用到的服务商（只有格式和地址，没有 Key）
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
@@ -177,6 +177,11 @@ data class ContactDto(
     val replyType: ReplyType? = null,
     val ttsVoice: String? = null,
     val ttsStyle: String = "",
+    /** 单独设置的回复偏好（v8 起；null 跟随全局） */
+    val replyPreferences: ReplyPreferencesDto? = null,
+    /** 单独选的语音合成、识别来源（v8 起；null 跟随全局）。服务商写成 provider:{备份里的 id}，恢复时换成本机的 */
+    val ttsSource: String? = null,
+    val asrSource: String? = null,
 )
 
 @Serializable

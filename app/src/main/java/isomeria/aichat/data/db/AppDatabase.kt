@@ -2,6 +2,10 @@ package isomeria.aichat.data.db
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverter
+import androidx.room.TypeConverters
+import isomeria.aichat.core.ReplyPreferences
+import kotlinx.serialization.json.Json
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
@@ -25,6 +29,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     version = 8,
     exportSchema = true,
 )
+@TypeConverters(DbConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     /** 恢复数据使正在等待网络的旧记忆任务失效；瞬时保护，不参与备份。 */
     val restoreGeneration = java.util.concurrent.atomic.AtomicLong(0)
@@ -72,4 +77,18 @@ object DeepSeekDefaults {
     const val NAME = "DeepSeek"
     const val BASE_URL = "https://api.deepseek.com"
     const val PROVIDER_ID = 1L
+}
+
+/** 存成 JSON 的列（0.7.2：联系人单独设置的回复偏好）。读不出时当作没有设置（跟随全局），不让整行读取失败 */
+class DbConverters {
+    @TypeConverter
+    fun replyPreferencesToJson(value: ReplyPreferences?): String? = value?.let { json.encodeToString(ReplyPreferences.serializer(), it) }
+
+    @TypeConverter
+    fun replyPreferencesFromJson(value: String?): ReplyPreferences? =
+        value?.let { runCatching { json.decodeFromString(ReplyPreferences.serializer(), it).normalized() }.getOrNull() }
+
+    private companion object {
+        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    }
 }

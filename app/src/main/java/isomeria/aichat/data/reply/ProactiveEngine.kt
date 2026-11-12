@@ -13,6 +13,7 @@ import isomeria.aichat.core.ProactiveQuota
 import isomeria.aichat.core.ProactiveSettingsSource
 import isomeria.aichat.core.ProactiveSituation
 import isomeria.aichat.core.ReplyPreferencesSource
+import isomeria.aichat.core.forContact
 import isomeria.aichat.core.TokenEstimator
 import isomeria.aichat.core.UsageStats
 import isomeria.aichat.data.db.AppDatabase
@@ -378,7 +379,7 @@ class ProactiveEngine @Inject constructor(
             startedAt = startedAt,
             firstContentAt = firstContentAt,
             finishedAt = finishedAt,
-            preferences = if (contact.useReplyPreferences) preferences.replyPreferences() else null,
+            preferences = preferences.forContact(contact),
             random = random,
             origin = MessageOrigin.PROACTIVE,
         )

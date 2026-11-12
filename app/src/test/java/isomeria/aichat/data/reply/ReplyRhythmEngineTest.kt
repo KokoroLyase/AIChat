@@ -53,9 +53,12 @@ class ReplyRhythmEngineTest {
     @After
     fun tearDown() = db.close()
 
-    private suspend fun contact(prefs: Boolean, split: Boolean = true): Long {
+    private suspend fun contact(prefs: Boolean, split: Boolean = true, own: isomeria.aichat.core.ReplyPreferences? = null): Long {
         val id = db.contactDao().insert(
-            Contact(name = "小雨", avatarColor = 0, providerId = 1, model = "m", systemPrompt = "人设", splitReplies = split, useReplyPreferences = prefs, createdAt = 1, updatedAt = 1),
+            Contact(
+                name = "小雨", avatarColor = 0, providerId = 1, model = "m", systemPrompt = "人设", splitReplies = split, useReplyPreferences = prefs,
+                replyPreferences = own, createdAt = 1, updatedAt = 1,
+            ),
         )
         db.conversationDao().upsert(Conversation(contactId = id))
         return id
@@ -117,6 +120,22 @@ class ReplyRhythmEngineTest {
         harness.engine.run(id)
         assertEquals(2, harness.provider.requests.size)
         assertTrue(harness.sleeps.isEmpty())
+    }
+
+    /** 0.7.2：单独设置了回复偏好的联系人用自己的等待时间、条数、标点和间隔，不受全局影响 */
+    @Test
+    fun ownPreferences_overrideGlobal_waitSplitAndPrompt() = runBlocking {
+        val own = isomeria.aichat.core.ReplyPreferences(waitSeconds = 6, targetLength = 33, minCount = 1, maxCount = 2, stripPunctuation = false, minIntervalSeconds = 10, maxIntervalSeconds = 10)
+        val id = contact(prefs = true, own = own)
+        userMessage(id, "在吗", start - 1_000)
+        harness.provider.reply = "一。\n二。\n三。"
+        harness.engine.run(id)
+        assertEquals("自己的等待时间 6 秒，不是全局的", listOf(5_000L), harness.sleeps)
+        val rows = replies(id)
+        assertEquals("最多 2 条、保留句尾标点", listOf("一。", "二。\n三。"), rows.map { it.content })
+        assertEquals("间隔固定 10 秒", 10_000L, rows[1].createdAt - rows[0].createdAt)
+        val system = harness.provider.requests.single().messages.first().plainText()
+        assertTrue("提示词里写的是自己的字数", system.contains("33"))
     }
 
     @Test

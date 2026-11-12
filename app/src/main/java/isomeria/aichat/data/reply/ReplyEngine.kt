@@ -21,6 +21,7 @@ import isomeria.aichat.data.llm.ChatRequest
 import isomeria.aichat.data.llm.LlmException
 import isomeria.aichat.core.Clock
 import isomeria.aichat.core.ReplyPreferencesSource
+import isomeria.aichat.core.forContact
 import isomeria.aichat.core.ReplyRhythm
 import isomeria.aichat.core.Sleeper
 import kotlin.random.Random
@@ -99,10 +100,10 @@ class ReplyEngine @Inject constructor(
     /** 回复偏好的「稍等几秒」：从等待回复的最新一条消息算起；可以取消，不占用存储操作的闸门 */
     private suspend fun waitForQuiet(contactId: Long) {
         val contact = contactDao.get(contactId) ?: return
-        if (!contact.useReplyPreferences) return
+        val prefs = preferences.forContact(contact) ?: return
         while (true) {
             val last = messageDao.latestSendingAt(contactId) ?: return
-            val wait = ReplyRhythm.waitBeforeReply(last, clock.now(), preferences.replyPreferences())
+            val wait = ReplyRhythm.waitBeforeReply(last, clock.now(), prefs)
             if (wait <= 0) return
             sleeper.sleep(wait)
         }
@@ -214,7 +215,7 @@ class ReplyEngine @Inject constructor(
             startedAt = startedAt,
             firstContentAt = firstContentAt,
             finishedAt = finishedAt,
-            preferences = if (contact.useReplyPreferences) preferences.replyPreferences() else null,
+            preferences = preferences.forContact(contact),
             random = random,
         )
         db.withTransaction {

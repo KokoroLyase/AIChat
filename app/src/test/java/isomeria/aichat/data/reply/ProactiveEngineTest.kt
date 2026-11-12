@@ -184,6 +184,14 @@ class ProactiveEngineTest {
         assertEquals(listOf(Triple(id, listOf("在忙吗"), true), Triple(id, listOf("在忙吗", "晚上一起吃饭"), false)), h.notifications.notified)
     }
 
+    /** 0.7.2：单独设置了回复偏好的联系人，主动发的消息也按自己的拆条和间隔 */
+    @Test
+    fun sent_withOwnReplyPreferences_usesThem() = runBlocking {
+        contact { it.copy(replyPreferences = isomeria.aichat.core.ReplyPreferences(maxCount = 1, minIntervalSeconds = 9, maxIntervalSeconds = 9)) }
+        force()
+        assertEquals("最多 1 条：多出来的接在最后一条里", listOf("在忙吗\n晚上一起吃饭"), proactiveRows().map { it.content })
+    }
+
     @Test
     fun sent_withReplyPreferencesOff_usesTheContactsOwnSplitSetting() = runBlocking {
         contact { it.copy(useReplyPreferences = false, splitReplies = true) }

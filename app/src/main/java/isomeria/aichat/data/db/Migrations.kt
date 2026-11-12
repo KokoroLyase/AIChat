@@ -5,10 +5,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * v7 → v8（0.7.2）：记忆分两层，记忆加「是否核心记忆」。旧记忆都是近期记忆，第一次自动记忆时按预算整理出核心记忆。
+ * 联系人加单独设置的回复偏好（JSON）和语音合成、识别来源，旧联系人都是 NULL（跟随全局）。
  */
 val MIGRATION_7_8 = object : Migration(7, 8) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE memory ADD COLUMN core INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE contact ADD COLUMN replyPreferences TEXT")
+        db.execSQL("ALTER TABLE contact ADD COLUMN ttsSource TEXT")
+        db.execSQL("ALTER TABLE contact ADD COLUMN asrSource TEXT")
     }
 }
 

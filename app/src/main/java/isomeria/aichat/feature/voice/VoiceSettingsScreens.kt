@@ -335,6 +335,8 @@ data class VoiceProviderEditState(
     val deleted: Boolean = false,
     val keyMoveUrl: String? = null,
     val savedForm: List<Any?> = emptyList(),
+    /** 单独选了这个服务商的联系人数（0.7.2）：删除确认里说明他们会改为跟随全局 */
+    val contactsUsing: Int = 0,
 ) {
     val form: List<Any?> get() = listOf(presetId, protocol, name, baseUrl, model, voice, use)
     val dirty: Boolean get() = loaded && (form != savedForm || keyInput.isNotEmpty())
@@ -402,6 +404,7 @@ class VoiceProviderEditViewModel @Inject constructor(
                 loaded = true, providerId = id, presetId = config.presetId, protocol = config.provider, name = config.name,
                 baseUrl = config.baseUrl, keyInput = "", savedKeyMasked = voices.maskedKey(config), model = config.defaultModel,
                 voice = config.voice, use = use, errorRes = null,
+                contactsUsing = voices.contactsUsing(kind, isomeria.aichat.core.VoiceSource.provider(id)),
             )
         }
         _state.update { it.copy(savedForm = it.form) }
@@ -678,7 +681,8 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
     }
     if (confirmDelete) {
         WeDialog(
-            message = stringResource(R.string.voice_delete_confirm, state.name),
+            message = stringResource(R.string.voice_delete_confirm, state.name) +
+                if (state.contactsUsing > 0) "\n\n" + stringResource(R.string.voice_delete_contacts_using, state.contactsUsing) else "",
             confirmText = stringResource(R.string.action_delete),
             destructive = true,
             onDismiss = { confirmDelete = false },

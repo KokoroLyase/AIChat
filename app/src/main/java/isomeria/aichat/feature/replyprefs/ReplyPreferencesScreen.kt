@@ -66,6 +66,8 @@ data class ReplyPreferencesState(
     val preferences: ReplyPreferences = ReplyPreferences(),
     val contactsUsing: Int = 0,
     val contactsTotal: Int = 0,
+    /** 其中单独设置了回复偏好的（0.7.2） */
+    val contactsCustom: Int = 0,
 )
 
 @HiltViewModel
@@ -75,7 +77,7 @@ class ReplyPreferencesViewModel @Inject constructor(
     private val globals: GlobalMemoryRepository,
 ) : ViewModel() {
     val state: StateFlow<ReplyPreferencesState> = combine(settings.replyPreferences, contacts.observeContacts()) { prefs, all ->
-        ReplyPreferencesState(true, prefs, all.count { it.useReplyPreferences }, all.size)
+        ReplyPreferencesState(true, prefs, all.count { it.useReplyPreferences }, all.size, all.count { it.useReplyPreferences && it.replyPreferences != null })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReplyPreferencesState())
 
     fun update(transform: (ReplyPreferences) -> ReplyPreferences) = settings.setReplyPreferences(transform(settings.replyPreferences.value))
@@ -92,7 +94,7 @@ fun ReplyPreferencesScreen(onBack: () -> Unit, viewModel: ReplyPreferencesViewMo
 }
 
 /**
- * 回复偏好：全局一份，联系人只有「使用回复偏好」一个开关。改动即时保存，下一次回复起生效。
+ * 回复偏好：全局一份；联系人可以跟随它、单独设置一套（0.7.2）或不使用。改动即时保存，下一次回复起生效。
  * 最少条数 / 最短间隔不会超过最多条数 / 最长间隔：调大最少时最多跟着变大，调小最多时最少跟着变小。
  */
 @Composable
@@ -116,57 +118,10 @@ fun ReplyPreferencesContent(
                 value = stringResource(R.string.global_memory_contacts_value, state.contactsUsing, state.contactsTotal),
                 onClick = { contactsSheet = true },
             )
+            // 单独设置了的联系人不受这里影响（0.7.2）
+            if (state.contactsCustom > 0) FootnoteText(stringResource(R.string.reply_pref_contacts_custom, state.contactsCustom))
 
-            GroupSpacer()
-            StepperRow(
-                stringResource(R.string.reply_pref_wait), stringResource(R.string.reply_pref_seconds, p.waitSeconds), ReplyPreferences.WAIT_RANGE, p.waitSeconds,
-            ) { v -> onChange { it.copy(waitSeconds = v) } }
-            FootnoteText(stringResource(R.string.reply_pref_wait_hint))
-
-            GroupSpacer()
-            StepperRow(
-                stringResource(R.string.reply_pref_length), stringResource(R.string.reply_pref_length_value, p.targetLength),
-                ReplyPreferences.LENGTH_RANGE, p.targetLength, showDivider = true,
-            ) { v -> onChange { it.copy(targetLength = v) } }
-            StepperRow(
-                stringResource(R.string.reply_pref_min_count), stringResource(R.string.reply_pref_count_value, p.minCount),
-                ReplyPreferences.COUNT_RANGE, p.minCount, showDivider = true,
-            ) { v -> onChange { it.copy(minCount = v, maxCount = maxOf(it.maxCount, v)) } }
-            StepperRow(
-                stringResource(R.string.reply_pref_max_count), stringResource(R.string.reply_pref_count_value, p.maxCount),
-                ReplyPreferences.COUNT_RANGE, p.maxCount,
-            ) { v -> onChange { it.copy(maxCount = v, minCount = minOf(it.minCount, v)) } }
-            FootnoteText(stringResource(R.string.reply_pref_count_hint))
-
-            GroupSpacer()
-            WeListRow(
-                title = stringResource(R.string.reply_pref_strip),
-                showArrow = false,
-                trailing = {
-                    WeSwitch(p.stripPunctuation, { on -> onChange { it.copy(stripPunctuation = on) } }, label = stringResource(R.string.reply_pref_strip))
-                },
-            )
-            FootnoteText(stringResource(R.string.reply_pref_strip_hint))
-
-            GroupSpacer()
-            StepperRow(
-                stringResource(R.string.reply_pref_min_interval), stringResource(R.string.reply_pref_seconds, p.minIntervalSeconds), ReplyPreferences.INTERVAL_RANGE,
-                p.minIntervalSeconds, showDivider = true,
-            ) { v -> onChange { it.copy(minIntervalSeconds = v, maxIntervalSeconds = maxOf(it.maxIntervalSeconds, v)) } }
-            StepperRow(
-                stringResource(R.string.reply_pref_max_interval), stringResource(R.string.reply_pref_seconds, p.maxIntervalSeconds), ReplyPreferences.INTERVAL_RANGE,
-                p.maxIntervalSeconds,
-            ) { v -> onChange { it.copy(maxIntervalSeconds = v, minIntervalSeconds = minOf(it.minIntervalSeconds, v)) } }
-            FootnoteText(stringResource(R.string.reply_pref_interval_hint))
-
-            GroupSpacer()
-            WeListRow(
-                title = stringResource(R.string.reply_pref_reset),
-                titleColor = colors.link,
-                showArrow = false,
-                enabled = p != ReplyPreferences(),
-                onClick = { onChange { ReplyPreferences() } },
-            )
+            ReplyPreferencesFields(p, onChange)
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -275,4 +230,63 @@ private fun StepButton(text: String, description: String, enabled: Boolean, onCl
     ) {
         Text(text, style = WeTheme.typography.listTitle, color = if (enabled) colors.textPrimary else colors.disabled)
     }
+}
+
+/**
+ * 回复偏好的各项（等待时间、字数、条数、去标点、间隔、恢复默认），「我 → 回复偏好」和联系人单独设置（0.7.2）共用。
+ * 最少条数 / 最短间隔不会超过最多条数 / 最长间隔：调大最少时最多跟着变大，调小最多时最少跟着变小。
+ */
+@Composable
+internal fun ReplyPreferencesFields(p: ReplyPreferences, onChange: ((ReplyPreferences) -> ReplyPreferences) -> Unit) {
+    val colors = WeTheme.colors
+    GroupSpacer()
+    StepperRow(
+        stringResource(R.string.reply_pref_wait), stringResource(R.string.reply_pref_seconds, p.waitSeconds), ReplyPreferences.WAIT_RANGE, p.waitSeconds,
+    ) { v -> onChange { it.copy(waitSeconds = v) } }
+    FootnoteText(stringResource(R.string.reply_pref_wait_hint))
+
+    GroupSpacer()
+    StepperRow(
+        stringResource(R.string.reply_pref_length), stringResource(R.string.reply_pref_length_value, p.targetLength),
+        ReplyPreferences.LENGTH_RANGE, p.targetLength, showDivider = true,
+    ) { v -> onChange { it.copy(targetLength = v) } }
+    StepperRow(
+        stringResource(R.string.reply_pref_min_count), stringResource(R.string.reply_pref_count_value, p.minCount),
+        ReplyPreferences.COUNT_RANGE, p.minCount, showDivider = true,
+    ) { v -> onChange { it.copy(minCount = v, maxCount = maxOf(it.maxCount, v)) } }
+    StepperRow(
+        stringResource(R.string.reply_pref_max_count), stringResource(R.string.reply_pref_count_value, p.maxCount),
+        ReplyPreferences.COUNT_RANGE, p.maxCount,
+    ) { v -> onChange { it.copy(maxCount = v, minCount = minOf(it.minCount, v)) } }
+    FootnoteText(stringResource(R.string.reply_pref_count_hint))
+
+    GroupSpacer()
+    WeListRow(
+        title = stringResource(R.string.reply_pref_strip),
+        showArrow = false,
+        trailing = {
+            WeSwitch(p.stripPunctuation, { on -> onChange { it.copy(stripPunctuation = on) } }, label = stringResource(R.string.reply_pref_strip))
+        },
+    )
+    FootnoteText(stringResource(R.string.reply_pref_strip_hint))
+
+    GroupSpacer()
+    StepperRow(
+        stringResource(R.string.reply_pref_min_interval), stringResource(R.string.reply_pref_seconds, p.minIntervalSeconds), ReplyPreferences.INTERVAL_RANGE,
+        p.minIntervalSeconds, showDivider = true,
+    ) { v -> onChange { it.copy(minIntervalSeconds = v, maxIntervalSeconds = maxOf(it.maxIntervalSeconds, v)) } }
+    StepperRow(
+        stringResource(R.string.reply_pref_max_interval), stringResource(R.string.reply_pref_seconds, p.maxIntervalSeconds), ReplyPreferences.INTERVAL_RANGE,
+        p.maxIntervalSeconds,
+    ) { v -> onChange { it.copy(maxIntervalSeconds = v, minIntervalSeconds = minOf(it.minIntervalSeconds, v)) } }
+    FootnoteText(stringResource(R.string.reply_pref_interval_hint))
+
+    GroupSpacer()
+    WeListRow(
+        title = stringResource(R.string.reply_pref_reset),
+        titleColor = colors.link,
+        showArrow = false,
+        enabled = p != ReplyPreferences(),
+        onClick = { onChange { ReplyPreferences() } },
+    )
 }

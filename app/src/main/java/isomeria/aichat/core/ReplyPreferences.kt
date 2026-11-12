@@ -1,5 +1,8 @@
 package isomeria.aichat.core
 
+import isomeria.aichat.data.db.Contact
+import kotlinx.serialization.Serializable
+
 /**
  * 回复偏好（「我 → 回复偏好」）：开启「使用回复偏好」的联系人按它分条、带间隔地回复。
  *
@@ -7,7 +10,10 @@ package isomeria.aichat.core
  * - [targetLength]、[minCount]～[maxCount]：写进提示词的风格引导，不做硬截断
  * - [stripPunctuation]：去掉每条末尾的「。」「，」，保留「？」「！」「…」
  * - [minIntervalSeconds]～[maxIntervalSeconds]：相邻两条之间的间隔范围
+ *
+ * 0.7.2 起联系人可以单独设置一整套（[Contact.replyPreferences]，存成 JSON），取值见 [forContact]
  */
+@Serializable
 data class ReplyPreferences(
     val waitSeconds: Int = DEFAULT_WAIT_SECONDS,
     val targetLength: Int = DEFAULT_TARGET_LENGTH,
@@ -58,4 +64,13 @@ fun interface Clock {
 /** 读取当前的回复偏好。单元测试里换成固定值（MMKV 需要原生库）。 */
 fun interface ReplyPreferencesSource {
     fun replyPreferences(): ReplyPreferences
+}
+
+/**
+ * 这个联系人这次回复用的偏好（0.7.2）：关了「使用回复偏好」时为 null（按分条显示的旧行为）；
+ * 单独设置了就用自己的一整套，否则用全局的。回复、主动聊天、语音回复和提示词都经过这里取
+ */
+fun ReplyPreferencesSource.forContact(contact: Contact): ReplyPreferences? = when {
+    !contact.useReplyPreferences -> null
+    else -> contact.replyPreferences?.normalized() ?: replyPreferences()
 }
