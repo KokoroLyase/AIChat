@@ -42,5 +42,6 @@ class SpeechSentencesTest {
     fun markdownEmojiAndEmptyPiecesAreDropped() {
         assertEquals(listOf("今天 很开心！", "列表一", "列表二"), split("**今天** 很开心！😄\n- 列表一\n- 列表二"))
         assertEquals("只有标点和表情的不要", emptyList<String>(), split("……😊\n\n。"))
+        assertEquals("句子里的表情去掉，不读出来", listOf("好开心！"), split("好开心😄！"))
     }
 }
