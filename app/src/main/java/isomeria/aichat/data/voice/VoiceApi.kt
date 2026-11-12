@@ -144,7 +144,7 @@ class AsrRequest(val model: String, val wav: ByteArray, val language: String = L
     }
 }
 
-/** 识别结果；[seconds] 是服务商报告的音频时长（MiMo、百炼的 usage.seconds，火山的 audio_info.duration），没有时为 null。 */
+/** 识别结果；[seconds] 是服务商报告的音频时长（MiMo、百炼、OpenRouter 的 usage.seconds，火山的 audio_info.duration，Fish Audio 的 duration），没有时为 null。 */
 data class AsrResult(val text: String, val seconds: Double? = null) {
     override fun toString() = "AsrResult(chars=${text.length}, seconds=$seconds)"
 }

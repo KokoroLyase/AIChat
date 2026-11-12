@@ -1006,7 +1006,7 @@
     <string name="contact_tts_voice_hint_empty">用默认音色</string>
     <string name="contact_tts_style">语气和风格</string>
     <string name="contact_tts_style_hint">例如：温柔、慢一些</string>
-    <string name="contact_voice_hint">联系人回复你时发文字还是语音，默认跟「我 → 语音消息」一致。音色填语音合成服务商提供的音色名，也可以从列表里选，留空用服务商设置的音色；语气和风格只有部分服务商支持（Xiaomi MiMo、火山引擎、阿里云百炼、硅基流动），其他的会忽略。</string>
+    <string name="contact_voice_hint">联系人回复你时发文字还是语音，默认跟「我 → 语音消息」一致。音色填语音合成服务商提供的音色名，也可以从列表里选，留空用服务商设置的音色；语气和风格只有部分服务商支持（Xiaomi MiMo、火山引擎、阿里云百炼、硅基流动，以及 OpenRouter 上的部分模型），其他的会忽略。</string>
     <!-- 0.7.0 语音消息：语音条和播放 -->
     <string name="voice_bubble_desc">语音，%1$d 秒</string>
     <string name="voice_state_playing">正在播放</string>
