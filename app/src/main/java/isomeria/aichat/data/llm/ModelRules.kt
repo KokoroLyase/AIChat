@@ -48,25 +48,37 @@ import kotlinx.serialization.json.putJsonObject
     fun over(reported: ModelConfig) = ModelConfig(chat ?: reported.chat, thinking ?: reported.thinking, temperature ?: reported.temperature)
 }
 
-/** 开关与强度分别编码；NONE 表示不支持该字段，不能用低强度冒充关闭。 */
-@Serializable enum class ThinkingField { NONE, THINKING_TYPE, ENABLE_THINKING, REASONING_ENABLED, REASONING_EFFORT }
+/**
+ * 开关与强度分别编码；NONE 表示不支持该字段，不能用低强度冒充关闭。
+ * THINKING_TYPE_ADAPTIVE（0.7.2，MiniMax）：开是 `thinking.type: "adaptive"`、关是 `"disabled"`，MiniMax 不认 `enabled`
+ */
+@Serializable enum class ThinkingField { NONE, THINKING_TYPE, THINKING_TYPE_ADAPTIVE, ENABLE_THINKING, REASONING_ENABLED, REASONING_EFFORT }
 @Serializable enum class EffortField { NONE, REASONING_EFFORT, REASONING_OBJECT }
 @Serializable data class CompatibilityOverride(
     val thinkingField: ThinkingField? = null,
     val effortField: EffortField? = null,
     val streamOptions: Boolean? = null,
 )
-data class EncodingRules(val thinkingField: ThinkingField, val effortField: EffortField, val streamOptions: Boolean = true) {
-    fun over(value: CompatibilityOverride) = EncodingRules(value.thinkingField ?: thinkingField, value.effortField ?: effortField, value.streamOptions ?: streamOptions)
+/**
+ * [reasoningSplit]（0.7.2，MiniMax）：每次请求带 `reasoning_split: true`，思考内容放进 `reasoning_content`；
+ * 不带时 MiniMax 把思考用 `<think>` 标签夹在正文里。只跟着兼容方案，模型不能单独改
+ */
+data class EncodingRules(val thinkingField: ThinkingField, val effortField: EffortField, val streamOptions: Boolean = true, val reasoningSplit: Boolean = false) {
+    fun over(value: CompatibilityOverride) =
+        EncodingRules(value.thinkingField ?: thinkingField, value.effortField ?: effortField, value.streamOptions ?: streamOptions, reasoningSplit)
 }
 enum class Compatibility(val encoding: EncodingRules) {
     LEGACY(EncodingRules(ThinkingField.NONE, EffortField.NONE)),
     GENERIC(EncodingRules(ThinkingField.REASONING_EFFORT, EffortField.REASONING_EFFORT)),
     DEEPSEEK(EncodingRules(ThinkingField.THINKING_TYPE, EffortField.REASONING_EFFORT)),
+    /** 火山方舟（0.7.2）：thinking.type 开关，部分模型认 reasoning_effort */
+    VOLCENGINE(EncodingRules(ThinkingField.THINKING_TYPE, EffortField.REASONING_EFFORT)),
     QWEN(EncodingRules(ThinkingField.ENABLE_THINKING, EffortField.NONE)),
     ZHIPU(EncodingRules(ThinkingField.THINKING_TYPE, EffortField.NONE, false)),
     KIMI(EncodingRules(ThinkingField.THINKING_TYPE, EffortField.NONE, false)),
     MIMO(EncodingRules(ThinkingField.THINKING_TYPE, EffortField.NONE, false)),
+    /** MiniMax（0.7.2）：thinking.type 是 adaptive / disabled，M3.1-Flash 认 reasoning_effort，带 reasoning_split */
+    MINIMAX(EncodingRules(ThinkingField.THINKING_TYPE_ADAPTIVE, EffortField.REASONING_EFFORT, true, reasoningSplit = true)),
     SILICONFLOW(EncodingRules(ThinkingField.ENABLE_THINKING, EffortField.NONE, false)),
     OPENROUTER(EncodingRules(ThinkingField.REASONING_ENABLED, EffortField.REASONING_OBJECT)),
 }
@@ -218,6 +230,7 @@ object ConfiguredRequestBuilder {
             when (p.encoding.thinkingField) {
                 ThinkingField.NONE -> Unit
                 ThinkingField.THINKING_TYPE -> putJsonObject("thinking") { put("type", if (enabled) "enabled" else "disabled") }
+                ThinkingField.THINKING_TYPE_ADAPTIVE -> putJsonObject("thinking") { put("type", if (enabled) "adaptive" else "disabled") }
                 ThinkingField.ENABLE_THINKING -> put("enable_thinking", enabled)
                 ThinkingField.REASONING_ENABLED -> putJsonObject("reasoning") {
                     put("enabled", enabled)
@@ -234,5 +247,6 @@ object ConfiguredRequestBuilder {
             }
         }
         p.temperature?.let { put("temperature", it) }
+        if (p.encoding.reasoningSplit) put("reasoning_split", true)
     }
 }

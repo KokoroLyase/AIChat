@@ -438,10 +438,12 @@ internal fun compatibilityLabel(value: Compatibility): Int = when (value) {
     Compatibility.LEGACY -> R.string.compat_legacy
     Compatibility.GENERIC -> R.string.compat_generic
     Compatibility.DEEPSEEK -> R.string.compat_deepseek
+    Compatibility.VOLCENGINE -> R.string.compat_volcengine
     Compatibility.QWEN -> R.string.compat_qwen
     Compatibility.ZHIPU -> R.string.compat_zhipu
     Compatibility.KIMI -> R.string.compat_kimi
     Compatibility.MIMO -> R.string.compat_mimo
+    Compatibility.MINIMAX -> R.string.compat_minimax
     Compatibility.SILICONFLOW -> R.string.compat_siliconflow
     Compatibility.OPENROUTER -> R.string.compat_openrouter
 }

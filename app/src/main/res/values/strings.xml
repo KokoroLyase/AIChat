@@ -462,7 +462,7 @@
     <string name="preset_deepseek">DeepSeek</string>
     <string name="preset_qwen">阿里云百炼（千问）</string>
     <string name="preset_zhipu">BigModel（智谱）</string>
-    <string name="preset_kimi">Kimi</string>
+    <string name="preset_kimi">月之暗面（Kimi）</string>
     <string name="preset_mimo">Xiaomi MiMo</string>
     <string name="preset_siliconflow">硅基流动</string>
     <string name="preset_volcengine">火山引擎（豆包）</string>
@@ -476,10 +476,12 @@
     <string name="compat_legacy_note">这是从 0.3.0 升级时保留的旧规则。保存成其他方案后不能再选回。</string>
     <string name="compat_generic">通用（reasoning_effort）</string>
     <string name="compat_deepseek">DeepSeek（thinking.type、reasoning_effort）</string>
+    <string name="compat_volcengine">火山引擎（thinking.type、reasoning_effort）</string>
     <string name="compat_qwen">阿里云百炼（enable_thinking）</string>
     <string name="compat_zhipu">智谱（thinking.type）</string>
     <string name="compat_kimi">Kimi（thinking.type）</string>
     <string name="compat_mimo">Xiaomi MiMo（thinking.type）</string>
+    <string name="compat_minimax">MiniMax（thinking.type、reasoning_split）</string>
     <string name="compat_siliconflow">硅基流动（enable_thinking）</string>
     <string name="compat_openrouter">OpenRouter（reasoning.enabled、reasoning.effort）</string>
     <string name="provider_protocol">协议：OpenAI Chat Completions</string>

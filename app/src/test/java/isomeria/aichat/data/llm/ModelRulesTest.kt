@@ -108,7 +108,58 @@ class ModelRulesTest {
     }
 
     @Test fun presetsAreOnlyConnectionsInFixedOrder() {
-        assertEquals(listOf("deepseek", "qwen", "zhipu", "kimi", "mimo", "siliconflow", "openrouter"), ProviderPresets.all.map { it.id })
-        assertEquals(7, ProviderPresets.all.size)
+        // 用户 2026-11-12 定的顺序：0.7.2 加了火山引擎（豆包）和 MiniMax
+        assertEquals(listOf("deepseek", "volcengine", "qwen", "zhipu", "kimi", "mimo", "minimax", "siliconflow", "openrouter"), ProviderPresets.all.map { it.id })
+        assertEquals(9, ProviderPresets.all.size)
+        val volc = ProviderPresets.all.first { it.id == "volcengine" }
+        assertEquals("https://ark.cn-beijing.volces.com/api/v3", volc.baseUrl)
+        assertEquals(Compatibility.VOLCENGINE, volc.compatibility)
+        val minimax = ProviderPresets.all.first { it.id == "minimax" }
+        assertEquals("https://api.minimax.cn/v1", minimax.baseUrl)
+        assertEquals(Compatibility.MINIMAX, minimax.compatibility)
+        assertTrue(ProviderPresets.all.all { it.docs.startsWith("https://") })
+    }
+
+    @Test fun volcengineUsesThinkingTypeAndReasoningEffort() {
+        val on = body(Compatibility.VOLCENGINE, model(), "high")
+        assertEquals("enabled", on["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("high", on["reasoning_effort"]!!.jsonPrimitive.content)
+        assertTrue(on.containsKey("stream_options"))
+        val off = body(Compatibility.VOLCENGINE, model(), "off")
+        assertEquals("disabled", off["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertFalse(off.containsKey("reasoning_effort"))
+        // 只有开关、没有强度档位的模型不发 reasoning_effort
+        val toggle = body(Compatibility.VOLCENGINE, model(ThinkingRule(ThinkingMode.SWITCH)), "on")
+        assertEquals("enabled", toggle["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertFalse(toggle.containsKey("reasoning_effort"))
+        assertFalse(on.containsKey("reasoning_split"))
+    }
+
+    @Test fun minimaxUsesAdaptiveOrDisabled_andAlwaysSplitsReasoning() {
+        val on = body(Compatibility.MINIMAX, model(ThinkingRule(ThinkingMode.SWITCH)), "on")
+        assertEquals("MiniMax 不认 enabled", "adaptive", on["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals(JsonPrimitive(true), on["reasoning_split"])
+        assertTrue(on.containsKey("stream_options"))
+        assertFalse(on.containsKey("reasoning_effort"))
+        val off = body(Compatibility.MINIMAX, model(ThinkingRule(ThinkingMode.SWITCH)), "off")
+        assertEquals("disabled", off["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals(JsonPrimitive(true), off["reasoning_split"])
+        // M3.1-Flash：始终思考，强度放 reasoning_effort
+        val flash = model(ThinkingRule(ThinkingMode.ALWAYS, listOf("low", "medium", "high", "xhigh", "max").map { NativeEffort(it, it) }))
+        assertEquals(ConfigurationIssue.THINKING, ModelRules.validate(provider(Compatibility.MINIMAX), flash, "off", 0.7f))
+        val max = body(Compatibility.MINIMAX, flash, "max")
+        assertEquals("adaptive", max["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("max", max["reasoning_effort"]!!.jsonPrimitive.content)
+        // 没有思考的模型也带 reasoning_split，免得思考内容用 <think> 夹在正文里
+        assertEquals(JsonPrimitive(true), body(Compatibility.MINIMAX, model(ThinkingRule(ThinkingMode.NONE)), "off")["reasoning_split"])
+    }
+
+    @Test fun reasoningSplitFollowsTheSchemeEvenWithModelOverride() {
+        val m = model(ThinkingRule(ThinkingMode.SWITCH), override = CompatibilityOverride(ThinkingField.THINKING_TYPE, EffortField.NONE, false))
+        val b = body(Compatibility.MINIMAX, m, "on")
+        assertEquals("enabled", b["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals(JsonPrimitive(true), b["reasoning_split"])
+        assertFalse(b.containsKey("stream_options"))
+        assertEquals("adaptive", body(Compatibility.DEEPSEEK, model(ThinkingRule(ThinkingMode.SWITCH), override = CompatibilityOverride(ThinkingField.THINKING_TYPE_ADAPTIVE)), "on")["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
     }
 }

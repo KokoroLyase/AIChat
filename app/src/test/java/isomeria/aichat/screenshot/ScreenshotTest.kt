@@ -485,6 +485,20 @@ class ScreenshotTest {
     @Test fun compatSheetLight() = advancedShot(false)
     @Test fun compatSheetDark() = advancedShot(true)
 
+    /** 0.7.2：大语言模型的预置列表（9 家，用户定的顺序） */
+    private fun presetSheetShot(dark: Boolean) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark) {
+                Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) { ProviderEditSample(modelListState.copy(providerId = null, presetId = "deepseek", compatibility = "DEEPSEEK")) }
+            }
+        }
+        compose.onNodeWithText("服务商预置", substring = true).performClick()
+        compose.waitForIdle()
+        captureScreenRoboImage("screenshots/32-preset-sheet-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun presetSheetLight() = presetSheetShot(false)
+    @Test fun presetSheetDark() = presetSheetShot(true)
+
     private fun modelAdvancedShot(dark: Boolean) {
         compose.setContent {
             AIChatTheme(darkTheme = dark) {

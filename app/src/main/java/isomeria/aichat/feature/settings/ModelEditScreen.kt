@@ -242,6 +242,7 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
 @Composable internal fun thinkingFieldLabel(field: ThinkingField): String = when (field) {
     ThinkingField.NONE -> stringResource(R.string.rule_no_send)
     ThinkingField.THINKING_TYPE -> "thinking.type"
+    ThinkingField.THINKING_TYPE_ADAPTIVE -> "thinking.type (adaptive / disabled)"
     ThinkingField.ENABLE_THINKING -> "enable_thinking"
     ThinkingField.REASONING_ENABLED -> "reasoning.enabled"
     ThinkingField.REASONING_EFFORT -> "reasoning_effort"
