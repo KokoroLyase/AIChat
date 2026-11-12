@@ -15,6 +15,8 @@ import isomeria.aichat.data.db.MIGRATION_3_4
 import isomeria.aichat.data.db.MIGRATION_4_5
 import isomeria.aichat.data.db.MIGRATION_5_6
 import isomeria.aichat.data.db.MIGRATION_6_7
+import isomeria.aichat.data.db.MIGRATION_7_8
+import isomeria.aichat.data.db.MIGRATION_8_9
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -236,6 +238,53 @@ class DatabaseTest {
                 assertTrue(c.moveToFirst())
                 assertEquals("/v/3.m4a", c.getString(0))
             }
+        }
+    }
+
+    /** 0.7.2：记忆加「是否核心记忆」（旧记忆都是近期记忆），联系人加单独设置的回复偏好和语音来源（都是跟随全局） */
+    @Test
+    fun migrate7To8_oldMemoriesRecent_contactsFollowGlobal() {
+        helper.createDatabase("migration-v7-test", 7).use { db ->
+            db.execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility,voice) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK','')")
+            db.execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency,replyType,ttsVoice,ttsStyle) VALUES(7,'甲',0,1,'m','OFF',1.3,'人设',4000,1,1,1,1,'off',1,1,0,'MEDIUM','VOICE','冰糖','温柔')")
+            db.execSQL("INSERT INTO memory(id,contactId,content,fromTime,toTime,edited,createdAt,updatedAt) VALUES(1,7,'旧记忆',100,200,1,300,300)")
+        }
+        helper.runMigrationsAndValidate("migration-v7-test", 8, true, MIGRATION_7_8).use { db ->
+            db.query("SELECT core, edited, content FROM memory WHERE id=1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(0, c.getInt(0))
+                assertEquals(1, c.getInt(1))
+                assertEquals("旧记忆", c.getString(2))
+            }
+            db.query("SELECT replyPreferences, ttsSource, asrSource, replyType, ttsVoice FROM contact WHERE id=7").use { c ->
+                assertTrue(c.moveToFirst())
+                assertTrue(c.isNull(0) && c.isNull(1) && c.isNull(2))
+                assertEquals("VOICE", c.getString(3))
+                assertEquals("冰糖", c.getString(4))
+            }
+        }
+    }
+
+    /** 0.8.0：新建 call_turn 表，旧消息不变；删除通话消息时它的每一条话跟着删（真机 SQLite 的外键级联） */
+    @Test
+    fun migrate8To9_callTurnsTable_cascadesWithMessage() {
+        helper.createDatabase("migration-v8-test", 8).use { db ->
+            db.execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility,voice) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK','')")
+            db.execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency,replyType,ttsVoice,ttsStyle,replyPreferences,ttsSource,asrSource) VALUES(7,'甲',0,1,'m','OFF',1.3,'人设',4000,1,1,1,1,'off',1,1,0,'MEDIUM',NULL,NULL,'',NULL,'local:system-tts',NULL)")
+            db.execSQL("INSERT INTO message(id,contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,createdAt,origin,voicePath,voiceMillis,voicePlayed,voiceShowText) VALUES(1,7,'USER','VOICE','你好',0,0,0,'SUCCESS',0,0,0,10,'NORMAL','/v/1.m4a',2000,1,0)")
+        }
+        helper.runMigrationsAndValidate("migration-v8-test", 9, true, MIGRATION_8_9).use { db ->
+            db.query("SELECT type, voicePath FROM message WHERE id=1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("VOICE", c.getString(0))
+                assertEquals("/v/1.m4a", c.getString(1))
+            }
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL("INSERT INTO message(id,contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,createdAt,origin,voiceMillis,voicePlayed,voiceShowText) VALUES(2,7,'USER','CALL','',0,0,0,'SUCCESS',0,0,0,20,'NORMAL',5000,0,0)")
+            db.execSQL("INSERT INTO call_turn(messageId,seq,role,text,audioPath,audioMillis,status,createdAt) VALUES(2,0,'USER','在吗','/c/a.m4a',1000,'OK',21),(2,1,'ASSISTANT','在呢',NULL,0,'TTS_FAILED',23)")
+            db.query("SELECT COUNT(*) FROM call_turn").use { c -> assertTrue(c.moveToFirst()); assertEquals(2, c.getInt(0)) }
+            db.execSQL("DELETE FROM message WHERE id=2")
+            db.query("SELECT COUNT(*) FROM call_turn").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
         }
     }
 
