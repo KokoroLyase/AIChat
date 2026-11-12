@@ -118,6 +118,8 @@ class ContextBuilder(
                     val data = if (message.id in imagesWithData) message.imagePath?.let(loadImage) else null
                     if (data != null) ChatPart.Image(data) else ChatPart.Text(labels.imagePlaceholder)
                 }
+                // 通话（0.8.0）由调用方先展开成每一条话（CallTranscript）；没展开的通话消息没有内容，下面会跳过
+                MessageType.CALL -> ChatPart.Text(message.content)
             }
             if (part is ChatPart.Text && part.text.isBlank()) continue
             if (role != currentRole) {

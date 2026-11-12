@@ -74,6 +74,9 @@ class ReplyEngine @Inject constructor(
     private val reminders: ProactiveReminders,
     private val voice: VoicePipeline? = null,
 ) {
+    /** 通话（0.8.0）在上下文里展开成每一条话；没有通话时就是 messageDao.recent */
+    private val calls = isomeria.aichat.data.repo.CallHistory(db)
+
     suspend fun run(contactId: Long) {
         // 用户发的语音先识别成文字（识别成功后才算进入等待回复）；失败时不请求模型
         if (voice != null && !transcribe(contactId)) return
@@ -135,7 +138,7 @@ class ReplyEngine @Inject constructor(
         val system = contextBuilder.systemPrompt(contact, nickname, startedAt, memories, globals).orEmpty()
         val historyBudget = contact.contextTokens - estimator.text(system)
         val selected = ContextWindow.select(
-            messageDao.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING },
+            calls.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING },
             historyBudget,
             estimator,
             supportsImage,

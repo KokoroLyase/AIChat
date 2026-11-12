@@ -60,11 +60,12 @@ fun BackupData.restrictTo(modules: Set<BackupModule>): BackupData {
     )
 }
 
-/** 数据里用到的 zip 内文件（头像、图片、聊天背景、语音） */
+/** 数据里用到的 zip 内文件（头像、图片、聊天背景、语音、通话的音频） */
 fun BackupData.mediaNames(): Set<String> = buildSet {
     contacts.mapNotNullTo(this) { it.avatar }
     messages.mapNotNullTo(this) { it.image }
     messages.mapNotNullTo(this) { it.voice }
+    messages.forEach { message -> message.call.mapNotNullTo(this) { it.audio } }
     conversations.mapNotNullTo(this) { it.background }
     settings.avatar?.let(::add)
 }

@@ -4,6 +4,22 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
+ * v8 → v9（0.8.0）：语音通话。消息类型多了 CALL（类型存名字，不改 message 表）；新建 call_turn 表放通话里的每一条话，
+ * 删除通话消息时级联删除。只新建表，旧消息、旧联系人都不变。
+ */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `call_turn` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `messageId` INTEGER NOT NULL, " +
+                "`seq` INTEGER NOT NULL, `role` TEXT NOT NULL, `text` TEXT NOT NULL, `audioPath` TEXT, `audioMillis` INTEGER NOT NULL, " +
+                "`status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                "FOREIGN KEY(`messageId`) REFERENCES `message`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_call_turn_messageId_seq` ON `call_turn` (`messageId`, `seq`)")
+    }
+}
+
+/**
  * v7 → v8（0.7.2）：记忆分两层，记忆加「是否核心记忆」。旧记忆都是近期记忆，第一次自动记忆时按预算整理出核心记忆。
  * 联系人加单独设置的回复偏好（JSON）和语音合成、识别来源，旧联系人都是 NULL（跟随全局）。
  */

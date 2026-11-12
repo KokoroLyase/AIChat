@@ -391,10 +391,24 @@ interface MessageDao {
     @Query("SELECT imagePath FROM message WHERE imagePath IS NOT NULL")
     suspend fun allImagePaths(): List<String>
 
-    @Query("SELECT voicePath FROM message WHERE contactId = :contactId AND voicePath IS NOT NULL")
+    /** 这个聊天的语音文件，0.8.0 起也包括通话的音频（files/calls/）：删除聊天、清空、删除联系人时一起删 */
+    @Query(
+        """
+        SELECT voicePath FROM message WHERE contactId = :contactId AND voicePath IS NOT NULL
+        UNION ALL
+        SELECT audioPath FROM call_turn WHERE audioPath IS NOT NULL AND messageId IN (SELECT id FROM message WHERE contactId = :contactId)
+        """,
+    )
     suspend fun voicePaths(contactId: Long): List<String>
 
-    @Query("SELECT voicePath FROM message WHERE voicePath IS NOT NULL")
+    /** 所有语音文件和通话音频（0.8.0）：清空所有聊天记录、孤立文件检查和恢复后的清理都按它算引用 */
+    @Query(
+        """
+        SELECT voicePath FROM message WHERE voicePath IS NOT NULL
+        UNION ALL
+        SELECT audioPath FROM call_turn WHERE audioPath IS NOT NULL
+        """,
+    )
     suspend fun allVoicePaths(): List<String>
 
     @Query("SELECT * FROM message ORDER BY id")
@@ -412,25 +426,31 @@ interface MessageDao {
     @Query("SELECT imagePath FROM message WHERE id = :id")
     suspend fun imagePath(id: Long): String?
 
-    /** 全局搜索：命中的聊天记录按联系人分组（0.7.0 起也搜语音的转写文字），最近命中的在前。[query] 需先经 [escapeLike] 转义 */
+    /** 全局搜索：命中的聊天记录按联系人分组（0.7.0 起也搜语音的转写文字，0.8.0 起也搜通话里每一条的文字），最近命中的在前。[query] 需先经 [escapeLike] 转义 */
     @Query(
         """
         SELECT message.contactId AS contactId, COUNT(*) AS hitCount, MAX(message.createdAt) AS lastTime,
                contact.name AS contactName, contact.avatarPath AS contactAvatarPath,
                contact.avatarColor AS contactAvatarColor
         FROM message JOIN contact ON contact.id = message.contactId
-        WHERE message.type IN ('TEXT', 'VOICE') AND message.status != 'PENDING' AND message.content LIKE '%' || :query || '%' ESCAPE '\'
+        WHERE message.status != 'PENDING' AND (
+            (message.type IN ('TEXT', 'VOICE') AND message.content LIKE '%' || :query || '%' ESCAPE '\')
+            OR (message.type = 'CALL' AND EXISTS(SELECT 1 FROM call_turn WHERE call_turn.messageId = message.id AND call_turn.text LIKE '%' || :query || '%' ESCAPE '\'))
+        )
         GROUP BY message.contactId
         ORDER BY lastTime DESC
         """,
     )
     suspend fun searchGrouped(query: String): List<MessageSearchGroup>
 
-    /** 某个聊天里命中的文字消息和语音的转写文字，最新的在前。[query] 需先经 [escapeLike] 转义 */
+    /** 某个聊天里命中的文字消息、语音的转写文字和通话（0.8.0，任何一条的文字命中就算这次通话），最新的在前。[query] 需先经 [escapeLike] 转义 */
     @Query(
         """
         SELECT * FROM message
-        WHERE contactId = :contactId AND type IN ('TEXT', 'VOICE') AND status != 'PENDING' AND content LIKE '%' || :query || '%' ESCAPE '\'
+        WHERE contactId = :contactId AND status != 'PENDING' AND (
+            (type IN ('TEXT', 'VOICE') AND content LIKE '%' || :query || '%' ESCAPE '\')
+            OR (type = 'CALL' AND EXISTS(SELECT 1 FROM call_turn WHERE call_turn.messageId = message.id AND call_turn.text LIKE '%' || :query || '%' ESCAPE '\'))
+        )
         ORDER BY createdAt DESC, id DESC LIMIT :limit
         """,
     )
@@ -649,6 +669,75 @@ interface ProactiveDao {
 
     @Query("DELETE FROM proactive_reminder")
     suspend fun deleteAllReminders()
+}
+
+/** 通话里每一条话（0.8.0）。 */
+@Dao
+interface CallDao {
+    @Insert
+    suspend fun insert(turn: CallTurn): Long
+
+    @Insert
+    suspend fun insertAll(turns: List<CallTurn>): List<Long>
+
+    @Query("SELECT * FROM call_turn WHERE messageId = :messageId ORDER BY seq, id")
+    suspend fun turns(messageId: Long): List<CallTurn>
+
+    @Query("SELECT * FROM call_turn WHERE messageId = :messageId ORDER BY seq, id")
+    fun observeTurns(messageId: Long): Flow<List<CallTurn>>
+
+    @Query("SELECT * FROM call_turn WHERE messageId IN (:messageIds) ORDER BY messageId, seq, id")
+    suspend fun turnsOf(messageIds: List<Long>): List<CallTurn>
+
+    @Query("SELECT * FROM call_turn ORDER BY messageId, seq, id")
+    suspend fun listAll(): List<CallTurn>
+
+    @Query("SELECT COALESCE(MAX(seq), -1) + 1 FROM call_turn WHERE messageId = :messageId")
+    suspend fun nextSeq(messageId: Long): Int
+
+    @Query("SELECT audioPath FROM call_turn WHERE messageId = :messageId AND audioPath IS NOT NULL")
+    suspend fun audioPaths(messageId: Long): List<String>
+
+    /** 最后一条话的结束时间（开始时间 + 音频时长）；没有话时为 null。补完被打断的通话时用 */
+    @Query("SELECT MAX(createdAt + audioMillis) FROM call_turn WHERE messageId = :messageId")
+    suspend fun lastEndAt(messageId: Long): Long?
+
+    /**
+     * 开始时间不晚于 [time]、但还有话晚于 [time] 的通话（记忆按时间往后总结时，这次通话的后半段要接着算）
+     */
+    @Query(
+        """
+        SELECT * FROM message WHERE contactId = :contactId AND type = 'CALL' AND createdAt <= :time
+            AND id IN (SELECT messageId FROM call_turn WHERE createdAt > :time)
+        ORDER BY createdAt, id
+        """,
+    )
+    suspend fun callsSpanning(contactId: Long, time: Long): List<Message>
+
+    /** 还没写总时长的通话（正在进行，或 App 在通话中被关掉） */
+    @Query("SELECT * FROM message WHERE type = 'CALL' AND voiceMillis <= 0 ORDER BY createdAt, id")
+    suspend fun unfinishedCalls(): List<Message>
+
+    /** 这个联系人正在进行的通话（同一时间只有一个） */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND type = 'CALL' AND voiceMillis <= 0 ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun ongoing(contactId: Long): Message?
+
+    /** 挂断：写总时长和原因 */
+    @Query("UPDATE message SET voiceMillis = :millis, errorCode = :reason WHERE id = :messageId AND type = 'CALL'")
+    suspend fun finish(messageId: Long, millis: Long, reason: Int)
+
+    @Query("UPDATE call_turn SET text = :text, audioPath = :audioPath, audioMillis = :audioMillis, status = :status WHERE id = :id")
+    suspend fun update(id: Long, text: String, audioPath: String?, audioMillis: Long, status: CallTurnStatus)
+
+    @Query("DELETE FROM call_turn WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    /** 通话消息删掉后留下的话（外键级联通常已经删了；不依赖 PRAGMA foreign_keys，显式再删一遍） */
+    @Query("DELETE FROM call_turn WHERE messageId NOT IN (SELECT id FROM message)")
+    suspend fun deleteOrphans()
+
+    @Query("DELETE FROM call_turn")
+    suspend fun deleteAll()
 }
 
 /**

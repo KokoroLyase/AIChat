@@ -327,6 +327,34 @@ class MemoryEngineTest {
         assertEquals(MemoryPolicy.CONTENT_MAX_LENGTH, db.memoryDao().listAll().single().content.length)
     }
 
+    /** 0.8.0：通话按每一条话总结；进度停在通话中间时，下一批从通话的后半段接着来，不重复也不漏 */
+    @Test
+    fun call_isSummarizedTurnByTurn_progressCanStopInsideACall() = runBlocking {
+        contact()
+        nextTime += 1000
+        val call = db.messageDao().insert(Message(contactId = 1, role = Role.USER, type = MessageType.CALL, status = MessageStatus.SUCCESS, voiceMillis = 80_000, createdAt = nextTime))
+        val turns = List(70) { index ->
+            isomeria.aichat.data.db.CallTurn(
+                messageId = call, seq = index, role = if (index % 2 == 0) Role.USER else Role.ASSISTANT,
+                text = "通话第${index}句四五六七八九十", createdAt = nextTime + 1_000L * (index + 1),
+            )
+        }
+        db.callDao().insertAll(turns)
+        engine.autoRun(1)
+        val first = fake.requests.single().messages[1].plainText()
+        assertTrue(first.startsWith("阿哲：通话第0句"))
+        val cursor = db.conversationDao().get(1)!!.memoryCursor!!
+        assertTrue("进度停在通话中间", cursor > nextTime && cursor < turns.last().createdAt)
+        val summarized = first.lines().size
+        // 通话之后再加几条普通消息，让未总结的再次超过阈值：下一批从通话里接着来
+        nextTime = turns.last().createdAt
+        messages(40)
+        fake.requests.clear()
+        engine.autoRun(1)
+        val second = fake.requests.single().messages[1].plainText()
+        assertTrue(second.startsWith("阿哲：通话第${summarized}句") || second.startsWith("小雨：通话第${summarized}句"))
+    }
+
     @Test
     fun batchWithOnlyFailedMessages_advancesWithoutRequest() = runBlocking {
         contact()

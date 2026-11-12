@@ -129,6 +129,20 @@ class ProactiveEngineTest {
         assertTrue(after.filter { it.origin == MessageOrigin.PROACTIVE }.all { it.role == Role.ASSISTANT })
     }
 
+    /** 0.8.0：更早的一次通话在主动请求的上下文里按每一条话展开 */
+    @Test
+    fun request_earlierCallIsExpandedIntoTurns() = runBlocking {
+        val call = db.messageDao().insert(Message(contactId = id, role = Role.USER, type = MessageType.CALL, status = MessageStatus.SUCCESS, voiceMillis = 5_000, createdAt = start - 6 * hour))
+        db.callDao().insertAll(
+            listOf(
+                isomeria.aichat.data.db.CallTurn(messageId = call, seq = 0, role = Role.USER, text = "电话里说的", createdAt = start - 6 * hour + 1_000),
+                isomeria.aichat.data.db.CallTurn(messageId = call, seq = 1, role = Role.ASSISTANT, text = "电话里回的", createdAt = start - 6 * hour + 3_000),
+            ),
+        )
+        force()
+        assertEquals(listOf(system, "电话里说的", "电话里回的", "在吗", "在呀", instruction), requests.last().messages.map { it.plainText() })
+    }
+
     @Test
     fun request_emptyHistory_orOnlyEarlierProactiveMessages_stillEndsWithTheInstruction() = runBlocking {
         db.messageDao().deleteByContact(id)

@@ -12,6 +12,8 @@ import isomeria.aichat.core.ProactiveSettings
 import isomeria.aichat.core.ReplyPreferences
 import isomeria.aichat.core.VoiceSettings
 import isomeria.aichat.core.VoiceSource
+import isomeria.aichat.data.db.CallEndReason
+import isomeria.aichat.data.db.CallTurn
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Conversation
 import isomeria.aichat.data.db.GlobalMemoryCategory
@@ -88,6 +90,8 @@ data class BackupPreview(
     val imageCount: Int get() = data.messages.count { it.type == MessageType.IMAGE }
     /** 语音消息（0.7.0）；0.6.0 及更早的备份没有 */
     val voiceCount: Int get() = data.messages.count { it.type == MessageType.VOICE }
+    /** 通话（0.8.0）；0.7.2 及更早的备份没有 */
+    val callCount: Int get() = data.messages.count { it.type == MessageType.CALL }
 
     /** 备份里的全局记忆；0.4.2 及更早的备份没有 */
     val globalMemory: GlobalMemoryCount get() = GlobalMemoryCount(data.globalCategories.size, data.globalItems.size)
@@ -272,6 +276,7 @@ class BackupManager @Inject constructor(
         val globalCategories: List<GlobalMemoryCategory>,
         val globalTopics: List<GlobalMemoryTopic>,
         val globalItems: List<GlobalMemoryItem>,
+        val callTurns: Map<Long, List<CallTurn>> = emptyMap(),
     )
 
     private sealed interface KeyExport {
@@ -295,6 +300,7 @@ class BackupManager @Inject constructor(
                 globalDao.categories(),
                 globalDao.topics(),
                 globalDao.items(),
+                db.callDao().listAll().groupBy { it.messageId },
             )
         }
         val (contacts, rawConversations, rawMessages, configs, models) = tables
@@ -303,6 +309,11 @@ class BackupManager @Inject constructor(
         // 还在等合成的语音回复没有语音文件：按合成失败的样子（文字）写入
         val messages = rawMessages.map {
             when {
+                // 还在进行的通话（0.8.0）按导出时已经说过的部分写成结束的通话
+                it.callOngoing -> it.copy(
+                    voiceMillis = ((tables.callTurns[it.id].orEmpty().maxOfOrNull { turn -> turn.createdAt + turn.audioMillis } ?: it.createdAt) - it.createdAt).coerceAtLeast(1),
+                    errorCode = CallEndReason.INTERRUPTED.code,
+                )
                 it.status != MessageStatus.PENDING -> it
                 it.awaitingSynthesis -> it.copy(status = MessageStatus.SUCCESS, type = MessageType.TEXT)
                 else -> it.copy(status = MessageStatus.SUCCESS)
@@ -335,7 +346,10 @@ class BackupManager @Inject constructor(
         val data = BackupData(
             contacts = contacts.map { it.toDto(media.add(it.avatarPath, BackupFormat.AVATARS_DIR)) },
             conversations = conversations.map { it.toDto(media.add(it.backgroundPath, BackupFormat.BACKGROUNDS_DIR)) },
-            messages = messages.map { it.toDto(media.add(it.imagePath, BackupFormat.IMAGES_DIR), media.add(it.voicePath, BackupFormat.VOICE_DIR)) },
+            messages = messages.map { message ->
+                message.toDto(media.add(message.imagePath, BackupFormat.IMAGES_DIR), media.add(message.voicePath, BackupFormat.VOICE_DIR))
+                    .copy(call = tables.callTurns[message.id].orEmpty().map { it.toDto(media.add(it.audioPath, BackupFormat.CALLS_DIR)) })
+            },
             providers = providers,
             memories = tables.memories.map { it.toDto() },
             usage = tables.usage.map { it.toDto() },
@@ -344,7 +358,7 @@ class BackupManager @Inject constructor(
             globalTopics = tables.globalTopics.map { it.toDto() },
             globalItems = tables.globalItems.map { it.toDto() },
         ).restrictTo(modules)
-        // 只打包选中内容用到的头像、图片和语音
+        // 只打包选中内容用到的头像、图片、语音和通话音频
         val usedMedia = data.mediaNames()
         val mediaEntries = media.entries.filterKeys { it in usedMedia }
         val keyExported = keyIncluded && data.providers.any { it.apiKey != null }
@@ -511,6 +525,13 @@ class BackupManager @Inject constructor(
                         image = it.image?.takeIf(BackupFormat.mediaNamePattern::matches),
                         voice = it.voice?.takeIf { name -> name.startsWith(BackupFormat.VOICE_DIR) && BackupFormat.mediaNamePattern.matches(name) },
                         voiceMillis = it.voiceMillis.coerceAtLeast(0),
+                        // 通话（0.8.0）：只有通话消息带每一条话；音频只认 calls/ 下合规的名字
+                        call = if (it.type != MessageType.CALL) emptyList() else it.call.map { turn ->
+                            turn.copy(
+                                audio = turn.audio?.takeIf { name -> name.startsWith(BackupFormat.CALLS_DIR) && BackupFormat.mediaNamePattern.matches(name) },
+                                audioMillis = turn.audioMillis.coerceAtLeast(0),
+                            )
+                        },
                     )
                 },
             settings = data.settings.copy(avatar = data.settings.avatar?.takeIf(BackupFormat.mediaNamePattern::matches)),
@@ -595,6 +616,7 @@ class BackupManager @Inject constructor(
         data.settings.avatar?.let(names::add)
         data.conversations.mapNotNullTo(names) { it.background }
         data.messages.mapNotNullTo(names) { it.voice }
+        data.messages.forEach { message -> message.call.mapNotNullTo(names) { it.audio } }
         val result = HashMap<String, String>()
         for (name in names) {
             val entry = zip.getEntry(name) ?: continue
@@ -602,10 +624,11 @@ class BackupManager @Inject constructor(
                 name.startsWith(BackupFormat.AVATARS_DIR) -> MediaKind.AVATAR
                 name.startsWith(BackupFormat.BACKGROUNDS_DIR) -> MediaKind.BACKGROUND
                 name.startsWith(BackupFormat.VOICE_DIR) -> MediaKind.VOICE
+                name.startsWith(BackupFormat.CALLS_DIR) -> MediaKind.CALL
                 else -> MediaKind.IMAGE
             }
-            // 语音保留原来的扩展名（m4a、mp3、wav），播放时按它识别格式
-            val extension = if (kind == MediaKind.VOICE) name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "m4a" } else "jpg"
+            // 语音和通话的音频保留原来的扩展名（m4a、mp3、wav），播放时按它识别格式
+            val extension = if (kind == MediaKind.VOICE || kind == MediaKind.CALL) name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "m4a" } else "jpg"
             val target = files.newMediaFile(kind, extension)
             created += target
             zip.getInputStream(entry).use { input ->
@@ -658,6 +681,7 @@ class BackupManager @Inject constructor(
         if (replaceContacts) {
             val localContacts = contactDao.listAll().map { it.id }
             messageDao.deleteAll()
+            db.callDao().deleteAll()
             memoryDao.deleteAll()
             if (BackupModule.USAGE in modules) {
                 usageDao.deleteAll()
@@ -697,6 +721,8 @@ class BackupManager @Inject constructor(
                     data.contacts.filter { it.id !in withConversation }.map { Conversation(contactId = it.id, memoryCursor = null) },
             )
             messageDao.insertAll(data.messages.map { it.toEntity(it.contactId, it.image?.let(paths::get), it.voice?.let(paths::get)) })
+            // 通话的每一条话（0.8.0）：覆盖时消息 id 不变
+            db.callDao().insertAll(data.messages.flatMap { message -> message.callTurns(message.id, paths) })
             memoryDao.insertAll(data.memories.map { it.toEntity(it.contactId) })
             usageDao.insertIgnore(data.usage.map { it.toEntity(it.contactId) })
         } else if (ids.fromLocal != null) {
@@ -848,14 +874,17 @@ class BackupManager @Inject constructor(
         }
 
         val localKeys = messageDao.allKeys().toHashSet()
-        val newMessages = data.messages.mapNotNull { message ->
+        val added = data.messages.mapNotNull { message ->
             val target = idMap[message.contactId] ?: return@mapNotNull null
             if (message.contactId in same && MessageKey(message.id, target, message.createdAt) in localKeys) {
                 return@mapNotNull null
             }
-            message.toEntity(target, message.image?.let(paths::get), message.voice?.let(paths::get)).copy(id = 0)
+            message to message.toEntity(target, message.image?.let(paths::get), message.voice?.let(paths::get)).copy(id = 0)
         }
-        messageDao.insertAll(newMessages)
+        val newMessages = added.map { it.second }
+        val newIds = messageDao.insertAll(newMessages)
+        // 通话的每一条话（0.8.0）跟着换了 id 的通话消息
+        db.callDao().insertAll(added.zip(newIds).flatMap { (pair, id) -> pair.first.callTurns(id, paths) })
         // 已有的联系人多了消息：重新算聊天列表里的最后一条
         val sameTargets = same.mapNotNullTo(HashSet()) { idMap[it] }
         newMessages.mapTo(HashSet()) { it.contactId }.filter { it in sameTargets }.forEach { refreshLastMessage(it) }
@@ -925,6 +954,7 @@ class BackupManager @Inject constructor(
         MessageType.TEXT -> message.content
         MessageType.IMAGE -> context.getString(R.string.preview_image)
         MessageType.VOICE -> context.getString(R.string.preview_voice)
+        MessageType.CALL -> isomeria.aichat.data.repo.callPreview(context, message)
     }
 
     private fun writeSettings(dto: SettingsDto, mode: RestoreMode, paths: Map<String, String>, ids: ProviderIds, modules: Set<BackupModule>) {
@@ -1116,6 +1146,25 @@ class BackupManager @Inject constructor(
             replyGroup = replyGroup, createdAt = createdAt, origin = origin,
         )
     }
+
+    private fun CallTurn.toDto(audio: String?) = CallTurnDto(
+        seq = seq, role = role, text = text, audio = audio, audioMillis = audioMillis, status = status, createdAt = createdAt,
+    )
+
+    /** 通话消息（0.8.0）的每一条话，挂到恢复后的消息 [messageId] 上；音频在备份里缺失时只留文字 */
+    private fun MessageDto.callTurns(messageId: Long, paths: Map<String, String>): List<CallTurn> =
+        if (type != MessageType.CALL) {
+            emptyList()
+        } else {
+            call.map { turn ->
+                val audioPath = turn.audio?.let(paths::get)
+                CallTurn(
+                    messageId = messageId, seq = turn.seq, role = turn.role, text = turn.text,
+                    audioPath = audioPath, audioMillis = if (audioPath == null) 0 else turn.audioMillis,
+                    status = turn.status, createdAt = turn.createdAt,
+                )
+            }
+        }
 
     private fun ProviderConfig.toDto(models: List<ProviderModel>, apiKey: SecretDto?) = ProviderDto(
         id = id, kind = kind, provider = provider, name = name, baseUrl = baseUrl, defaultModel = defaultModel,

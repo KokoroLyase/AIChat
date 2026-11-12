@@ -72,7 +72,7 @@ class MigrationTest {
     private fun JsonObject.sql(key: String) = this[key]!!.jsonPrimitive.content
 
     private fun open(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
         .allowMainThreadQueries()
         .build()
         .also { room = it }
@@ -421,6 +421,45 @@ class MigrationTest {
         assertEquals("local:system-tts", db.contactDao().get(8)!!.ttsSource)
         db.memoryDao().insert(Memory(contactId = 8, content = "核心", fromTime = 100, toTime = 500, createdAt = 800, updatedAt = 800, core = true))
         assertEquals(1, db.memoryDao().listByContact(8).count { it.core })
+    }
+
+    /**
+     * 0.8.0：旧消息、联系人和语音都不变；新建的 call_turn 表能写入通话的每一条话，删除通话消息时一起删；
+     * 语音文件的引用里带上通话音频
+     */
+    @Test
+    fun v8ToV9_oldRowsKept_callTurnsCanBeWrittenAndCascade() = runBlocking {
+        createV1(version = 8) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility,voice) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com','encrypted','m',1,'deepseek','DEEPSEEK','')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,thinkingOption,memoryModel,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency,replyType,ttsVoice,ttsStyle,replyPreferences,ttsSource,asrSource) VALUES(8,'甲',1,1,'m','OFF',0.4,'人设',6000,1,1,10,20,'high',NULL,'off',1,1,0,'MEDIUM','VOICE','冰糖','温柔',NULL,'local:system-tts',NULL)")
+            execSQL("INSERT INTO message(id,contactId,role,type,content,imagePath,imageWidth,imageHeight,reasoning,reasoningMillis,status,errorCode,model,promptTokens,completionTokens,replyGroup,createdAt,origin,voicePath,voiceMillis,voicePlayed,voiceShowText) VALUES(1,8,'USER','VOICE','你好',NULL,0,0,NULL,0,'SUCCESS',0,NULL,0,0,NULL,100,'NORMAL','/v/a.m4a',1500,1,0)")
+        }
+        val db = open()
+        val old = db.messageDao().get(1)!!
+        assertEquals(MessageType.VOICE, old.type)
+        assertEquals("/v/a.m4a", old.voicePath)
+        assertEquals("local:system-tts", db.contactDao().get(8)!!.ttsSource)
+        val call = db.messageDao().insert(Message(contactId = 8, role = Role.USER, type = MessageType.CALL, status = MessageStatus.SUCCESS, createdAt = 200))
+        assertTrue(db.messageDao().get(call)!!.callOngoing)
+        db.callDao().insertAll(
+            listOf(
+                CallTurn(messageId = call, seq = 0, role = Role.USER, text = "在吗", audioPath = "/c/u.m4a", audioMillis = 900, createdAt = 210),
+                CallTurn(messageId = call, seq = 1, role = Role.ASSISTANT, text = "在呢", audioPath = "/c/a.mp3", audioMillis = 700, status = CallTurnStatus.INTERRUPTED, createdAt = 1500),
+            ),
+        )
+        assertEquals(listOf("在吗", "在呢"), db.callDao().turns(call).map { it.text })
+        assertEquals(CallTurnStatus.INTERRUPTED, db.callDao().turns(call)[1].status)
+        assertEquals(2, db.callDao().nextSeq(call))
+        assertEquals(2200L, db.callDao().lastEndAt(call))
+        assertEquals(setOf("/v/a.m4a", "/c/u.m4a", "/c/a.mp3"), db.messageDao().voicePaths(8).toSet())
+        assertEquals(setOf("/v/a.m4a", "/c/u.m4a", "/c/a.mp3"), db.messageDao().allVoicePaths().toSet())
+        db.callDao().finish(call, 2_000, CallEndReason.AUDIO_LOST.code)
+        assertFalse(db.messageDao().get(call)!!.callOngoing)
+        assertEquals(CallEndReason.AUDIO_LOST, CallEndReason.of(db.messageDao().get(call)!!.errorCode))
+        db.messageDao().delete(call)
+        db.callDao().deleteOrphans()
+        assertTrue(db.callDao().listAll().isEmpty())
+        assertEquals(listOf("/v/a.m4a"), db.messageDao().voicePaths(8))
     }
 
     /** 清空或删除聊天时连续未回复次数清零；用户发言用的清零和主动发送的计数互不影响别的字段 */

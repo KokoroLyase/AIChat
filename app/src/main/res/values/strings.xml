@@ -38,6 +38,11 @@
     <string name="preview_draft">[草稿]</string>
     <string name="preview_image">[图片]</string>
     <string name="preview_voice">[语音]</string>
+    <string name="preview_call">[通话]</string>
+    <string name="preview_call_duration">[通话] %1$s</string>
+    <string name="call_message_duration">通话时长 %1$s</string>
+    <string name="call_message_ongoing">通话中</string>
+    <string name="call_message_open">查看通话内容</string>
 
     <!-- 搜索 -->
     <string name="search_hint">搜索</string>
@@ -309,6 +314,8 @@
     <string name="restore_count_images">%1$d 张</string>
     <string name="restore_info_voice">语音消息</string>
     <string name="restore_count_voice">%1$d 条</string>
+    <string name="restore_info_calls">语音通话</string>
+    <string name="restore_count_calls">%1$d 次</string>
     <string name="restore_info_key">API Key</string>
     <string name="restore_key_included">已包含（加密）</string>
     <string name="restore_key_none">未包含</string>
@@ -653,6 +660,7 @@
     <string name="storage_avatars">头像</string>
     <string name="storage_backgrounds">聊天背景</string>
     <string name="storage_voice">语音消息</string>
+    <string name="storage_calls">通话录音</string>
     <string name="storage_asr_models">离线识别模型</string>
     <string name="storage_cache">缓存</string>
     <string name="storage_database">数据库</string>

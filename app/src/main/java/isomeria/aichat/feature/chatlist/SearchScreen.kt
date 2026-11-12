@@ -149,7 +149,13 @@ fun SearchScreen(
     }
 }
 
-/** 命中的是语音的转写文字（0.7.0）：前面标上「[语音]」 */
+/** 命中的是语音的转写文字（0.7.0）：前面标上「[语音]」；命中的是通话里的话（0.8.0）：前面标上「[通话]」 */
 @Composable
 private fun voicePrefix(message: isomeria.aichat.data.db.Message): AnnotatedString =
-    AnnotatedString(if (message.type == isomeria.aichat.data.db.MessageType.VOICE) stringResource(R.string.preview_voice) + " " else "")
+    AnnotatedString(
+        when (message.type) {
+            isomeria.aichat.data.db.MessageType.VOICE -> stringResource(R.string.preview_voice) + " "
+            isomeria.aichat.data.db.MessageType.CALL -> stringResource(R.string.preview_call) + " "
+            else -> ""
+        },
+    )

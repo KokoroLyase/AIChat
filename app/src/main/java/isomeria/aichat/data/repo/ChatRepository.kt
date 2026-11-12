@@ -179,12 +179,17 @@ class ChatRepository @Inject constructor(
 
     suspend fun deleteMessage(id: Long) {
         val message = messageDao.get(id) ?: return
+        // 通话（0.8.0）：每一条话的音频一起删；正在进行的通话不能删
+        if (message.callOngoing) return
+        val callAudio = if (message.type == MessageType.CALL) db.callDao().audioPaths(id) else emptyList()
         db.withTransaction {
             messageDao.delete(id)
+            if (message.type == MessageType.CALL) db.callDao().deleteOrphans()
             refreshLastMessage(message.contactId)
         }
         files.delete(message.imagePath)
         files.delete(message.voicePath)
+        callAudio.forEach(files::delete)
         // 删掉的是最后一条等待中的消息时，取消这次请求
         if (message.status == MessageStatus.SENDING && messageDao.sendingIds(message.contactId).isEmpty()) {
             replyScheduler.cancel(message.contactId)
@@ -199,6 +204,7 @@ class ChatRepository @Inject constructor(
         val background = conversationDao.get(contactId)?.backgroundPath
         db.withTransaction {
             messageDao.deleteByContact(contactId)
+            db.callDao().deleteOrphans()
             conversationDao.reset(contactId)
             // 约好的提醒是聊天里说的，聊天删了就不再提醒
             db.proactiveDao().deleteRemindersOf(contactId)
@@ -216,6 +222,7 @@ class ChatRepository @Inject constructor(
         db.withTransaction {
             ensureConversation(contactId)
             messageDao.deleteByContact(contactId)
+            db.callDao().deleteOrphans()
             conversationDao.clearHistory(contactId)
             db.proactiveDao().deleteRemindersOf(contactId)
         }
@@ -231,6 +238,7 @@ class ChatRepository @Inject constructor(
         val images = messageDao.allImagePaths() + messageDao.allVoicePaths()
         db.withTransaction {
             messageDao.deleteAll()
+            db.callDao().deleteAll()
             conversationDao.resetAll()
             db.proactiveDao().deleteAllReminders()
         }
@@ -302,14 +310,23 @@ class ChatRepository @Inject constructor(
         if (query.isBlank()) return emptyList()
         val q = escapeLike(query.trim())
         return messageDao.searchGrouped(q).map { group ->
-            val single = if (group.hitCount == 1) messageDao.searchInChat(group.contactId, q, limit = 1).firstOrNull() else null
+            val single = if (group.hitCount == 1) messageDao.searchInChat(group.contactId, q, limit = 1).firstOrNull()?.let { withCallHit(it, query.trim()) } else null
             MessageSearchResult(group, single)
         }
     }
 
+    /**
+     * 搜索结果里的通话（0.8.0）：通话消息本身没有文字，显示命中的那几条话（用换行连起来），方便高亮；只用来显示，不写库
+     */
+    private suspend fun withCallHit(message: Message, query: String): Message {
+        if (message.type != MessageType.CALL) return message
+        val hits = db.callDao().turns(message.id).filter { it.text.contains(query, ignoreCase = true) }.map { it.text }
+        return message.copy(content = hits.joinToString("\n"))
+    }
+
     /** 聊天信息页「查找聊天记录」：这个聊天里命中的文字消息，最新的在前 */
     suspend fun searchInChat(contactId: Long, query: String): List<Message> =
-        if (query.isBlank()) emptyList() else messageDao.searchInChat(contactId, escapeLike(query.trim()))
+        if (query.isBlank()) emptyList() else messageDao.searchInChat(contactId, escapeLike(query.trim())).map { withCallHit(it, query.trim()) }
 
     /**
      * 启动时检查：等待中但已经没有对应任务的消息（App 在等待中被系统杀掉），标记为失败，可重试。

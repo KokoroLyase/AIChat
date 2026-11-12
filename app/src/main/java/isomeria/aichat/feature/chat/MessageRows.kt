@@ -130,6 +130,8 @@ data class MessageActions(
     val onVoicePlay: (Message, PlayMode) -> Unit = { _, _ -> },
     /** 转文字 / 取消转文字 */
     val onVoiceShowText: (Message, Boolean) -> Unit = { _, _ -> },
+    /** 点通话消息（0.8.0）：进入这次通话的详情 */
+    val onCallClick: (Message) -> Unit = {},
 )
 
 /**
@@ -163,7 +165,8 @@ fun MessageRow(
         if (message.type == MessageType.TEXT || (voice && hasText)) {
             add(MenuItem(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy) { actions.onCopy(message.content) })
         }
-        add(MenuItem(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline) { actions.onDelete(message) })
+        // 正在进行的通话（0.8.0）不能删
+        if (!message.callOngoing) add(MenuItem(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline) { actions.onDelete(message) })
         if (voice) {
             add(MenuItem(stringResource(R.string.voice_menu_earpiece), Icons.Outlined.PhoneInTalk) { actions.onVoicePlay(message, PlayMode.EARPIECE) })
             add(MenuItem(stringResource(R.string.voice_menu_background), Icons.Outlined.Headphones) { actions.onVoicePlay(message, PlayMode.BACKGROUND) })
@@ -241,6 +244,12 @@ fun MessageRow(
                         onClick = { actions.onVoiceClick(message) },
                         onLongClick = { menuOpen = true },
                         onToText = { actions.onVoiceShowText(message, true) },
+                    )
+                    MessageType.CALL -> isomeria.aichat.ui.components.CallBubble(
+                        message = message,
+                        sent = sent,
+                        onClick = { actions.onCallClick(message) },
+                        onLongClick = { menuOpen = true },
                     )
                 }
                 if (menuOpen) WeBubbleMenu(menuItems) { menuOpen = false }

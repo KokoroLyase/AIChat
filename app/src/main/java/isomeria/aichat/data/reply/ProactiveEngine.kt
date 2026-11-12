@@ -136,6 +136,8 @@ class ProactiveEngine @Inject constructor(
     private val conversations get() = db.conversationDao()
     private val messages get() = db.messageDao()
     private val proactive get() = db.proactiveDao()
+    /** 通话（0.8.0）在上下文里展开成每一条话 */
+    private val calls = isomeria.aichat.data.repo.CallHistory(db)
 
     /** 同一时间只做一次检查：周期任务、回到前台和约定任务可能撞在一起 */
     private val mutex = Mutex()
@@ -288,7 +290,7 @@ class ProactiveEngine @Inject constructor(
         val instruction = instruction(startedAt, messages.latestVisible(contactId)?.createdAt, reminder)
         val historyBudget = contact.contextTokens - estimator.text(system) - estimator.text(instruction) - TokenEstimator.MESSAGE_OVERHEAD
         val history = ContextWindow.select(
-            messages.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING },
+            calls.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING },
             historyBudget,
             estimator,
             snapshot.supportsImage,

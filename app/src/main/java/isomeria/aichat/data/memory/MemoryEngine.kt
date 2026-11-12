@@ -87,6 +87,8 @@ class MemoryEngine @Inject constructor(
     private val conversationDao get() = db.conversationDao()
     private val messageDao get() = db.messageDao()
     private val memoryDao get() = db.memoryDao()
+    /** 通话（0.8.0）按每一条话总结；没有通话时和直接查消息一样 */
+    private val calls = isomeria.aichat.data.repo.CallHistory(db)
 
 
     /** 一次回复成功后检查：需要时总结一批，近期记忆超出时整理一次核心记忆 */
@@ -121,7 +123,7 @@ class MemoryEngine @Inject constructor(
         val start = conversation.memoryStart
         if (start <= 0) return@run BacklogResult.NOTHING
 
-        val older = messageDao.before(contact.id, start, MemoryPolicy.BACKLOG_MAX_ROWS)
+        val older = calls.before(contact.id, start, MemoryPolicy.BACKLOG_MAX_ROWS)
         val batch = MemoryPolicy.planBacklog(older, estimator)
         if (batch.isEmpty()) {
             conversationDao.setMemoryRange(contact.id, conversation.memoryCursor, 0)
@@ -146,7 +148,7 @@ class MemoryEngine @Inject constructor(
         val conversation = conversationDao.get(contact.id) ?: return@withTransaction null
         if (conversation.memoryCursor != null) return@withTransaction conversation
         val budget = historyBudget(contact, estimator)
-        val recent = messageDao.recent(contact.id, ContextWindow.maxRows(budget)).filter { it.status != isomeria.aichat.data.db.MessageStatus.PENDING }
+        val recent = calls.recent(contact.id, ContextWindow.maxRows(budget)).filter { it.status != isomeria.aichat.data.db.MessageStatus.PENDING }
         val window = ContextWindow.select(recent, budget, estimator, providers.supportsImage(config.id, contact.model))
         val first = window.firstOrNull()?.createdAt ?: 0L
         val hasOlder = first > 0 && messageDao.countBefore(contact.id, first) > 0
@@ -164,7 +166,7 @@ class MemoryEngine @Inject constructor(
     ) {
         val generation = db.restoreGeneration.get()
         val cursor = conversation.memoryCursor ?: return
-        val unsummarized = messageDao.after(contact.id, cursor)
+        val unsummarized = calls.after(contact.id, cursor)
         val batch = MemoryPolicy.planBatch(unsummarized, historyBudget(contact, estimator), estimator)
         if (batch.isEmpty()) return
         val summary = summarize(contact, batch)

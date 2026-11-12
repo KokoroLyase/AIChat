@@ -221,6 +221,34 @@ class ReplyRequestGoldenTest {
         assertEquals(GOLDEN_EMPTY, requestBody(3))
     }
 
+    // ---------- 0.8.0：聊天记录里的通话按每一条话展开；没有通话时和 0.7.2 逐字一致（上面的几项） ----------
+
+    @Test
+    fun finishedCallInHistory_expandsIntoTurns_failedRecognitionSkipped() = runBlocking {
+        val call = db.messageDao().insert(
+            Message(contactId = 2, role = Role.USER, type = MessageType.CALL, status = MessageStatus.SUCCESS, voiceMillis = 6_000, createdAt = now - 30_000),
+        )
+        db.callDao().insertAll(
+            listOf(
+                isomeria.aichat.data.db.CallTurn(messageId = call, seq = 0, role = Role.USER, text = "通话里问一句", createdAt = now - 29_000),
+                isomeria.aichat.data.db.CallTurn(messageId = call, seq = 1, role = Role.USER, text = "", status = isomeria.aichat.data.db.CallTurnStatus.ASR_FAILED, createdAt = now - 28_800),
+                isomeria.aichat.data.db.CallTurn(messageId = call, seq = 2, role = Role.ASSISTANT, text = "通话里答一句", createdAt = now - 28_000),
+                isomeria.aichat.data.db.CallTurn(messageId = call, seq = 3, role = Role.ASSISTANT, text = "第二句", status = isomeria.aichat.data.db.CallTurnStatus.INTERRUPTED, createdAt = now - 27_500),
+            ),
+        )
+        harness.allOff(2)
+        val expected = GOLDEN_GENERIC.replace(
+            """{"role":"user","content":"早"}""",
+            """{"role":"user","content":"通话里问一句"},{"role":"assistant","content":"通话里答一句\n\n第二句"},{"role":"user","content":"早"}""",
+        )
+        assertTrue(expected != GOLDEN_GENERIC)
+        assertEquals(expected, requestBody(2))
+        // 删掉这次通话后回到 0.7.2 的样子
+        db.messageDao().delete(call)
+        db.callDao().deleteOrphans()
+        assertEquals(GOLDEN_GENERIC, requestBody(2))
+    }
+
     /** 全局记忆远超上下文上限：聊天记录被挤掉，但这次等待回复的消息一定带上，回复照常写入 */
     @Test
     fun hugeGlobalMemory_chatStillSendsWaitingMessage() = runBlocking {

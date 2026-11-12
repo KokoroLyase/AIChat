@@ -35,6 +35,8 @@ class TokenEstimator(private val wideCharTokens: Double) {
     fun message(message: Message, withImage: Boolean = false): Int = MESSAGE_OVERHEAD + when (message.type) {
         MessageType.TEXT, MessageType.VOICE -> text(message.content)
         MessageType.IMAGE -> if (withImage) IMAGE_TOKENS else IMAGE_PLACEHOLDER_TOKENS
+        // 通话（0.8.0）在拼上下文前已经展开成每一条话（CallTranscript），走到这里的通话消息没有内容
+        MessageType.CALL -> text(message.content)
     }
 
     /** 一次请求的 token：服务商没有返回用量时，用它估算 */

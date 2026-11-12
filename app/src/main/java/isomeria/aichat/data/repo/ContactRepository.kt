@@ -84,6 +84,7 @@ class ContactRepository @Inject constructor(
         db.withTransaction {
             // 外键也会级联删除，这里显式删一遍，不依赖 PRAGMA foreign_keys
             messageDao.deleteByContact(id)
+            db.callDao().deleteOrphans()
             memoryDao.deleteByContact(id)
             db.proactiveDao().deleteRemindersOf(id)
             conversationDao.reset(id)

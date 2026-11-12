@@ -30,6 +30,7 @@ import isomeria.aichat.data.db.MIGRATION_4_5
 import isomeria.aichat.data.db.MIGRATION_5_6
 import isomeria.aichat.data.db.MIGRATION_6_7
 import isomeria.aichat.data.db.MIGRATION_7_8
+import isomeria.aichat.data.db.MIGRATION_8_9
 import isomeria.aichat.data.db.GlobalMemoryDao
 import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.MessageDao
@@ -64,7 +65,7 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .addCallback(AppDatabase.seedCallback)
             .build()
 
@@ -83,6 +84,7 @@ object AppModule {
     @Provides fun globalMemoryDao(db: AppDatabase): GlobalMemoryDao = db.globalMemoryDao()
 
     @Provides fun proactiveDao(db: AppDatabase): isomeria.aichat.data.db.ProactiveDao = db.proactiveDao()
+    @Provides fun callDao(db: AppDatabase): isomeria.aichat.data.db.CallDao = db.callDao()
 
     @Provides
     @Singleton

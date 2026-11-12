@@ -2,6 +2,7 @@ package isomeria.aichat.data.backup
 
 import isomeria.aichat.core.ProactiveSettings
 import isomeria.aichat.core.ReplyPreferences
+import isomeria.aichat.data.db.CallTurnStatus
 import isomeria.aichat.data.db.Capability
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.MessageOrigin
@@ -27,10 +28,12 @@ import kotlinx.serialization.json.Json
  *                   设置带语音消息的全局设置
  *                   v8 起记忆带「是否核心记忆」，联系人带单独设置的回复偏好和语音来源；可以只导出一部分（[BackupModule]），manifest 记下导出了哪些，
  *                   没导出服务商时用 providerRefs 记下联系人和语音来源用到的服务商（只有格式和地址，没有 Key）
+ *                   v9 起消息多了通话类型（CALL），通话消息带着它的每一条话（[MessageDto.call]），跟着聊天记录导出
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
  *   background/…    聊天背景（v4 起）
  *   voice/…         语音消息（v7 起）
+ *   calls/…         通话里每一条话的音频（v9 起）
  *
  * data.json 里的头像和图片写成 zip 内的相对路径（如 images/xxx.jpg），恢复时换成本机路径。
  * 格式和数据库表分开定义：以后改表不影响已经导出的文件，改格式时 [BackupFormat.VERSION] +1，
@@ -39,7 +42,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 8
+    const val VERSION = 9
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -50,9 +53,10 @@ object BackupFormat {
     const val IMAGES_DIR = "images/"
     const val BACKGROUNDS_DIR = "background/"
     const val VOICE_DIR = "voice/"
+    const val CALLS_DIR = "calls/"
 
     /** zip 内文件名只允许这些字符（不能以点开头），防止「../」之类的路径 */
-    val mediaNamePattern = Regex("""^(avatars|images|background|voice)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
+    val mediaNamePattern = Regex("""^(avatars|images|background|voice|calls)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
 
     val json = Json {
         ignoreUnknownKeys = true
@@ -69,7 +73,7 @@ enum class BackupModule(val requiresContacts: Boolean = false) {
     /** 联系人：人设、模型和各项设置、头像、置顶和免打扰 */
     CONTACTS,
 
-    /** 聊天记录：消息、图片、语音、聊天背景、草稿 */
+    /** 聊天记录：消息、图片、语音、通话（0.8.0）、聊天背景、草稿 */
     CHATS(requiresContacts = true),
 
     /** 联系人的长期记忆 */
@@ -229,6 +233,20 @@ data class MessageDto(
     val voiceMillis: Long = 0,
     val voicePlayed: Boolean = false,
     val voiceShowText: Boolean = false,
+    /** 通话消息（v9 起）的每一条话，按顺序；别的消息为空 */
+    val call: List<CallTurnDto> = emptyList(),
+)
+
+/** 通话里的一条话（v9 起）。音频是 zip 内相对路径，如 calls/xxx.m4a */
+@Serializable
+data class CallTurnDto(
+    val seq: Int,
+    val role: Role,
+    val text: String = "",
+    val audio: String? = null,
+    val audioMillis: Long = 0,
+    val status: CallTurnStatus = CallTurnStatus.OK,
+    val createdAt: Long,
 )
 
 @Serializable

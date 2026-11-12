@@ -14,8 +14,56 @@ enum class Role { USER, ASSISTANT }
 
 /**
  * 消息类型。VOICE（0.7.0）：语音消息，文件在 files/voice/，转写文字存在 content（用于上下文、记忆、搜索和「转文字」）。
+ *
+ * CALL（0.8.0）：一次语音通话，用户发起（role 为 USER），聊天里显示成一条通话消息。content 为空；
+ * 每一条说的话在 [CallTurn]（call_turn 表），上下文、记忆和搜索都按条展开。
+ * [Message.voiceMillis] 是总时长：通话还在进行时为 0（见 [Message.callOngoing]），挂断时写入（至少 1 毫秒）；
+ * [Message.errorCode] 是挂断的原因（[CallEndReason]）
  */
-enum class MessageType { TEXT, IMAGE, VOICE }
+enum class MessageType { TEXT, IMAGE, VOICE, CALL }
+
+/**
+ * 通话为什么结束（0.8.0，存在通话消息的 errorCode）。数字写进数据库和备份，不能改。
+ */
+enum class CallEndReason(val code: Int) {
+    /** 用户挂断 */
+    HANG_UP(0),
+
+    /** 别的 App 拿走了声音（比如来电） */
+    AUDIO_LOST(1),
+
+    /** 连续几轮失败 */
+    FAILURES(2),
+
+    /** 到了单次通话的最长时间 */
+    TIME_LIMIT(3),
+
+    /** 很久没人说话 */
+    IDLE(4),
+
+    /** App 在通话中被关掉，下次启动时补完 */
+    INTERRUPTED(5),
+    ;
+
+    companion object {
+        fun of(code: Int): CallEndReason = entries.firstOrNull { it.code == code } ?: HANG_UP
+    }
+}
+
+/** 通话里一条话的状态（0.8.0）。 */
+enum class CallTurnStatus {
+    /** 用户的话识别成功，或联系人的话合成并放出来了 */
+    OK,
+
+    /** 用户的话没识别出来：留着录音，没有文字，不进上下文 */
+    ASR_FAILED,
+
+    /** 联系人的这句合成失败：文字在通话页显示过，没有音频 */
+    TTS_FAILED,
+
+    /** 联系人的这句放到一半被用户打断 */
+    INTERRUPTED,
+}
 
 /**
  * 消息状态：发送中（等待回复）、成功、失败、待投递。
@@ -206,7 +254,42 @@ data class Message(
 ) {
     /** 等着合成的语音回复：已经存了文字，还没有语音文件 */
     val awaitingSynthesis: Boolean get() = type == MessageType.VOICE && role == Role.ASSISTANT && voicePath == null
+
+    /** 还在进行（或 App 被关掉、还没补完）的通话（0.8.0）：挂断时才写总时长 */
+    val callOngoing: Boolean get() = type == MessageType.CALL && voiceMillis <= 0L
 }
+
+/**
+ * 通话里的一条话（0.8.0）：用户说的一句，或联系人回复的一句。每句本来就是分开录、分开合成的，文字和音频一一对应。
+ *
+ * - [createdAt] 是这句开始的时间（绝对时间，晚于通话消息的 createdAt）；在整通里的位置 = createdAt - 通话开始时间
+ * - [audioPath] 在 files/calls/ 里：用户的话识别后压成 AAC，联系人的话按合成返回的格式保存；没有时为 null
+ * - 上下文、记忆和搜索按 [seq] 顺序展开：用户的话按 user，联系人的话按 assistant；没有文字的（识别失败）跳过
+ * - 删除通话消息时一起删（外键级联，调用方另外显式删一遍，不依赖 PRAGMA foreign_keys）
+ */
+@Entity(
+    tableName = "call_turn",
+    foreignKeys = [
+        ForeignKey(
+            entity = Message::class,
+            parentColumns = ["id"],
+            childColumns = ["messageId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["messageId", "seq"])],
+)
+data class CallTurn(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val messageId: Long,
+    val seq: Int,
+    val role: Role,
+    val text: String = "",
+    val audioPath: String? = null,
+    val audioMillis: Long = 0,
+    val status: CallTurnStatus = CallTurnStatus.OK,
+    val createdAt: Long,
+)
 
 /**
  * 主动聊天的设备状态（0.6.0），只有一行：今日已用的调用次数和最近一次检查的时间。

@@ -141,6 +141,25 @@ object WeIcons {
         }
     }
 
+    /** 电话听筒（0.8.0 语音通话）：左上是听筒、右下是话筒，中间是握把 */
+    val Phone: ImageVector by lazy {
+        lineIcon("Phone") {
+            moveTo(5.2f, 4f)
+            lineTo(8.4f, 4f)
+            lineTo(10f, 8.1f)
+            lineTo(8f, 9.7f)
+            quadTo(9.6f, 13.6f, 14.3f, 16f)
+            lineTo(15.9f, 14f)
+            lineTo(20f, 15.6f)
+            lineTo(20f, 18.8f)
+            quadTo(20f, 20f, 18.8f, 20f)
+            quadTo(11f, 19.6f, 7.3f, 16.7f)
+            quadTo(4.4f, 13f, 4f, 5.2f)
+            quadTo(4f, 4f, 5.2f, 4f)
+            close()
+        }
+    }
+
     private fun lineIcon(name: String, strokeWidth: Float = 1.6f, block: PathBuilder.() -> Unit): ImageVector =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
             path(

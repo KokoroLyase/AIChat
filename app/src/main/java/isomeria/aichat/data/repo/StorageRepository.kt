@@ -31,6 +31,8 @@ class StorageRepository @Inject constructor(
             size(requireNotNull(context.getDatabasePath(AppDatabase.NAME).parentFile)),
             backgrounds = size(File(context.filesDir, FileStorage.BACKGROUND_DIR)),
             voice = size(File(context.filesDir, FileStorage.VOICE_DIR)),
+            // 0.8.0：通话里每一条话的音频
+            calls = size(File(context.filesDir, FileStorage.CALLS_DIR)),
             // 0.7.1：离线识别模型（含没下完的部分）；不是可再生缓存，也不参与孤立文件清理，在「离线识别」页单独删除
             asrModels = size(File(context.filesDir, isomeria.aichat.data.voice.OfflineAsrModel.ROOT)),
         )

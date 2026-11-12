@@ -497,6 +497,15 @@ private fun BackupInfo(preview: BackupPreview) {
             showDivider = true,
         )
     }
+    // 通话（0.8.0）；0.7.2 及更早的备份没有
+    if (preview.callCount > 0) {
+        WeListRow(
+            title = stringResource(R.string.restore_info_calls),
+            value = stringResource(R.string.restore_count_calls, preview.callCount),
+            showArrow = false,
+            showDivider = true,
+        )
+    }
     WeListRow(
         title = stringResource(R.string.restore_info_key),
         value = stringResource(if (manifest.includesApiKey) R.string.restore_key_included else R.string.restore_key_none),

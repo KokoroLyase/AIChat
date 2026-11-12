@@ -55,7 +55,13 @@ class BackupMigrations(
             5 to { data -> v5ToV6(data) },
             6 to { data -> v6ToV7(data) },
             7 to { data -> v7ToV8(data) },
+            8 to { data -> v8ToV9(data) },
         )
+
+        /**
+         * v8 → v9（0.8.0）：消息多了通话类型和它的每一条话（[MessageDto.call]），旧文件里没有通话。data.json 不用改
+         */
+        private fun v8ToV9(data: JsonObject): JsonObject = data
 
         /**
          * v7 → v8（0.7.2）：记忆多了「是否核心记忆」，旧记忆都是近期记忆（默认值）；manifest 多了导出了哪些内容，
