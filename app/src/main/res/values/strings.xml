@@ -461,7 +461,7 @@
     <string name="notification_multi">[%1$d条] %2$s</string>
     <string name="preset_deepseek">DeepSeek</string>
     <string name="preset_qwen">阿里云百炼（千问）</string>
-    <string name="preset_zhipu">智谱</string>
+    <string name="preset_zhipu">BigModel（智谱）</string>
     <string name="preset_kimi">Kimi</string>
     <string name="preset_mimo">Xiaomi MiMo</string>
     <string name="preset_siliconflow">硅基流动</string>
@@ -907,9 +907,18 @@
     <string name="voice_protocol_qwen_asr">百炼 Qwen-ASR</string>
     <string name="voice_protocol_minimax_tts">MiniMax 语音合成</string>
     <string name="voice_protocol_fish_tts">Fish Audio 语音合成</string>
+    <string name="voice_protocol_fish_asr">Fish Audio 语音识别</string>
+    <string name="voice_protocol_zhipu_tts">智谱 GLM-TTS</string>
+    <string name="voice_protocol_zhipu_asr">智谱 GLM-ASR</string>
+    <string name="voice_protocol_openrouter_tts">OpenRouter 语音合成</string>
     <string name="voice_volc_note">火山引擎用新版控制台的 API Key。“模型”这一栏填资源 ID：合成用 seed-tts-2.0（复刻的音色用 seed-icl-2.0），识别用 volc.bigasr.auc_turbo。</string>
     <string name="voice_workspace_note">百炼要用自己的业务空间地址：把地址里的 {WorkspaceId} 换成控制台里的业务空间 ID，Key 也要是这个业务空间的。</string>
     <string name="voice_fish_note">Fish Audio 的服务器在海外，国内网络下可能较慢或连不上。音色填音色模型的 ID。</string>
+    <string name="voice_fish_asr_note">Fish Audio 的服务器在海外，国内网络下可能较慢或连不上。“模型”要写完整（transcribe-1-pro），写错时服务商会改用旧模型。</string>
+    <string name="voice_zhipu_tts_note">智谱合成出的是 WAV，App 会压缩后保存。按服务商的默认设置，合成的语音带 AI 生成标识（水印）。一条最多 1024 字。</string>
+    <string name="voice_zhipu_asr_note">智谱一次最多识别 30 秒，超过 25 秒的录音会分成几段依次识别再拼起来（每段一次请求）。</string>
+    <string name="voice_openrouter_tts_note">OpenRouter 的服务器在海外，国内网络下可能较慢或连不上；文字会转给你选的模型背后的服务商。“模型”要写完整的模型名，音色、能不能用语气和风格要求都随模型不同。</string>
+    <string name="voice_openrouter_asr_note">OpenRouter 的服务器在海外，国内网络下可能较慢或连不上；录音会转给你选的模型背后的服务商。“模型”要写完整的模型名；默认的 Whisper 识别中文偶尔会出繁体字，可以换别的模型。</string>
     <string name="voice_style_supported_note">这个服务商支持语气和风格要求：在联系人的「朋友资料」里填写，不会被读出来。</string>
     <string name="voice_style_unsupported_note">这个服务商不支持语气和风格要求，联系人填的会被忽略。</string>
     <string name="base_url_placeholder_required">请把地址里的 {WorkspaceId} 换成你的百炼业务空间 ID：在百炼控制台“业务空间管理”的 API Host 一栏，或创建 API Key 后的弹窗里能看到。</string>
@@ -932,12 +941,18 @@
     <string name="voice_price_qwen">百炼的语音合成和识别按用量收费，价格以服务商为准。</string>
     <string name="voice_price_minimax">MiniMax 语音合成按字数收费，价格以服务商为准。</string>
     <string name="voice_price_fish">Fish Audio 按用量收费；“模型”改成 s2.1-pro-free 可以用免费的开发者模型（有限制）。价格以服务商为准。</string>
+    <string name="voice_price_fish_asr">Fish Audio 语音识别按音频时长收费（官方价格约 0.36 美元每小时），以服务商为准。</string>
+    <string name="voice_price_zhipu_tts">智谱语音合成按用量收费，价格见智谱的定价页，以服务商为准。</string>
+    <string name="voice_price_zhipu_asr">智谱语音识别按音频时长收费（官方价格约 0.06 元每分钟），以服务商为准。</string>
+    <string name="voice_price_openrouter">OpenRouter 按所选模型的价格收费，多数语音合成模型按字数计费，价格见 OpenRouter 的模型页。</string>
+    <string name="voice_price_openrouter_asr">OpenRouter 按所选模型的价格收费（默认的 Whisper 按音频秒数计费），价格见 OpenRouter 的模型页。</string>
     <!-- 0.7.2 选音色 -->
     <string name="voice_picker_search_hint">搜索音色名称或 ID</string>
     <string name="voice_picker_search_remote_hint">输入名称，点键盘上的搜索</string>
     <string name="voice_picker_note">点一行选用这个音色，点“试听”听一句。试听会用这个服务商合成一句话，可能产生少量费用，不计入用量统计；系统语音在手机上合成。列表可能不全，没有的音色可以返回手填 ID。</string>
     <string name="voice_picker_loading">正在获取音色…</string>
     <string name="voice_picker_empty">没有找到音色。可以换个关键词，或返回手填音色 ID。</string>
+    <string name="voice_picker_no_list">这个模型没有内置的音色列表，请返回手填音色 ID（见服务商的模型页）。</string>
     <string name="voice_picker_need_key">填好 API Key 后才能获取音色列表和试听。</string>
     <string name="voice_picker_bad_url">地址不对，先改好地址再选音色。</string>
     <string name="voice_picker_no_source">还没有选语音合成来源，先在“我 → 语音消息”里选一个。</string>

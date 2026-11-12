@@ -3,6 +3,7 @@ package isomeria.aichat.data.voice
 import isomeria.aichat.data.llm.LlmEndpoint
 import isomeria.aichat.data.llm.LlmError
 import isomeria.aichat.data.llm.LlmException
+import isomeria.aichat.data.llm.ZhipuErrors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -73,23 +74,52 @@ object VoiceProtocol {
     /** Fish Audio 语音合成（0.7.2） */
     const val FISH_TTS = "fish-tts"
 
+    /** 智谱 BigModel 语音合成 glm-tts，要 wav（0.7.2） */
+    const val ZHIPU_TTS = "zhipu-tts"
+
+    /** 智谱 BigModel 语音识别 glm-asr-2512，单次最长 30 秒，长录音分段（0.7.2） */
+    const val ZHIPU_ASR = "zhipu-asr"
+
+    /** Fish Audio 语音识别 /v1/asr（0.7.2） */
+    const val FISH_ASR = "fish-asr"
+
+    /** OpenRouter 语音合成 /audio/speech：风格要求放 instructions，有的模型只出 pcm（0.7.2） */
+    const val OPENROUTER_TTS = "openrouter-tts"
+
     /** 自定义服务商可以选的通用格式 */
     val custom = listOf(CHAT_AUDIO, OPENAI_AUDIO)
 
-    val all = custom + listOf(VOLC_TTS, VOLC_ASR, QWEN_TTS, QWEN_ASR, MINIMAX_TTS, FISH_TTS)
+    val all = custom + listOf(VOLC_TTS, VOLC_ASR, QWEN_TTS, QWEN_ASR, ZHIPU_TTS, ZHIPU_ASR, MINIMAX_TTS, FISH_TTS, FISH_ASR, OPENROUTER_TTS)
 
     /**
      * 这种格式发不发语气和风格要求：MiMo（单独一条消息）、火山 2.0 音色（context_texts）、百炼（instruction）、
-     * 硅基流动的 CosyVoice2（文字前加指令）；其他的不发
+     * 硅基流动的 CosyVoice2（文字前加指令）、OpenRouter 上支持 instructions 的模型；其他的不发
      */
     fun supportsStyle(protocol: String, model: String): Boolean = when (protocol) {
         CHAT_AUDIO, VOLC_TTS, QWEN_TTS -> true
         OPENAI_AUDIO -> model.startsWith(COSYVOICE_PREFIX)
+        OPENROUTER_TTS -> OpenRouterTts.supportsInstructions(model)
         else -> false
     }
 
     /** 硅基流动 CosyVoice2 的模型名前缀：风格要求写在文字前面，用 <|endofprompt|> 隔开 */
     const val COSYVOICE_PREFIX = "FunAudioLLM/CosyVoice"
+}
+
+/**
+ * OpenRouter 语音合成按模型不同的地方（2026-11-12 按 OpenRouter 文档）：
+ * instructions 只有 OpenAI、Gemini TTS 和 Fish Audio 的模型认；Gemini TTS 和 HeyGen 只出 pcm
+ */
+object OpenRouterTts {
+    fun supportsInstructions(model: String): Boolean {
+        val id = model.trim().lowercase()
+        return id.startsWith("openai/") || id.startsWith("fish-audio/") || (id.startsWith("google/gemini") && id.contains("tts"))
+    }
+
+    fun pcmOnly(model: String): Boolean {
+        val id = model.trim().lowercase()
+        return id.startsWith("google/") || id.startsWith("heygen/")
+    }
 }
 
 /** 一次语音合成：[style] 是语气和风格要求（只对支持的格式生效，不会被读出来）。 */
@@ -155,6 +185,14 @@ class EmptyVoiceResultException : Exception("empty voice result")
  *   `output_format`=hex；`base_resp.status_code` 不为 0 是错误，音频是 `data.audio` 的十六进制。不要下载链接，理由同上
  * - **Fish Audio 合成**（[VoiceProtocol.FISH_TTS]）：POST {Base URL}/v1/tts，请求头 `model` 填模型（如 s2.1-pro），
  *   `reference_id` 是音色，`format`=mp3，返回音频二进制。
+ * - **Fish Audio 识别**（[VoiceProtocol.FISH_ASR]）：POST {Base URL}/v1/asr，multipart 的 `audio`，请求头 `model`（transcribe-1-pro）；
+ *   关掉时间戳、声音事件标签和说话人标记；文字在 `text`，时长（秒）在 `duration`。
+ * - **智谱合成**（[VoiceProtocol.ZHIPU_TTS]）：POST {Base URL}/audio/speech，`model`、`input`（最多 1024 字）、`voice`、
+ *   `response_format`=wav（不能出 mp3），返回音频二进制；没有风格字段。
+ * - **智谱识别**（[VoiceProtocol.ZHIPU_ASR]）：POST {Base URL}/audio/transcriptions，multipart 的 `file`、`model`，单次最长 30 秒，
+ *   长录音分段（见 [AsrSplitter]）。智谱出错时 HTTP 状态码不够用（余额不足也是 429），按返回内容里的错误码分类（[ZhipuErrors]）。
+ * - **OpenRouter 合成**（[VoiceProtocol.OPENROUTER_TTS]）：POST {Base URL}/audio/speech，和标准接口一样，风格要求放 `instructions`；
+ *   Gemini TTS、HeyGen 要 pcm，返回 pcm 时按返回头的采样率包成 WAV（[PcmAudio]）。OpenRouter 识别用标准接口。
  *
  * 除火山（X-Api-Key）外认证都用 `Authorization: Bearer`；只发到用户配置的 Base URL，不跟随重定向。
  * 一次请求最多等 [TIMEOUT_SECONDS] 秒（带思考的聊天模型 90 秒不够是 0.6.0 的教训；语音合成、识别的实际耗时以真机为准）。
@@ -200,8 +238,17 @@ class VoiceApi(client: OkHttpClient, private val json: Json, timeoutMillis: Long
                 miniMaxAudio(parse(text))
             }
             VoiceProtocol.FISH_TTS -> {
-                val headers = request.model.takeIf { it.isNotBlank() }?.let { mapOf("model" to it) }.orEmpty()
-                post(endpoint, "v1/tts", fishTtsBody(request).toString().toRequestBody(JSON_TYPE), headers) { response -> audioBytes(response) }
+                post(endpoint, "v1/tts", fishTtsBody(request).toString().toRequestBody(JSON_TYPE), fishHeaders(request.model)) { response -> audioBytes(response) }
+            }
+            VoiceProtocol.ZHIPU_TTS -> {
+                post(endpoint, "audio/speech", zhipuTtsBody(request).toString().toRequestBody(JSON_TYPE), errorOf = ZhipuErrors::of) { response -> audioBytes(response) }
+            }
+            VoiceProtocol.OPENROUTER_TTS -> {
+                val pcm = OpenRouterTts.pcmOnly(request.model)
+                post(endpoint, "audio/speech", openRouterTtsBody(request).toString().toRequestBody(JSON_TYPE)) { response ->
+                    val type = response.header("Content-Type").orEmpty()
+                    PcmAudio.wrapIfPcm(audioBytes(response), type, requestedPcm = pcm)
+                }
             }
             else -> throw LlmException(LlmError.CONFIGURATION)
         }
@@ -225,7 +272,24 @@ class VoiceApi(client: OkHttpClient, private val json: Json, timeoutMillis: Long
                     .addFormDataPart("file", "audio.wav", request.wav.toRequestBody(WAV_TYPE))
                     .build()
                 val text = post(endpoint, "audio/transcriptions", body) { it.body.string() }
-                AsrResult(parse(text)["text"]?.jsonPrimitive?.contentOrNull.orEmpty().trim())
+                val root = parse(text)
+                // OpenRouter 在 usage.seconds 里给音频时长（0.7.2）；硅基流动没有，按 WAV 长度算
+                val seconds = (root["usage"] as? JsonObject)?.get("seconds")?.jsonPrimitive?.doubleOrNull
+                AsrResult(root["text"]?.jsonPrimitive?.contentOrNull.orEmpty().trim(), seconds)
+            }
+            VoiceProtocol.ZHIPU_ASR -> zhipuTranscribe(endpoint, request)
+            VoiceProtocol.FISH_ASR -> {
+                val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("audio", "audio.wav", request.wav.toRequestBody(WAV_TYPE))
+                    .addFormDataPart("ignore_timestamps", "true")
+                    .addFormDataPart("tag_audio_events", "false")
+                    .addFormDataPart("diarize", "false")
+                    .apply { if (request.language != AsrRequest.LANGUAGE_AUTO) addFormDataPart("language", request.language) }
+                    .build()
+                val text = post(endpoint, "v1/asr", body, fishHeaders(request.model)) { it.body.string() }
+                val root = parse(text)
+                val content = root["text"]?.jsonPrimitive?.contentOrNull.orEmpty().replace(FISH_SPEAKER, "").trim()
+                AsrResult(content, root["duration"]?.jsonPrimitive?.doubleOrNull)
             }
             VoiceProtocol.VOLC_ASR -> {
                 val headers = volcHeaders(endpoint, request.model) + ("X-Api-Sequence" to "-1")
@@ -247,6 +311,7 @@ class VoiceApi(client: OkHttpClient, private val json: Json, timeoutMillis: Long
         path: String,
         body: okhttp3.RequestBody,
         headers: Map<String, String> = emptyMap(),
+        errorOf: ((Int, String) -> LlmException)? = null,
         read: (Response) -> T,
     ): T {
         val builder = Request.Builder()
@@ -255,13 +320,36 @@ class VoiceApi(client: OkHttpClient, private val json: Json, timeoutMillis: Long
         if (VOLC_KEY_HEADER !in headers) builder.header("Authorization", endpoint.authorization())
         headers.forEach { (name, value) -> builder.header(name, value) }
         return client.newCall(builder.build()).awaitResponse().use { response ->
-            if (!response.isSuccessful) throw LlmException.fromHttp(response.code)
+            if (!response.isSuccessful) {
+                // 智谱的余额不足、限流都是 429，要看返回内容里的错误码；只读开头一段，不记录
+                if (errorOf != null) throw errorOf(response.code, runCatching { response.peekBody(ERROR_BODY_LIMIT).string() }.getOrDefault(""))
+                throw LlmException.fromHttp(response.code)
+            }
             try {
                 read(response)
             } catch (e: IOException) {
                 throw LlmException(LlmError.NETWORK, cause = e)
             }
         }
+    }
+
+    /**
+     * 智谱识别：单次最长 30 秒，长录音按 [AsrSplitter] 分段依次识别，后一段带上前面识别出的文字（prompt）作上下文；
+     * 某段没识别出文字（静音）就跳过，任何一段失败整条算失败。智谱不返回时长，用量按 WAV 长度算
+     */
+    private suspend fun zhipuTranscribe(endpoint: LlmEndpoint, request: AsrRequest): AsrResult {
+        var text = ""
+        for (piece in AsrSplitter.split(request.wav)) {
+            val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("model", request.model)
+                .addFormDataPart("file", "audio.wav", piece.toRequestBody(WAV_TYPE))
+                .apply { if (text.isNotEmpty()) addFormDataPart("prompt", text.takeLast(ZHIPU_PROMPT_LIMIT)) }
+                .build()
+            val reply = post(endpoint, "audio/transcriptions", body, errorOf = ZhipuErrors::of) { it.body.string() }
+            val part = parse(reply)["text"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+            text = AsrSplitter.join(text, part)
+        }
+        return AsrResult(text)
     }
 
     /** 有的服务商出错时返回 200 + JSON 说明 */
@@ -358,6 +446,11 @@ class VoiceApi(client: OkHttpClient, private val json: Json, timeoutMillis: Long
 
     companion object {
         const val TIMEOUT_SECONDS = 120L
+        private const val ERROR_BODY_LIMIT = 16_384L
+        /** 智谱 prompt 建议不超过 8000 字 */
+        private const val ZHIPU_PROMPT_LIMIT = 8_000
+        /** Fish Audio 的说话人记号（已经要求不带，以防万一再去掉） */
+        private val FISH_SPEAKER = Regex("<\\|speaker:\\d+\\|>")
         private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
         private val WAV_TYPE = "audio/wav".toMediaType()
         private const val VOLC_KEY_HEADER = "X-Api-Key"
@@ -503,6 +596,27 @@ class VoiceApi(client: OkHttpClient, private val json: Json, timeoutMillis: Long
             put("format", "mp3")
             put("normalize", true)
         }
+
+        /** Fish Audio 用请求头 model 选模型（合成和识别都是）；名字不认识时服务商会悄悄换成默认模型 */
+        fun fishHeaders(model: String): Map<String, String> = model.trim().takeIf { it.isNotEmpty() }?.let { mapOf("model" to it) }.orEmpty()
+
+        /** 智谱合成：只能出 wav 或 pcm，要 wav；没有风格字段；水印参数不发（按服务商默认） */
+        fun zhipuTtsBody(request: TtsRequest): JsonObject = buildJsonObject {
+            put("model", request.model)
+            put("input", request.text)
+            if (request.voice.isNotBlank()) put("voice", request.voice.trim())
+            put("response_format", "wav")
+            put("stream", false)
+        }
+
+        /** OpenRouter 合成：只出 pcm 的模型要 pcm，其他要 mp3；支持的模型风格要求放 instructions */
+        fun openRouterTtsBody(request: TtsRequest): JsonObject = buildJsonObject {
+            put("model", request.model)
+            put("input", request.text)
+            if (request.voice.isNotBlank()) put("voice", request.voice.trim())
+            put("response_format", if (OpenRouterTts.pcmOnly(request.model)) "pcm" else "mp3")
+            if (request.style.isNotBlank() && OpenRouterTts.supportsInstructions(request.model)) put("instructions", request.style.trim())
+        }
     }
 }
 
@@ -586,5 +700,13 @@ object AudioFormats {
             at(0) == 0xFF && (at(1) and 0xE0) == 0xE0 -> "mp3"
             else -> "mp3"
         }
+    }
+
+    /** 文件头能认出是 WAV、Ogg、MP4 或 mp3（0.7.2：区分 OpenRouter 返回的是不是裸 pcm） */
+    fun recognized(bytes: ByteArray): Boolean {
+        fun at(i: Int) = bytes.getOrNull(i)?.toInt()?.and(0xFF) ?: -1
+        fun ascii(from: Int, text: String) = text.indices.all { at(from + it) == text[it].code }
+        return (ascii(0, "RIFF") && ascii(8, "WAVE")) || ascii(0, "OggS") || ascii(4, "ftyp") || ascii(0, "ID3") ||
+            (at(0) == 0xFF && (at(1) and 0xE0) == 0xE0)
     }
 }

@@ -3,6 +3,7 @@ package isomeria.aichat.data.voice
 import isomeria.aichat.data.llm.LlmEndpoint
 import isomeria.aichat.data.llm.LlmError
 import isomeria.aichat.data.llm.LlmException
+import isomeria.aichat.data.llm.ZhipuErrors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -48,6 +49,8 @@ class VoiceCatalogNeedsKeyException : Exception("api key required")
  *   硅基流动另外用 Key 取自己上传的音色
  * - MiniMax：用 Key 从服务商取（系统音色和自己复刻、设计的音色）
  * - Fish Audio：公开音色非常多，按名称到服务商搜索；另外列出自己的音色
+ * - 智谱：内置 7 个系统音色；有 Key 时另外取自己复刻的音色（GET /voice/list?voiceType=PRIVATE）
+ * - OpenRouter：按模型名内置 Gemini TTS、OpenAI 的音色，别的模型没有列表
  * - 系统语音：手机引擎里不联网的中文音色
  *
  * 只请求用户配置的地址，不跟随重定向；不记录返回的内容。
@@ -76,6 +79,10 @@ class VoiceCatalog @Inject constructor(client: OkHttpClient, private val json: J
         when {
             target.protocol == VoiceProtocol.MINIMAX_TTS -> miniMaxVoices(endpoint(target))
             target.protocol == VoiceProtocol.FISH_TTS -> fishMine(endpoint(target)) + fishSearch(endpoint(target), "")
+            target.protocol == VoiceProtocol.ZHIPU_TTS -> {
+                val key = target.apiKey?.takeIf { it.isNotBlank() } ?: return@withContext builtIn
+                zhipuPrivate(LlmEndpoint(target.baseUrl, key)) + builtIn
+            }
             target.presetId == VoicePresets.SILICONFLOW.id && target.protocol == VoiceProtocol.OPENAI_AUDIO -> {
                 // 没有 Key 时只列预置音色
                 val key = target.apiKey?.takeIf { it.isNotBlank() } ?: return@withContext builtIn
@@ -98,8 +105,11 @@ class VoiceCatalog @Inject constructor(client: OkHttpClient, private val json: J
     private fun url(endpoint: LlmEndpoint, path: String) =
         (endpoint.baseUrl.trim().trimEnd('/') + "/" + path).toHttpUrlOrNull() ?: throw LlmException(LlmError.CONFIGURATION)
 
-    private suspend fun get(request: Request): JsonObject = client.newCall(request).awaitResponse().use { response ->
-        if (!response.isSuccessful) throw LlmException.fromHttp(response.code)
+    private suspend fun get(request: Request, errorOf: ((Int, String) -> LlmException)? = null): JsonObject = client.newCall(request).awaitResponse().use { response ->
+        if (!response.isSuccessful) {
+            if (errorOf != null) throw errorOf(response.code, runCatching { response.peekBody(16_384).string() }.getOrDefault(""))
+            throw LlmException.fromHttp(response.code)
+        }
         try {
             json.parseToJsonElement(response.body.string()).jsonObject
         } catch (e: java.io.IOException) {
@@ -143,6 +153,18 @@ class VoiceCatalog @Inject constructor(client: OkHttpClient, private val json: J
         }
     }
 
+    /** 智谱：自己复刻的音色（系统音色内置）；名称、创建时间做说明 */
+    private suspend fun zhipuPrivate(endpoint: LlmEndpoint): List<VoiceOption> {
+        val url = url(endpoint, "voice/list").newBuilder().addQueryParameter("voiceType", "PRIVATE").build()
+        val root = get(Request.Builder().url(url).header("Authorization", endpoint.authorization()).get().build(), ZhipuErrors::of)
+        return (root["voice_list"] as? JsonArray).orEmpty().mapNotNull { element ->
+            val item = element as? JsonObject ?: return@mapNotNull null
+            val id = item["voice"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            if (item["voice_type"]?.jsonPrimitive?.contentOrNull?.equals("OFFICIAL", ignoreCase = true) == true) return@mapNotNull null
+            VoiceOption(id, item["voice_name"]?.jsonPrimitive?.contentOrNull?.ifBlank { null } ?: id, item["create_time"]?.jsonPrimitive?.contentOrNull.orEmpty(), GROUP_MINE)
+        }
+    }
+
     private suspend fun fishModels(endpoint: LlmEndpoint, query: String, mine: Boolean): List<VoiceOption> {
         val url = url(endpoint, "model").newBuilder()
             .addQueryParameter("page_size", if (mine) "100" else FISH_PAGE.toString())
@@ -172,6 +194,7 @@ class VoiceCatalog @Inject constructor(client: OkHttpClient, private val json: J
         /** 这个来源能不能打开音色列表：系统语音、有内置列表的、能从服务商取或搜索的 */
         fun supports(presetId: String?, protocol: String, systemTts: Boolean = false): Boolean = systemTts ||
             protocol == VoiceProtocol.VOLC_TTS || protocol == VoiceProtocol.QWEN_TTS ||
+            protocol == VoiceProtocol.ZHIPU_TTS || protocol == VoiceProtocol.OPENROUTER_TTS ||
             protocol == VoiceProtocol.MINIMAX_TTS || protocol == VoiceProtocol.FISH_TTS ||
             (presetId == VoicePresets.MIMO.id && protocol == VoiceProtocol.CHAT_AUDIO) ||
             (presetId == VoicePresets.SILICONFLOW.id && protocol == VoiceProtocol.OPENAI_AUDIO)

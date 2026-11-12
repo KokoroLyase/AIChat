@@ -62,7 +62,7 @@ open class OpenAiCompatibleProvider(
             .get()
             .build()
         val body = client.newCall(request).await().use { response ->
-            if (!response.isSuccessful) throw LlmException.fromHttp(response.code)
+            if (!response.isSuccessful) throw httpError(response)
             try {
                 response.body.string()
             } catch (e: IOException) {
@@ -90,6 +90,10 @@ open class OpenAiCompatibleProvider(
         }
     }
 
+    /** 出错时先看返回内容里的错误码（智谱的余额不足也是 429，见 [ZhipuErrors]）；只读开头一段，不记录 */
+    private fun httpError(response: okhttp3.Response): LlmException =
+        ZhipuErrors.of(response.code, runCatching { response.peekBody(ERROR_BODY_LIMIT).string() }.getOrDefault(""))
+
     override fun streamChat(endpoint: LlmEndpoint, request: ChatRequest): Flow<ChatEvent> = callbackFlow {
         val authorization = endpoint.authorization()
         val body = buildBody(request).toString()
@@ -104,7 +108,7 @@ open class OpenAiCompatibleProvider(
         val reader = launch(Dispatchers.IO) {
             try {
                 call.execute().use { response ->
-                    if (!response.isSuccessful) throw LlmException.fromHttp(response.code)
+                    if (!response.isSuccessful) throw httpError(response)
                     val source = response.body.source()
                     val parser = SseParser()
                     while (true) {
@@ -154,6 +158,7 @@ open class OpenAiCompatibleProvider(
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        const val ERROR_BODY_LIMIT = 16_384L
     }
 }
 

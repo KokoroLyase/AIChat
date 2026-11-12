@@ -904,6 +904,18 @@ class ScreenshotTest {
     @Test fun voiceEditVolcLight() = shot("71-voice-provider-edit-volcengine", false) { VoiceEditPage(voiceEditVolc) }
     @Test fun voiceEditVolcDark() = shot("71-voice-provider-edit-volcengine", true) { VoiceEditPage(voiceEditVolc) }
     @Test fun voiceEditQwenLight() = shot("71-voice-provider-edit-qwen", false) { VoiceEditPage(voiceEditQwen) }
+    private val voiceEditZhipuAsr = isomeria.aichat.feature.voice.VoiceProviderEditState(
+        loaded = true, kind = isomeria.aichat.data.db.ProviderKind.ASR, presetId = "zhipu",
+        protocol = isomeria.aichat.data.voice.VoiceProtocol.ZHIPU_ASR, name = "BigModel（智谱）",
+        baseUrl = "https://open.bigmodel.cn/api/paas/v4", model = "glm-asr-2512", use = true,
+    )
+    private val voiceEditOpenRouter = isomeria.aichat.feature.voice.VoiceProviderEditState(
+        loaded = true, kind = isomeria.aichat.data.db.ProviderKind.TTS, presetId = "openrouter",
+        protocol = isomeria.aichat.data.voice.VoiceProtocol.OPENROUTER_TTS, name = "OpenRouter",
+        baseUrl = "https://openrouter.ai/api/v1", model = "google/gemini-3.8-flash-tts", voice = "Kore",
+    )
+    @Test fun voiceEditZhipuAsrLight() = shot("71-voice-provider-edit-zhipu-asr", false) { VoiceEditPage(voiceEditZhipuAsr) }
+    @Test fun voiceEditOpenRouterDark() = shot("71-voice-provider-edit-openrouter", true) { VoiceEditPage(voiceEditOpenRouter) }
 
     private val pickerSample = isomeria.aichat.feature.voice.VoicePickerState(
         open = true, options = isomeria.aichat.data.voice.BuiltInVoices.QWEN.take(12), current = "longanhuan_v3.1",
@@ -919,6 +931,16 @@ class ScreenshotTest {
     @Test fun voicePickerNeedKeyLight() = shot("74-voice-picker-need-key", false) {
         PickerPage(isomeria.aichat.feature.voice.VoicePickerState(open = true, error = isomeria.aichat.feature.voice.PickerMessage(isomeria.aichat.R.string.voice_picker_need_key)))
     }
+    @Test fun voicePickerZhipuLight() = shot("74-voice-picker-zhipu", false) {
+        PickerPage(
+            isomeria.aichat.feature.voice.VoicePickerState(
+                open = true, current = "tongtong",
+                options = listOf(isomeria.aichat.data.voice.VoiceOption("voice_clone_1", "我的声音", "2026-11-01 10:00:00", isomeria.aichat.data.voice.VoiceCatalog.GROUP_MINE)) +
+                    isomeria.aichat.data.voice.BuiltInVoices.ZHIPU,
+            ),
+        )
+    }
+    @Test fun voicePickerNoListDark() = shot("74-voice-picker-no-list", true) { PickerPage(isomeria.aichat.feature.voice.VoicePickerState(open = true)) }
     @Test fun voicePickerFailedDark() = shot("74-voice-picker-failed", true) {
         PickerPage(pickerSample.copy(previewError = isomeria.aichat.feature.voice.PickerMessage(isomeria.aichat.R.string.voice_picker_preview_failed, isomeria.aichat.R.string.error_auth)))
     }

@@ -110,6 +110,10 @@ internal fun protocolLabel(protocol: String): Int = when (protocol) {
     VoiceProtocol.QWEN_ASR -> R.string.voice_protocol_qwen_asr
     VoiceProtocol.MINIMAX_TTS -> R.string.voice_protocol_minimax_tts
     VoiceProtocol.FISH_TTS -> R.string.voice_protocol_fish_tts
+    VoiceProtocol.FISH_ASR -> R.string.voice_protocol_fish_asr
+    VoiceProtocol.ZHIPU_TTS -> R.string.voice_protocol_zhipu_tts
+    VoiceProtocol.ZHIPU_ASR -> R.string.voice_protocol_zhipu_asr
+    VoiceProtocol.OPENROUTER_TTS -> R.string.voice_protocol_openrouter_tts
     else -> R.string.voice_protocol_openai_audio
 }
 
@@ -631,7 +635,7 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
                 buildString {
                     append(stringResource(R.string.llm_base_url_note))
                     if (preset == null) append("\n").append(stringResource(R.string.voice_protocol_note))
-                    protocolNote(state.protocol)?.let { append("\n").append(stringResource(it)) }
+                    protocolNote(state.protocol, state.presetId)?.let { append("\n").append(stringResource(it)) }
                     if (tts) {
                         append("\n").append(stringResource(R.string.voice_voice_note))
                         append("\n").append(
@@ -686,11 +690,19 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
     }
 }
 
-/** 这种格式要额外说明的：火山的“模型”填资源 ID，百炼的地址要换成业务空间地址 */
-internal fun protocolNote(protocol: String): Int? = when (protocol) {
-    VoiceProtocol.VOLC_TTS, VoiceProtocol.VOLC_ASR -> R.string.voice_volc_note
-    VoiceProtocol.QWEN_TTS, VoiceProtocol.QWEN_ASR -> R.string.voice_workspace_note
-    VoiceProtocol.FISH_TTS -> R.string.voice_fish_note
+/**
+ * 这种格式要额外说明的：火山的“模型”填资源 ID，百炼的地址要换成业务空间地址，Fish Audio 和 OpenRouter 在海外，
+ * 智谱识别长录音分段；OpenRouter 识别用的是标准接口，按预置区分
+ */
+internal fun protocolNote(protocol: String, presetId: String? = null): Int? = when {
+    protocol == VoiceProtocol.VOLC_TTS || protocol == VoiceProtocol.VOLC_ASR -> R.string.voice_volc_note
+    protocol == VoiceProtocol.QWEN_TTS || protocol == VoiceProtocol.QWEN_ASR -> R.string.voice_workspace_note
+    protocol == VoiceProtocol.FISH_TTS -> R.string.voice_fish_note
+    protocol == VoiceProtocol.FISH_ASR -> R.string.voice_fish_asr_note
+    protocol == VoiceProtocol.ZHIPU_TTS -> R.string.voice_zhipu_tts_note
+    protocol == VoiceProtocol.ZHIPU_ASR -> R.string.voice_zhipu_asr_note
+    protocol == VoiceProtocol.OPENROUTER_TTS -> R.string.voice_openrouter_tts_note
+    presetId == VoicePresets.OPENROUTER.id && protocol == VoiceProtocol.OPENAI_AUDIO -> R.string.voice_openrouter_asr_note
     else -> null
 }
 

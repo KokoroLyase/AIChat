@@ -228,7 +228,8 @@ fun VoicePickerContent(
                         Text(stringResource(R.string.voice_picker_loading), style = WeTheme.typography.small, color = colors.textTertiary)
                     }
                 } else if (visible.isEmpty() && state.error == null) {
-                    FootnoteText(stringResource(R.string.voice_picker_empty))
+                    // 一个都没有（OpenRouter 上没有内置列表的模型）时说明要手填，不说换关键词
+                    FootnoteText(stringResource(if (state.options.isEmpty() && !state.remoteSearch) R.string.voice_picker_no_list else R.string.voice_picker_empty))
                 }
             }
             val groups = visible.groupBy { it.group }

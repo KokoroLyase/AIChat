@@ -39,8 +39,9 @@ class VoiceCatalogTest {
 
     @Test
     fun presetOrder_isWhatTheUserAskedFor() {
-        assertEquals(listOf("volcengine", "qwen", "mimo", "minimax", "fish", "siliconflow"), VoicePresets.forKind(ProviderKind.TTS).map { it.id })
-        assertEquals(listOf("volcengine", "qwen", "mimo", "siliconflow"), VoicePresets.forKind(ProviderKind.ASR).map { it.id })
+        assertEquals(listOf("volcengine", "qwen", "zhipu", "mimo", "minimax", "fish", "siliconflow", "openrouter"), VoicePresets.forKind(ProviderKind.TTS).map { it.id })
+        assertEquals(listOf("volcengine", "qwen", "zhipu", "mimo", "fish", "siliconflow", "openrouter"), VoicePresets.forKind(ProviderKind.ASR).map { it.id })
+        assertEquals("all 包含两边的全部预置", (VoicePresets.forKind(ProviderKind.TTS) + VoicePresets.forKind(ProviderKind.ASR)).toSet(), VoicePresets.all.toSet())
         assertTrue(VoicePresets.forKind(ProviderKind.ASR).all { it.supports(ProviderKind.ASR) })
     }
 
@@ -64,7 +65,7 @@ class VoiceCatalogTest {
 
     @Test
     fun builtInLists_haveUniqueIds_andCoverEachPreset() {
-        for (list in listOf(BuiltInVoices.MIMO, BuiltInVoices.VOLCENGINE, BuiltInVoices.QWEN, BuiltInVoices.siliconFlow("m"))) {
+        for (list in listOf(BuiltInVoices.MIMO, BuiltInVoices.VOLCENGINE, BuiltInVoices.QWEN, BuiltInVoices.siliconFlow("m"), BuiltInVoices.ZHIPU, BuiltInVoices.GEMINI, BuiltInVoices.OPENAI)) {
             assertEquals(list.size, list.map { it.id }.toSet().size)
             assertTrue(list.all { it.name.isNotBlank() && it.group.isNotBlank() })
         }
@@ -74,6 +75,64 @@ class VoiceCatalogTest {
         assertNull("自定义服务商没有内置列表", BuiltInVoices.forTarget(VoiceTarget(null, VoiceProtocol.CHAT_AUDIO, "https://x", null, "m")))
         assertFalse(VoiceCatalog.supports(null, VoiceProtocol.OPENAI_AUDIO))
         assertTrue(VoiceCatalog.supports(null, "", systemTts = true))
+    }
+
+    @Test
+    fun newPresets_modelsAndProtocolsAsAgreed() {
+        // 2026-11-12：Fish transcribe-1 年底下线，用 pro；OpenAI gpt-4o-mini-tts 2027-01 关停，OpenRouter 合成默认用 Gemini
+        assertEquals("transcribe-1-pro", VoicePresets.FISH.asr!!.model)
+        assertEquals(VoiceProtocol.FISH_ASR, VoicePresets.FISH.asr!!.protocol)
+        assertEquals(VoiceProtocol.ZHIPU_TTS, VoicePresets.ZHIPU.tts!!.protocol)
+        assertEquals(VoiceProtocol.ZHIPU_ASR, VoicePresets.ZHIPU.asr!!.protocol)
+        assertEquals("glm-asr-2512", VoicePresets.ZHIPU.asr!!.model)
+        assertEquals(VoiceProtocol.OPENROUTER_TTS, VoicePresets.OPENROUTER.tts!!.protocol)
+        assertEquals("google/gemini-3.8-flash-tts", VoicePresets.OPENROUTER.tts!!.model)
+        assertEquals("OpenRouter 识别用标准接口", VoiceProtocol.OPENAI_AUDIO, VoicePresets.OPENROUTER.asr!!.protocol)
+        assertEquals("openai/whisper-large-v3", VoicePresets.OPENROUTER.asr!!.model)
+        assertTrue(VoiceCatalog.supports("zhipu", VoiceProtocol.ZHIPU_TTS))
+        assertTrue(VoiceCatalog.supports("openrouter", VoiceProtocol.OPENROUTER_TTS))
+        assertFalse("识别没有音色", VoiceCatalog.supports("fish", VoiceProtocol.FISH_ASR))
+    }
+
+    @Test
+    fun openRouter_builtInByModel_otherModelsHaveNone() = runBlocking {
+        fun target(model: String) = VoiceTarget("openrouter", VoiceProtocol.OPENROUTER_TTS, base(), "sk", model)
+        assertEquals(BuiltInVoices.GEMINI, catalog.list(target("google/gemini-3.8-flash-tts")))
+        assertEquals(30, BuiltInVoices.GEMINI.size)
+        assertEquals(BuiltInVoices.OPENAI, catalog.list(target("openai/gpt-4o-mini-tts-2025-12-15")))
+        assertEquals(13, BuiltInVoices.OPENAI.size)
+        assertTrue(catalog.list(target("mistralai/voxtral-mini-tts-2603")).isEmpty())
+        assertEquals("OpenRouter 没有音色接口，不发请求", 0, server.requestCount)
+    }
+
+    @Test
+    fun zhipu_privateVoicesBeforeSystem_withoutKeyOnlySystem_errorsByCode() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder().body(
+                """{"voice_list":[{"voice":"voice_clone_1","voice_name":"我的声音","voice_type":"PRIVATE","download_url":"https://x","create_time":"2026-11-01 10:00:00"},
+                   {"voice":"tongtong","voice_name":"彤彤","voice_type":"OFFICIAL"}]}""",
+            ).build(),
+        )
+        val target = VoiceTarget("zhipu", VoiceProtocol.ZHIPU_TTS, base(), "sk-test", "glm-tts")
+        val list = catalog.list(target)
+        assertEquals("voice_clone_1", list.first().id)
+        assertEquals("我的声音", list.first().name)
+        assertEquals(VoiceCatalog.GROUP_MINE, list.first().group)
+        assertEquals("系统音色不重复", 1 + BuiltInVoices.ZHIPU.size, list.size)
+        val recorded = server.takeRequest()
+        assertEquals("GET", recorded.method)
+        assertEquals("/v1/voice/list", recorded.url.encodedPath)
+        assertEquals("PRIVATE", recorded.url.queryParameter("voiceType"))
+        assertEquals("Bearer sk-test", recorded.headers["Authorization"])
+        assertEquals(BuiltInVoices.ZHIPU, catalog.list(target.copy(apiKey = null)))
+        assertEquals(1, server.requestCount)
+        server.enqueue(MockResponse.Builder().code(429).body("""{"error":{"code":"1113","message":"x"}}""").build())
+        try {
+            catalog.list(target)
+            fail("余额不足")
+        } catch (e: LlmException) {
+            assertEquals(LlmError.BALANCE, e.error)
+        }
     }
 
     @Test

@@ -1194,5 +1194,311 @@
    "detail": "欢快男声",
    "group": "男声"
   }
+ ],
+ "zhipu": [
+  {
+   "id": "tongtong",
+   "name": "彤彤",
+   "detail": "默认音色",
+   "group": "系统音色"
+  },
+  {
+   "id": "chuichui",
+   "name": "锤锤",
+   "detail": "",
+   "group": "系统音色"
+  },
+  {
+   "id": "xiaochen",
+   "name": "小陈",
+   "detail": "",
+   "group": "系统音色"
+  },
+  {
+   "id": "jam",
+   "name": "jam",
+   "detail": "",
+   "group": "动动动物圈"
+  },
+  {
+   "id": "kazi",
+   "name": "kazi",
+   "detail": "",
+   "group": "动动动物圈"
+  },
+  {
+   "id": "douji",
+   "name": "douji",
+   "detail": "",
+   "group": "动动动物圈"
+  },
+  {
+   "id": "luodo",
+   "name": "luodo",
+   "detail": "",
+   "group": "动动动物圈"
+  }
+ ],
+ "gemini": [
+  {
+   "id": "Zephyr",
+   "name": "Zephyr",
+   "detail": "明亮",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Puck",
+   "name": "Puck",
+   "detail": "欢快",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Charon",
+   "name": "Charon",
+   "detail": "知性",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Kore",
+   "name": "Kore",
+   "detail": "坚定",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Fenrir",
+   "name": "Fenrir",
+   "detail": "兴奋",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Leda",
+   "name": "Leda",
+   "detail": "年轻",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Orus",
+   "name": "Orus",
+   "detail": "坚定",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Aoede",
+   "name": "Aoede",
+   "detail": "轻快",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Callirrhoe",
+   "name": "Callirrhoe",
+   "detail": "随和",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Autonoe",
+   "name": "Autonoe",
+   "detail": "明亮",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Enceladus",
+   "name": "Enceladus",
+   "detail": "带气声",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Iapetus",
+   "name": "Iapetus",
+   "detail": "清晰",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Umbriel",
+   "name": "Umbriel",
+   "detail": "随和",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Algieba",
+   "name": "Algieba",
+   "detail": "顺滑",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Despina",
+   "name": "Despina",
+   "detail": "顺滑",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Erinome",
+   "name": "Erinome",
+   "detail": "清晰",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Algenib",
+   "name": "Algenib",
+   "detail": "沙哑",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Rasalgethi",
+   "name": "Rasalgethi",
+   "detail": "知性",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Laomedeia",
+   "name": "Laomedeia",
+   "detail": "欢快",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Achernar",
+   "name": "Achernar",
+   "detail": "柔和",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Alnilam",
+   "name": "Alnilam",
+   "detail": "坚定",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Schedar",
+   "name": "Schedar",
+   "detail": "平稳",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Gacrux",
+   "name": "Gacrux",
+   "detail": "成熟",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Pulcherrima",
+   "name": "Pulcherrima",
+   "detail": "直率",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Achird",
+   "name": "Achird",
+   "detail": "友好",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Zubenelgenubi",
+   "name": "Zubenelgenubi",
+   "detail": "随意",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Vindemiatrix",
+   "name": "Vindemiatrix",
+   "detail": "温柔",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Sadachbia",
+   "name": "Sadachbia",
+   "detail": "活泼",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Sadaltager",
+   "name": "Sadaltager",
+   "detail": "博学",
+   "group": "Gemini TTS"
+  },
+  {
+   "id": "Sulafat",
+   "name": "Sulafat",
+   "detail": "温暖",
+   "group": "Gemini TTS"
+  }
+ ],
+ "openai": [
+  {
+   "id": "alloy",
+   "name": "alloy",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "ash",
+   "name": "ash",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "ballad",
+   "name": "ballad",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "coral",
+   "name": "coral",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "echo",
+   "name": "echo",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "fable",
+   "name": "fable",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "nova",
+   "name": "nova",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "onyx",
+   "name": "onyx",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "sage",
+   "name": "sage",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "shimmer",
+   "name": "shimmer",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "verse",
+   "name": "verse",
+   "detail": "",
+   "group": "OpenAI"
+  },
+  {
+   "id": "marin",
+   "name": "marin",
+   "detail": "官方推荐",
+   "group": "OpenAI"
+  },
+  {
+   "id": "cedar",
+   "name": "cedar",
+   "detail": "官方推荐",
+   "group": "OpenAI"
+  }
  ]
 }

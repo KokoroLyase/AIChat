@@ -15,7 +15,10 @@ object WavFormat {
     const val BYTES_PER_SECOND = SAMPLE_RATE * CHANNELS * BITS / 8
 
     /** 文件头；[dataBytes] 是后面 PCM 的字节数 */
-    fun header(dataBytes: Long): ByteArray {
+    fun header(dataBytes: Long): ByteArray = header(dataBytes, SAMPLE_RATE, CHANNELS)
+
+    /** 任意采样率和声道数的 16 位 PCM 文件头（0.7.2：OpenRouter 返回的 pcm、智谱识别的分段） */
+    fun header(dataBytes: Long, sampleRate: Int, channels: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream(HEADER_BYTES)
         fun int(v: Long) = repeat(4) { out.write(((v shr (8 * it)) and 0xFF).toInt()) }
         fun short(v: Int) = repeat(2) { out.write((v shr (8 * it)) and 0xFF) }
@@ -25,10 +28,10 @@ object WavFormat {
         out.write("fmt ".toByteArray(Charsets.US_ASCII))
         int(16)
         short(1) // PCM
-        short(CHANNELS)
-        int(SAMPLE_RATE.toLong())
-        int(BYTES_PER_SECOND.toLong())
-        short(CHANNELS * BITS / 8)
+        short(channels)
+        int(sampleRate.toLong())
+        int(sampleRate.toLong() * channels * BITS / 8)
+        short(channels * BITS / 8)
         short(BITS)
         out.write("data".toByteArray(Charsets.US_ASCII))
         int(dataBytes)
