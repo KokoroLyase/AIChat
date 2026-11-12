@@ -195,4 +195,180 @@ class VoiceApiTest {
         assertEquals(1_000L, WavFormat.durationMillis(44 + 32_000L))
         assertTrue(WavFormat.isWav(WavFormat.wrap(ByteArray(2))))
     }
+
+    // ---------- 0.7.2 各家服务商的格式（按 2026-11-12 的官方文档） ----------
+
+    private fun b64(bytes: ByteArray) = Base64.getEncoder().encodeToString(bytes)
+
+    @Test
+    fun volcTts_apiKeyHeaderNotBearer_resourceIdFromModel_concatsChunks_contextTexts() = runBlocking {
+        val first = byteArrayOf(0x49, 0x44, 0x33, 1)
+        val second = byteArrayOf(2, 3, 4)
+        // 分块返回：两段音频（中间夹着一段没有音频的字幕），最后 20000000 结束；第二段和第一段之间没有换行
+        server.enqueue(
+            MockResponse.Builder().body(
+                """{"code":0,"message":"","data":"${b64(first)}"}{"code":0,"data":null,"sentence":{"text":"你好"}}
+                |{"code":0,"message":"","data":"${b64(second)}"}
+                |{"code":20000000,"message":"ok","data":null}""".trimMargin(),
+            ).build(),
+        )
+        val audio = api.synthesize(VoiceProtocol.VOLC_TTS, endpoint(), TtsRequest("seed-tts-2.0", "你好", "zh_female_vv_uranus_bigtts", "开心一点"))
+        assertArrayEquals(first + second, audio.bytes)
+        val recorded = server.takeRequest()
+        assertEquals("/v1/tts/unidirectional", recorded.url.encodedPath)
+        assertEquals("sk-test", recorded.headers["X-Api-Key"])
+        assertEquals("火山不用 Bearer", null, recorded.headers["Authorization"])
+        assertEquals("seed-tts-2.0", recorded.headers["X-Api-Resource-Id"])
+        assertTrue(recorded.headers["X-Api-Request-Id"]!!.length >= 32)
+        val params = json.parseToJsonElement(recorded.body!!.utf8()).jsonObject["req_params"]!!.jsonObject
+        assertEquals("你好", params["text"]!!.jsonPrimitive.content)
+        assertEquals("zh_female_vv_uranus_bigtts", params["speaker"]!!.jsonPrimitive.content)
+        assertEquals("mp3", params["audio_params"]!!.jsonObject["format"]!!.jsonPrimitive.content)
+        val additions = json.parseToJsonElement(params["additions"]!!.jsonPrimitive.content).jsonObject
+        assertEquals("开心一点", additions["context_texts"]!!.jsonArray.single().jsonPrimitive.content)
+    }
+
+    @Test
+    fun volcTts_errorCodeInChunk_mapsToConfiguration_andNoStyleMeansNoAdditions() = runBlocking {
+        server.enqueue(MockResponse.Builder().body("""{"code":45000000,"message":"speaker permission denied","data":null}""").build())
+        expectError(LlmError.CONFIGURATION) { api.synthesize(VoiceProtocol.VOLC_TTS, endpoint(), TtsRequest("seed-tts-2.0", "你好", "x")) }
+        assertFalse(VoiceApi.volcTtsBody(TtsRequest("m", "t", "v", " ")).getValue("req_params").jsonObject.containsKey("additions"))
+    }
+
+    @Test
+    fun volcAsr_headersAndBase64Body_readsTextAndDurationFromStatusHeader() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder().addHeader("X-Api-Status-Code", "20000000")
+                .body("""{"audio_info":{"duration":2500},"result":{"text":"  你好呀 ","utterances":[]}}""").build(),
+        )
+        val result = api.transcribe(VoiceProtocol.VOLC_ASR, endpoint(), AsrRequest("volc.bigasr.auc_turbo", wav))
+        assertEquals("你好呀", result.text)
+        assertEquals(2.5, result.seconds!!, 0.001)
+        val recorded = server.takeRequest()
+        assertEquals("/v1/auc/bigmodel/recognize/flash", recorded.url.encodedPath)
+        assertEquals("sk-test", recorded.headers["X-Api-Key"])
+        assertEquals("volc.bigasr.auc_turbo", recorded.headers["X-Api-Resource-Id"])
+        assertEquals("-1", recorded.headers["X-Api-Sequence"])
+        val body = json.parseToJsonElement(recorded.body!!.utf8()).jsonObject
+        assertArrayEquals(wav, Base64.getDecoder().decode(body["audio"]!!.jsonObject["data"]!!.jsonPrimitive.content))
+        assertEquals("bigmodel", body["request"]!!.jsonObject["model_name"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun volcAsr_silenceIsEmpty_andServerBusyIsServerError() = runBlocking {
+        server.enqueue(MockResponse.Builder().addHeader("X-Api-Status-Code", "20000003").body("{}").build())
+        expectError(LlmError.UNKNOWN) { api.transcribe(VoiceProtocol.VOLC_ASR, endpoint(), AsrRequest("r", wav)) }
+        server.enqueue(MockResponse.Builder().addHeader("X-Api-Status-Code", "55000031").body("{}").build())
+        expectError(LlmError.SERVER) { api.transcribe(VoiceProtocol.VOLC_ASR, endpoint(), AsrRequest("r", wav)) }
+    }
+
+    @Test
+    fun qwenTts_sseHeader_instruction_concatsAudioChunks_ignoresFinalUrl() = runBlocking {
+        val first = byteArrayOf(0x49, 0x44, 0x33, 9)
+        val second = byteArrayOf(8, 7)
+        server.enqueue(
+            MockResponse.Builder().addHeader("Content-Type", "text/event-stream").body(
+                """id:1
+                |event:result
+                |data:{"output":{"finish_reason":"null","audio":{"data":"${b64(first)}","url":""}},"request_id":"r"}
+                |
+                |id:2
+                |data:{"output":{"finish_reason":"null","audio":{"data":"${b64(second)}","url":""}},"request_id":"r"}
+                |
+                |id:3
+                |data:{"output":{"finish_reason":"stop","audio":{"data":"","url":"https://elsewhere.example/a.mp3"}},"usage":{"characters":2},"request_id":"r"}
+                |""".trimMargin(),
+            ).build(),
+        )
+        val audio = api.synthesize(VoiceProtocol.QWEN_TTS, endpoint(), TtsRequest("qwen-audio-3.1-tts-flash", "你好", "longanhuan_v3.1", "用撒娇的语气"))
+        assertArrayEquals(first + second, audio.bytes)
+        val recorded = server.takeRequest()
+        assertEquals("/v1/services/audio/tts/SpeechSynthesizer", recorded.url.encodedPath)
+        assertEquals("enable", recorded.headers["X-DashScope-SSE"])
+        assertEquals("Bearer sk-test", recorded.headers["Authorization"])
+        val input = json.parseToJsonElement(recorded.body!!.utf8()).jsonObject["input"]!!.jsonObject
+        assertEquals("longanhuan_v3.1", input["voice"]!!.jsonPrimitive.content)
+        assertEquals("mp3", input["format"]!!.jsonPrimitive.content)
+        assertEquals("用撒娇的语气", input["instruction"]!!.jsonPrimitive.content)
+        assertEquals("只请求一次，不去下载别的域名上的链接", 1, server.requestCount)
+    }
+
+    @Test
+    fun qwenTts_errorEvent_isMapped() = runBlocking {
+        server.enqueue(MockResponse.Builder().body("data:{\"code\":\"InvalidParameter\",\"message\":\"voice not found\",\"request_id\":\"r\"}\n\n").build())
+        expectError(LlmError.CONFIGURATION) { api.synthesize(VoiceProtocol.QWEN_TTS, endpoint(), TtsRequest("m", "t", "v")) }
+        assertFalse(VoiceApi.qwenTtsBody(TtsRequest("m", "t", "v")).getValue("input").jsonObject.containsKey("instruction"))
+    }
+
+    @Test
+    fun qwenAsr_autoLanguageIsOmitted_itnOn_readsContentAndSeconds() = runBlocking {
+        server.enqueue(MockResponse.Builder().body("""{"choices":[{"message":{"role":"assistant","content":"在吗"}}],"usage":{"seconds":3}}""").build())
+        val result = api.transcribe(VoiceProtocol.QWEN_ASR, endpoint(), AsrRequest("qwen3-asr-flash", wav))
+        assertEquals("在吗", result.text)
+        assertEquals(3.0, result.seconds!!, 0.0)
+        val (path, body) = sent()
+        assertEquals("/v1/chat/completions", path)
+        val options = body["asr_options"]!!.jsonObject
+        assertFalse("语种不确定时不发 language", options.containsKey("language"))
+        assertEquals("true", options["enable_itn"]!!.jsonPrimitive.content)
+        val audio = body["messages"]!!.jsonArray.single().jsonObject["content"]!!.jsonArray.single().jsonObject
+        assertEquals("input_audio", audio["type"]!!.jsonPrimitive.content)
+        assertTrue(audio["input_audio"]!!.jsonObject["data"]!!.jsonPrimitive.content.startsWith("data:audio/wav;base64,"))
+    }
+
+    @Test
+    fun miniMaxTts_hexAudio_voiceSetting_andBaseRespErrors() = runBlocking {
+        server.enqueue(MockResponse.Builder().body("""{"data":{"audio":"4944330102ff","status":2},"base_resp":{"status_code":0,"status_msg":"success"}}""").build())
+        val audio = api.synthesize(VoiceProtocol.MINIMAX_TTS, endpoint(), TtsRequest("speech-2.8-hd", "你好", "male-qn-qingse"))
+        assertArrayEquals(byteArrayOf(0x49, 0x44, 0x33, 1, 2, 0xFF.toByte()), audio.bytes)
+        val (path, body) = sent()
+        assertEquals("/v1/t2a_v2", path)
+        assertEquals("male-qn-qingse", body["voice_setting"]!!.jsonObject["voice_id"]!!.jsonPrimitive.content)
+        assertEquals("mp3", body["audio_setting"]!!.jsonObject["format"]!!.jsonPrimitive.content)
+        assertEquals("hex", body["output_format"]!!.jsonPrimitive.content)
+        assertEquals("false", body["stream"]!!.jsonPrimitive.content)
+
+        server.enqueue(MockResponse.Builder().body("""{"base_resp":{"status_code":1004,"status_msg":"auth failed"}}""").build())
+        expectError(LlmError.AUTH) { api.synthesize(VoiceProtocol.MINIMAX_TTS, endpoint(), TtsRequest("m", "t", "v")) }
+        server.enqueue(MockResponse.Builder().body("""{"base_resp":{"status_code":1008,"status_msg":"insufficient balance"}}""").build())
+        expectError(LlmError.BALANCE) { api.synthesize(VoiceProtocol.MINIMAX_TTS, endpoint(), TtsRequest("m", "t", "v")) }
+    }
+
+    @Test
+    fun fishTts_modelHeader_referenceId_binaryAudio() = runBlocking {
+        server.enqueue(MockResponse.Builder().addHeader("Content-Type", "audio/mpeg").body(Buffer().write(mp3)).build())
+        val audio = api.synthesize(VoiceProtocol.FISH_TTS, endpoint(), TtsRequest("s2.1-pro", "你好", "abc123"))
+        assertArrayEquals(mp3, audio.bytes)
+        val recorded = server.takeRequest()
+        assertEquals("/v1/v1/tts", recorded.url.encodedPath)
+        assertEquals("s2.1-pro", recorded.headers["model"])
+        assertEquals("Bearer sk-test", recorded.headers["Authorization"])
+        val body = json.parseToJsonElement(recorded.body!!.utf8()).jsonObject
+        assertEquals("abc123", body["reference_id"]!!.jsonPrimitive.content)
+        assertEquals("mp3", body["format"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun cosyVoiceStyle_isWrittenBeforeText_withEndOfPromptToken() {
+        val body = VoiceApi.openAiTtsBody(TtsRequest("FunAudioLLM/CosyVoice2-0.5B", "今天好开心", "FunAudioLLM/CosyVoice2-0.5B:anna", "用开心的语气说"))
+        assertEquals("用开心的语气说<|endofprompt|>今天好开心", body["input"]!!.jsonPrimitive.content)
+        assertTrue(VoiceProtocol.supportsStyle(VoiceProtocol.OPENAI_AUDIO, "FunAudioLLM/CosyVoice2-0.5B"))
+        assertFalse(VoiceProtocol.supportsStyle(VoiceProtocol.OPENAI_AUDIO, "tts-1"))
+        assertFalse(VoiceProtocol.supportsStyle(VoiceProtocol.MINIMAX_TTS, "speech-2.8-hd"))
+        assertFalse(VoiceProtocol.supportsStyle(VoiceProtocol.FISH_TTS, "s2.1-pro"))
+        assertTrue(VoiceProtocol.supportsStyle(VoiceProtocol.VOLC_TTS, "seed-tts-2.0"))
+        assertTrue(VoiceProtocol.supportsStyle(VoiceProtocol.QWEN_TTS, "qwen-audio-3.1-tts-flash"))
+    }
+
+    @Test
+    fun jsonChunks_andHex_helpers() {
+        assertEquals(listOf("""{"a":"}{"}""", """{"b":{"c":1}}"""), JsonChunks.split("""{"a":"}{"}  {"b":{"c":1}}"""))
+        assertEquals(listOf("""{"s":"say \"hi\" {"}"""), JsonChunks.split("""{"s":"say \"hi\" {"}"""))
+        assertArrayEquals(byteArrayOf(0, 0x7F, 0x80.toByte(), 0xFF.toByte()), Hex.decode("007f80FF"))
+        try {
+            Hex.decode("0g")
+            fail("不是十六进制")
+        } catch (_: IllegalArgumentException) {
+        }
+    }
 }

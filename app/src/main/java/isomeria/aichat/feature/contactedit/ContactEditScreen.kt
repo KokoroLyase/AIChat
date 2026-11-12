@@ -120,6 +120,8 @@ fun ContactEditScreen(
     var showReplyTypeSheet by remember { mutableStateOf(false) }
     val globalReplyType by viewModel.globalReplyType.collectAsStateWithLifecycle()
     val providerVoice by viewModel.providerVoice.collectAsStateWithLifecycle()
+    val canPickVoice by viewModel.canPickVoice.collectAsStateWithLifecycle()
+    val picker by viewModel.picker.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -129,6 +131,14 @@ fun ContactEditScreen(
 
     fun tryBack() {
         if (state.dirty) showDiscard = true else onBack()
+    }
+    // 0.7.2 选音色页：盖住整页，返回时回到编辑页
+    if (picker.open) {
+        BackHandler { viewModel.picker.close() }
+        isomeria.aichat.feature.voice.VoicePickerContent(
+            picker, viewModel.picker::setQuery, viewModel.picker::search, viewModel::pickVoice, viewModel.picker::preview, viewModel.picker::close,
+        )
+        return
     }
     BackHandler(enabled = state.dirty) { showDiscard = true }
     ImeBackHandler()
@@ -246,7 +256,10 @@ fun ContactEditScreen(
             )
 
             GroupSpacer()
-            ContactVoiceRows(form, globalReplyType, providerVoice, onPickReplyType = { showReplyTypeSheet = true }, onUpdate = viewModel::update)
+            ContactVoiceRows(
+                form, globalReplyType, providerVoice, onPickReplyType = { showReplyTypeSheet = true }, onUpdate = viewModel::update,
+                canPickVoice = canPickVoice, onPickVoice = viewModel::openVoicePicker,
+            )
 
             if (!state.isNew) {
                 GroupSpacer()
@@ -384,6 +397,8 @@ internal fun ContactVoiceRows(
     providerVoice: String,
     onPickReplyType: () -> Unit,
     onUpdate: ((ContactForm) -> ContactForm) -> Unit,
+    canPickVoice: Boolean = false,
+    onPickVoice: () -> Unit = {},
 ) {
     isomeria.aichat.feature.settings.ConfigActionRow(
         title = stringResource(R.string.contact_reply_type),
@@ -398,6 +413,8 @@ internal fun ContactVoiceRows(
             hint = if (providerVoice.isBlank()) stringResource(R.string.contact_tts_voice_hint_empty) else stringResource(R.string.contact_tts_voice_hint, providerVoice),
         )
     }
+    // 单独一行：大字体、窄屏时不挤占音色输入框
+    if (canPickVoice) WeListRow(stringResource(R.string.voice_voice_pick), onClick = onPickVoice, showDivider = true)
     FormRow(stringResource(R.string.contact_tts_style)) {
         InlineField(
             value = form.ttsStyle,

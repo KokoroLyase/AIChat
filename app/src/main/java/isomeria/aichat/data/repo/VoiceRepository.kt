@@ -173,7 +173,7 @@ class VoiceRepository @Inject constructor(
     }
 
     /**
-     * 合成一段话。音色用联系人自己的（没填用服务商默认），语气和风格要求只在聊天接口带音频的格式里发。
+     * 合成一段话。音色用联系人自己的（没填用服务商默认），语气和风格要求只发给支持的格式（[VoiceProtocol.supportsStyle]）。
      * 失败时抛 [VoiceUnavailableException] 或 [isomeria.aichat.data.llm.LlmException]
      */
     suspend fun synthesize(contact: Contact, text: String): TtsAudio {
@@ -194,7 +194,7 @@ class VoiceRepository @Inject constructor(
             model = config.defaultModel,
             text = text,
             voice = contact.ttsVoice?.takeIf { it.isNotBlank() } ?: config.voice,
-            style = if (config.provider == VoiceProtocol.CHAT_AUDIO) contact.ttsStyle else "",
+            style = if (VoiceProtocol.supportsStyle(config.provider, config.defaultModel)) contact.ttsStyle else "",
         )
         return api.synthesize(config.provider, endpoint, request)
     }

@@ -465,6 +465,9 @@
     <string name="preset_kimi">Kimi</string>
     <string name="preset_mimo">Xiaomi MiMo</string>
     <string name="preset_siliconflow">硅基流动</string>
+    <string name="preset_volcengine">火山引擎（豆包）</string>
+    <string name="preset_minimax">MiniMax</string>
+    <string name="preset_fish">Fish Audio</string>
     <string name="preset_openrouter">OpenRouter</string>
     <string name="preset_custom">自定义 OpenAI 兼容</string>
     <string name="provider_preset">服务商预置</string>
@@ -838,8 +841,8 @@
     <string name="voice_providers_tts_title">语音合成</string>
     <string name="voice_providers_asr_title">语音识别</string>
     <string name="voice_providers_empty">还没有服务商，点右上角「添加」。</string>
-    <string name="voice_providers_tts_hint">把联系人的回复读成语音。支持两种请求格式：聊天接口带音频（按 Xiaomi MiMo 的文档实现）和 OpenAI 标准音频接口（/audio/speech）。只用标着“正在使用”的那一个（本机的系统语音或一个服务商），在它的页面里打开开关切换。</string>
-    <string name="voice_providers_asr_hint">把你的语音转成文字再发给联系人。支持两种请求格式：聊天接口带音频（按 Xiaomi MiMo 的文档实现）和 OpenAI 标准音频接口（/audio/transcriptions）。只用标着“正在使用”的那一个（本机的离线识别或一个服务商），在它的页面里打开开关切换。</string>
+    <string name="voice_providers_tts_hint">把联系人的回复读成语音。预置了火山引擎（豆包）、阿里云百炼（千问）、Xiaomi MiMo、MiniMax、Fish Audio 和硅基流动，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/speech）。只用标着“正在使用”的那一个（本机的系统语音或一个服务商），在它的页面里打开开关切换。</string>
+    <string name="voice_providers_asr_hint">把你的语音转成文字再发给联系人。预置了火山引擎（豆包）、阿里云百炼（千问）、Xiaomi MiMo 和硅基流动，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/transcriptions）。只用标着“正在使用”的那一个（本机的离线识别或一个服务商），在它的页面里打开开关切换。</string>
     <string name="voice_provider_in_use">正在使用</string>
     <string name="voice_local_group">本机</string>
     <string name="voice_providers_group">服务商</string>
@@ -898,32 +901,56 @@
     <string name="voice_protocol">请求格式</string>
     <string name="voice_protocol_chat_audio">聊天接口带音频（MiMo）</string>
     <string name="voice_protocol_openai_audio">OpenAI 标准音频接口</string>
+    <string name="voice_protocol_volc_tts">火山引擎语音合成（HTTP V3）</string>
+    <string name="voice_protocol_volc_asr">火山引擎录音文件识别（极速版）</string>
+    <string name="voice_protocol_qwen_tts">百炼 Qwen-Audio-TTS</string>
+    <string name="voice_protocol_qwen_asr">百炼 Qwen-ASR</string>
+    <string name="voice_protocol_minimax_tts">MiniMax 语音合成</string>
+    <string name="voice_protocol_fish_tts">Fish Audio 语音合成</string>
+    <string name="voice_volc_note">火山引擎用新版控制台的 API Key。“模型”这一栏填资源 ID：合成用 seed-tts-2.0（复刻的音色用 seed-icl-2.0），识别用 volc.bigasr.auc_turbo。</string>
+    <string name="voice_workspace_note">百炼要用自己的业务空间地址：把地址里的 {WorkspaceId} 换成控制台里的业务空间 ID，Key 也要是这个业务空间的。</string>
+    <string name="voice_fish_note">Fish Audio 的服务器在海外，国内网络下可能较慢或连不上。音色填音色模型的 ID。</string>
+    <string name="voice_style_supported_note">这个服务商支持语气和风格要求：在联系人的「朋友资料」里填写，不会被读出来。</string>
+    <string name="voice_style_unsupported_note">这个服务商不支持语气和风格要求，联系人填的会被忽略。</string>
+    <string name="base_url_placeholder_required">请把地址里的 {WorkspaceId} 换成你的百炼业务空间 ID：在百炼控制台“业务空间管理”的 API Host 一栏，或创建 API Key 后的弹窗里能看到。</string>
     <string name="voice_protocol_note">“聊天接口带音频”按 Xiaomi MiMo 的文档实现（/chat/completions），各家没有统一标准，不保证其他服务商能用；其他服务商一般用 OpenAI 标准音频接口。</string>
     <string name="voice_model">模型</string>
     <string name="voice_model_hint">模型 ID</string>
     <string name="voice_model_required">请填写模型 ID</string>
     <string name="voice_voice">默认音色</string>
     <string name="voice_voice_hint">音色 ID，可以不填</string>
-    <string name="voice_voice_pick">选择预置音色</string>
-    <string name="voice_voice_note">音色先手动填写 ID，按服务商文档填。联系人可以在「朋友资料」里单独换音色。</string>
-    <string name="voice_style_mimo_note">语气和风格要求只对“聊天接口带音频”（MiMo）生效，在联系人的「朋友资料」里填写，不会被读出来。</string>
+    <string name="voice_voice_pick">选择音色</string>
+    <string name="voice_voice_note">音色可以从列表里选，也可以按服务商文档手填 ID。联系人可以在「朋友资料」里单独换音色。</string>
     <string name="voice_use_this">使用这个服务商</string>
     <string name="voice_delete_provider">删除服务商</string>
     <string name="voice_delete_confirm">删除「%1$s」？删除后需要重新填写 API Key。</string>
     <string name="voice_price_mimo_tts">MiMo 语音合成官方写着“限时免费”，没有写截止日期；免费期结束或额度不足时合成会失败，联系人改回文字消息。</string>
     <string name="voice_price_mimo_asr">MiMo 语音识别按音频时长收费（官方价格约 0.5 元每小时），以服务商为准。</string>
     <string name="voice_price_siliconflow">硅基流动的语音识别是否收费以服务商为准。</string>
-    <string-array name="mimo_tts_voices" translatable="false">
-        <item>mimo_default</item>
-        <item>冰糖</item>
-        <item>茉莉</item>
-        <item>苏打</item>
-        <item>白桦</item>
-        <item>Mia</item>
-        <item>Chloe</item>
-        <item>Milo</item>
-        <item>Dean</item>
-    </string-array>
+    <string name="voice_price_siliconflow_tts">硅基流动的语音合成按输入文字的字节数收费，价格以服务商为准。</string>
+    <string name="voice_price_volcengine">火山引擎的语音合成和识别按用量收费，要先在控制台开通对应的资源（识别要开通“录音文件识别 2.0 极速版”），价格以服务商为准。</string>
+    <string name="voice_price_qwen">百炼的语音合成和识别按用量收费，价格以服务商为准。</string>
+    <string name="voice_price_minimax">MiniMax 语音合成按字数收费，价格以服务商为准。</string>
+    <string name="voice_price_fish">Fish Audio 按用量收费；“模型”改成 s2.1-pro-free 可以用免费的开发者模型（有限制）。价格以服务商为准。</string>
+    <!-- 0.7.2 选音色 -->
+    <string name="voice_picker_search_hint">搜索音色名称或 ID</string>
+    <string name="voice_picker_search_remote_hint">输入名称，点键盘上的搜索</string>
+    <string name="voice_picker_note">点一行选用这个音色，点“试听”听一句。试听会用这个服务商合成一句话，可能产生少量费用，不计入用量统计；系统语音在手机上合成。列表可能不全，没有的音色可以返回手填 ID。</string>
+    <string name="voice_picker_loading">正在获取音色…</string>
+    <string name="voice_picker_empty">没有找到音色。可以换个关键词，或返回手填音色 ID。</string>
+    <string name="voice_picker_need_key">填好 API Key 后才能获取音色列表和试听。</string>
+    <string name="voice_picker_bad_url">地址不对，先改好地址再选音色。</string>
+    <string name="voice_picker_no_source">还没有选语音合成来源，先在“我 → 语音消息”里选一个。</string>
+    <string name="voice_picker_failed">获取音色失败：%1$s</string>
+    <string name="voice_picker_preview_failed">试听失败：%1$s</string>
+    <string name="voice_picker_preview">试听</string>
+    <string name="voice_picker_previewing">合成中…</string>
+    <string name="voice_picker_playing">播放中</string>
+    <string name="voice_picker_current">当前音色</string>
+    <string name="voice_group_mine">我的音色</string>
+    <string name="voice_group_system">系统音色</string>
+    <string name="voice_group_public">公开音色</string>
+    <string name="voice_preview_text">你好，很高兴认识你，今天过得怎么样？</string>
     <!-- 0.7.0 语音消息：录音 -->
     <string name="voice_release_to_send">松开 发送</string>
     <string name="voice_release_to_cancel">松开 取消</string>

@@ -888,6 +888,41 @@ class ScreenshotTest {
     @Test fun voiceEditCustomLight() = shot("71-voice-provider-edit-custom", false) { VoiceEditPage(voiceEditCustom) }
     @Test fun voiceEditCustomDark() = shot("71-voice-provider-edit-custom", true) { VoiceEditPage(voiceEditCustom) }
 
+    // ---------- 0.7.2 预置服务商和选音色 ----------
+
+    private val voiceEditVolc = isomeria.aichat.feature.voice.VoiceProviderEditState(
+        loaded = true, kind = isomeria.aichat.data.db.ProviderKind.TTS, presetId = "volcengine",
+        protocol = isomeria.aichat.data.voice.VoiceProtocol.VOLC_TTS, name = "火山引擎（豆包）", baseUrl = "https://openspeech.bytedance.com/api/v3",
+        model = "seed-tts-2.0", voice = "zh_female_vv_uranus_bigtts", use = true,
+    )
+    private val voiceEditQwen = isomeria.aichat.feature.voice.VoiceProviderEditState(
+        loaded = true, kind = isomeria.aichat.data.db.ProviderKind.ASR, presetId = "qwen",
+        protocol = isomeria.aichat.data.voice.VoiceProtocol.QWEN_ASR, name = "阿里云百炼（千问）",
+        baseUrl = "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", model = "qwen3-asr-flash",
+        errorRes = isomeria.aichat.R.string.base_url_placeholder_required,
+    )
+    @Test fun voiceEditVolcLight() = shot("71-voice-provider-edit-volcengine", false) { VoiceEditPage(voiceEditVolc) }
+    @Test fun voiceEditVolcDark() = shot("71-voice-provider-edit-volcengine", true) { VoiceEditPage(voiceEditVolc) }
+    @Test fun voiceEditQwenLight() = shot("71-voice-provider-edit-qwen", false) { VoiceEditPage(voiceEditQwen) }
+
+    private val pickerSample = isomeria.aichat.feature.voice.VoicePickerState(
+        open = true, options = isomeria.aichat.data.voice.BuiltInVoices.QWEN.take(12), current = "longanhuan_v3.1",
+        previewing = "longanfengyue_v3.1", playing = "yuxiaoyun_v3.1",
+    )
+    @Composable private fun PickerPage(state: isomeria.aichat.feature.voice.VoicePickerState = pickerSample) =
+        isomeria.aichat.feature.voice.VoicePickerContent(state, {}, {}, {}, {}, {})
+    @Test fun voicePickerLight() = shot("74-voice-picker", false) { PickerPage() }
+    @Test fun voicePickerDark() = shot("74-voice-picker", true) { PickerPage() }
+    @Test fun voicePickerLarge() = large("74-voice-picker-large", false) { PickerPage() }
+    @Test fun voicePickerFilteredLight() = shot("74-voice-picker-filtered", false) { PickerPage(pickerSample.copy(query = "龙安")) }
+    @Test fun voicePickerLoadingDark() = shot("74-voice-picker-loading", true) { PickerPage(isomeria.aichat.feature.voice.VoicePickerState(open = true, loading = true, remoteSearch = true)) }
+    @Test fun voicePickerNeedKeyLight() = shot("74-voice-picker-need-key", false) {
+        PickerPage(isomeria.aichat.feature.voice.VoicePickerState(open = true, error = isomeria.aichat.feature.voice.PickerMessage(isomeria.aichat.R.string.voice_picker_need_key)))
+    }
+    @Test fun voicePickerFailedDark() = shot("74-voice-picker-failed", true) {
+        PickerPage(pickerSample.copy(previewError = isomeria.aichat.feature.voice.PickerMessage(isomeria.aichat.R.string.voice_picker_preview_failed, isomeria.aichat.R.string.error_auth)))
+    }
+
     private fun rec(zone: isomeria.aichat.ui.components.RecordZone = isomeria.aichat.ui.components.RecordZone.SEND, toggled: Boolean = false,
         mode: isomeria.aichat.ui.components.RecordMode = isomeria.aichat.ui.components.RecordMode.VOICE_MESSAGE, elapsed: Long = 4_000) =
         isomeria.aichat.ui.components.RecordingUi(mode, toggled, elapsed, 0.6f, zone)
@@ -991,7 +1026,7 @@ class ScreenshotTest {
     }
     @Composable private fun ContactVoice() = Column {
         GroupSpacer()
-        isomeria.aichat.feature.contactedit.ContactVoiceRows(isomeria.aichat.feature.contactedit.ContactForm(), isomeria.aichat.data.db.ReplyType.FOLLOW, "mimo_default", {}, {})
+        isomeria.aichat.feature.contactedit.ContactVoiceRows(isomeria.aichat.feature.contactedit.ContactForm(), isomeria.aichat.data.db.ReplyType.FOLLOW, "mimo_default", {}, {}, canPickVoice = true)
         GroupSpacer()
         isomeria.aichat.feature.contactedit.ContactVoiceRows(
             isomeria.aichat.feature.contactedit.ContactForm(replyType = isomeria.aichat.data.db.ReplyType.VOICE, ttsVoice = "default_zh", ttsStyle = "温柔一点，语速慢一些，像睡前聊天"),

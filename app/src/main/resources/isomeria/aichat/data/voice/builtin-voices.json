@@ -1,0 +1,1198 @@
+{
+ "mimo": [
+  {
+   "id": "mimo_default",
+   "name": "默认",
+   "detail": "",
+   "group": "中文"
+  },
+  {
+   "id": "冰糖",
+   "name": "冰糖",
+   "detail": "",
+   "group": "中文"
+  },
+  {
+   "id": "茉莉",
+   "name": "茉莉",
+   "detail": "",
+   "group": "中文"
+  },
+  {
+   "id": "苏打",
+   "name": "苏打",
+   "detail": "",
+   "group": "中文"
+  },
+  {
+   "id": "白桦",
+   "name": "白桦",
+   "detail": "",
+   "group": "中文"
+  },
+  {
+   "id": "Mia",
+   "name": "Mia",
+   "detail": "",
+   "group": "英文"
+  },
+  {
+   "id": "Chloe",
+   "name": "Chloe",
+   "detail": "",
+   "group": "英文"
+  },
+  {
+   "id": "Milo",
+   "name": "Milo",
+   "detail": "",
+   "group": "英文"
+  },
+  {
+   "id": "Dean",
+   "name": "Dean",
+   "detail": "",
+   "group": "英文"
+  }
+ ],
+ "volcengine": [
+  {
+   "id": "zh_female_tuanzi_uranus_bigtts",
+   "name": "团子 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_vv_uranus_bigtts",
+   "name": "Vivi 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_xiaohe_uranus_bigtts",
+   "name": "小何 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_m191_uranus_bigtts",
+   "name": "云舟 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_taocheng_uranus_bigtts",
+   "name": "小天 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_liufei_uranus_bigtts",
+   "name": "刘飞 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_sophie_uranus_bigtts",
+   "name": "魅力苏菲 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_qingxinnvsheng_uranus_bigtts",
+   "name": "清新女声 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_tianmeixiaoyuan_uranus_bigtts",
+   "name": "甜美小源 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_tianmeitaozi_uranus_bigtts",
+   "name": "甜美桃子 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_shuangkuaisisi_uranus_bigtts",
+   "name": "爽快思思 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_linjianvhai_uranus_bigtts",
+   "name": "邻家女孩 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_shaonianzixin_uranus_bigtts",
+   "name": "少年梓辛 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_meilinvyou_uranus_bigtts",
+   "name": "魅力女友 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_wenroumama_uranus_bigtts",
+   "name": "温柔妈妈 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_jieshuoxiaoming_uranus_bigtts",
+   "name": "解说小明 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_tvbnv_uranus_bigtts",
+   "name": "TVB女声 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_yizhipiannan_uranus_bigtts",
+   "name": "译制片男 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_qiaopinv_uranus_bigtts",
+   "name": "俏皮女声 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_linjiananhai_uranus_bigtts",
+   "name": "邻家男孩 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_ruyaqingnian_uranus_bigtts",
+   "name": "儒雅青年 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_wennuanahu_uranus_bigtts",
+   "name": "温暖阿虎 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_naiqimengwa_uranus_bigtts",
+   "name": "奶气萌娃 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_popo_uranus_bigtts",
+   "name": "婆婆 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_gaolengyujie_uranus_bigtts",
+   "name": "高冷御姐 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_aojiaobazong_uranus_bigtts",
+   "name": "傲娇霸总 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_fanjuanqingnian_uranus_bigtts",
+   "name": "反卷青年 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_wenroushunv_uranus_bigtts",
+   "name": "温柔淑女 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_huolixiaoge_uranus_bigtts",
+   "name": "活力小哥 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_mengyatou_uranus_bigtts",
+   "name": "萌丫头 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_tiexinnvsheng_uranus_bigtts",
+   "name": "贴心女声 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_jitangmei_uranus_bigtts",
+   "name": "鸡汤妹妹 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_cixingjieshuonan_uranus_bigtts",
+   "name": "磁性解说男声 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_liangsangmengzai_uranus_bigtts",
+   "name": "亮嗓萌仔 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_kailangjiejie_uranus_bigtts",
+   "name": "开朗姐姐 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_gaolengchenwen_uranus_bigtts",
+   "name": "高冷沉稳 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_shenyeboke_uranus_bigtts",
+   "name": "深夜播客 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_kailangdidi_uranus_bigtts",
+   "name": "开朗弟弟 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_qinqienv_uranus_bigtts",
+   "name": "亲切女声 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_kuailexiaodong_uranus_bigtts",
+   "name": "快乐小东 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_kailangxuezhang_uranus_bigtts",
+   "name": "开朗学长 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_youyoujunzi_uranus_bigtts",
+   "name": "悠悠君子 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_wenjingmaomao_uranus_bigtts",
+   "name": "文静毛毛 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_zhixingnv_uranus_bigtts",
+   "name": "知性女声 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_qingshuangnanda_uranus_bigtts",
+   "name": "清爽男大 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_yuanboxiaoshu_uranus_bigtts",
+   "name": "渊博小叔 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_yangguangqingnian_uranus_bigtts",
+   "name": "阳光青年 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_qingchezizi_uranus_bigtts",
+   "name": "清澈梓梓 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_tianmeiyueyue_uranus_bigtts",
+   "name": "甜美悦悦 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_xinlingjitang_uranus_bigtts",
+   "name": "心灵鸡汤 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_wenrouxiaoge_uranus_bigtts",
+   "name": "温柔小哥 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_roumeinvyou_uranus_bigtts",
+   "name": "柔美女友 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_dongfanghaoran_uranus_bigtts",
+   "name": "东方浩然 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_wenrouxiaoya_uranus_bigtts",
+   "name": "温柔小雅 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_tiancaitongsheng_uranus_bigtts",
+   "name": "天才童声 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_male_guanggaojieshuo_uranus_bigtts",
+   "name": "广告解说 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_chanmeinv_uranus_bigtts",
+   "name": "谄媚女声 2.0",
+   "detail": "",
+   "group": "通用场景"
+  },
+  {
+   "id": "zh_female_cancan_uranus_bigtts",
+   "name": "知性灿灿 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_sajiaoxuemei_uranus_bigtts",
+   "name": "撒娇学妹 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_zhishuaiyingzi_uranus_bigtts",
+   "name": "直率英子 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_male_silang_uranus_bigtts",
+   "name": "四郎 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_male_qingcang_uranus_bigtts",
+   "name": "擎苍 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_male_xionger_uranus_bigtts",
+   "name": "熊二 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_yingtaowanzi_uranus_bigtts",
+   "name": "樱桃丸子 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_male_lanyinmianbao_uranus_bigtts",
+   "name": "懒音绵宝 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_gufengshaoyu_uranus_bigtts",
+   "name": "古风少御 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_male_lubanqihao_uranus_bigtts",
+   "name": "鲁班七号 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_linxiao_uranus_bigtts",
+   "name": "林潇 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_lingling_uranus_bigtts",
+   "name": "玲玲姐姐 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_chunribu_uranus_bigtts",
+   "name": "春日部姐姐 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_male_tangseng_uranus_bigtts",
+   "name": "唐僧 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_male_zhuangzhou_uranus_bigtts",
+   "name": "庄周 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_male_zhubajie_uranus_bigtts",
+   "name": "猪八戒 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_ganmaodianyin_uranus_bigtts",
+   "name": "感冒电音姐姐 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_nvleishen_uranus_bigtts",
+   "name": "女雷神 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_wuzetian_uranus_bigtts",
+   "name": "武则天 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_gujie_uranus_bigtts",
+   "name": "顾姐 2.0",
+   "detail": "",
+   "group": "角色扮演"
+  },
+  {
+   "id": "zh_female_peiqi_uranus_bigtts",
+   "name": "佩奇猪 2.0",
+   "detail": "",
+   "group": "视频配音"
+  },
+  {
+   "id": "zh_male_sunwukong_uranus_bigtts",
+   "name": "猴哥 2.0",
+   "detail": "",
+   "group": "视频配音"
+  },
+  {
+   "id": "zh_male_dayi_uranus_bigtts",
+   "name": "大壹 2.0",
+   "detail": "",
+   "group": "视频配音"
+  },
+  {
+   "id": "zh_female_mizai_uranus_bigtts",
+   "name": "黑猫侦探社咪仔 2.0",
+   "detail": "",
+   "group": "视频配音"
+  },
+  {
+   "id": "zh_female_jitangnv_uranus_bigtts",
+   "name": "鸡汤女 2.0",
+   "detail": "",
+   "group": "视频配音"
+  },
+  {
+   "id": "zh_female_liuchangnv_uranus_bigtts",
+   "name": "流畅女声 2.0",
+   "detail": "",
+   "group": "视频配音"
+  },
+  {
+   "id": "zh_male_ruyayichen_uranus_bigtts",
+   "name": "儒雅逸辰 2.0",
+   "detail": "",
+   "group": "视频配音"
+  },
+  {
+   "id": "zh_female_xiaoxue_uranus_bigtts",
+   "name": "儿童绘本 2.0",
+   "detail": "",
+   "group": "有声阅读"
+  },
+  {
+   "id": "zh_male_baqiqingshu_uranus_bigtts",
+   "name": "霸气青叔 2.0",
+   "detail": "",
+   "group": "有声阅读"
+  },
+  {
+   "id": "zh_male_xuanyijieshuo_uranus_bigtts",
+   "name": "悬疑解说 2.0",
+   "detail": "",
+   "group": "有声阅读"
+  },
+  {
+   "id": "zh_female_shaoergushi_uranus_bigtts",
+   "name": "少儿故事 2.0",
+   "detail": "",
+   "group": "有声阅读"
+  },
+  {
+   "id": "zh_female_yingyujiaoxue_uranus_bigtts",
+   "name": "Tina老师 2.0",
+   "detail": "",
+   "group": "教育场景"
+  },
+  {
+   "id": "zh_female_kefunvsheng_uranus_bigtts",
+   "name": "暖阳女声 2.0",
+   "detail": "",
+   "group": "客服场景"
+  },
+  {
+   "id": "en_male_tim_uranus_bigtts",
+   "name": "Tim",
+   "detail": "",
+   "group": "外语音色"
+  },
+  {
+   "id": "en_female_dacey_uranus_bigtts",
+   "name": "Dacey",
+   "detail": "",
+   "group": "外语音色"
+  },
+  {
+   "id": "en_female_stokie_uranus_bigtts",
+   "name": "Stokie",
+   "detail": "",
+   "group": "外语音色"
+  }
+ ],
+ "qwen": [
+  {
+   "id": "longanhuan_v3.1",
+   "name": "龙安欢",
+   "detail": "女",
+   "group": "多语种和方言"
+  },
+  {
+   "id": "longanlingxin_v3.1",
+   "name": "龙安灵心",
+   "detail": "女",
+   "group": "多语种和方言"
+  },
+  {
+   "id": "longanfengyue_v3.1",
+   "name": "龙安风悦",
+   "detail": "女",
+   "group": "多语种和方言"
+  },
+  {
+   "id": "xunanchuan_v3.1",
+   "name": "许南川",
+   "detail": "男",
+   "group": "多语种和方言"
+  },
+  {
+   "id": "yuxiaoyun_v3.1",
+   "name": "于小云",
+   "detail": "女，元气亲切自然",
+   "group": "精品中文"
+  },
+  {
+   "id": "qiaoxiaojiao_v3.1",
+   "name": "乔小娇",
+   "detail": "女，俏丽可爱",
+   "group": "精品中文"
+  },
+  {
+   "id": "xiaxiaochen_v3.1",
+   "name": "夏小晨",
+   "detail": "女，元气明亮",
+   "group": "精品中文"
+  },
+  {
+   "id": "anmingyuan_v3.1",
+   "name": "安明远",
+   "detail": "男，清亮自然",
+   "group": "精品中文"
+  },
+  {
+   "id": "wenhuaiqing_v3.1",
+   "name": "温怀清",
+   "detail": "女，清亮柔和",
+   "group": "精品中文"
+  },
+  {
+   "id": "anxiaolan_v3.1",
+   "name": "安小岚",
+   "detail": "女，清甜纯净",
+   "group": "精品中文"
+  },
+  {
+   "id": "xieshurou_v3.1",
+   "name": "谢舒柔",
+   "detail": "女，柔和自然知性",
+   "group": "精品中文"
+  },
+  {
+   "id": "baiqinglan_v3.1",
+   "name": "白清岚",
+   "detail": "女，明亮清纯",
+   "group": "精品中文"
+  },
+  {
+   "id": "xuyuyuan_v3.1",
+   "name": "许玉远",
+   "detail": "女，知性成熟质感",
+   "group": "精品中文"
+  },
+  {
+   "id": "anruorou_v3.1",
+   "name": "安若柔",
+   "detail": "女，气声知性",
+   "group": "精品中文"
+  },
+  {
+   "id": "wenhuaizhi_v3.1",
+   "name": "闻怀之",
+   "detail": "女，稳重成熟",
+   "group": "精品中文"
+  },
+  {
+   "id": "xiaoxingzhi_v3.1",
+   "name": "萧行之",
+   "detail": "女，端庄贵气",
+   "group": "精品中文"
+  },
+  {
+   "id": "guyunshu_v3.1",
+   "name": "顾云舒",
+   "detail": "女，成熟稳重",
+   "group": "精品中文"
+  },
+  {
+   "id": "huozhuoshi_v3.1",
+   "name": "霍拙石",
+   "detail": "男，清亮",
+   "group": "精品中文"
+  },
+  {
+   "id": "yeqinghe_v3.1",
+   "name": "叶清禾",
+   "detail": "女，亲切温柔",
+   "group": "精品中文"
+  },
+  {
+   "id": "yunhuanhuan_v3.1",
+   "name": "云欢欢",
+   "detail": "女，高亢热情",
+   "group": "精品中文"
+  },
+  {
+   "id": "xuxiaoqiao_v3.1",
+   "name": "徐小俏",
+   "detail": "女，自然俏皮",
+   "group": "精品中文"
+  },
+  {
+   "id": "baianran_v3.1",
+   "name": "白安然",
+   "detail": "女，低沉浑厚气声",
+   "group": "精品中文"
+  },
+  {
+   "id": "xuyanchu_v3.1",
+   "name": "许言初",
+   "detail": "女，沉稳磁性",
+   "group": "精品中文"
+  },
+  {
+   "id": "yezhiqing_v3.1",
+   "name": "叶知晴",
+   "detail": "女，轻快自然",
+   "group": "精品中文"
+  },
+  {
+   "id": "andi_v3.1",
+   "name": "安迪",
+   "detail": "男，ABC 口音",
+   "group": "精品中文"
+  },
+  {
+   "id": "anyuqing_v3.1",
+   "name": "安语晴",
+   "detail": "女，甜妹",
+   "group": "精品中文"
+  },
+  {
+   "id": "linxiaoling_v3.1",
+   "name": "林小灵",
+   "detail": "女，甜妹",
+   "group": "精品中文"
+  },
+  {
+   "id": "longfeifei_v3.1",
+   "name": "龙菲菲",
+   "detail": "女，甜妹",
+   "group": "精品中文"
+  },
+  {
+   "id": "longjing_v3.1",
+   "name": "龙婧",
+   "detail": "女，质感沉稳",
+   "group": "精品中文"
+  },
+  {
+   "id": "longqiang_v3.1",
+   "name": "龙嫱",
+   "detail": "女，浪漫风情",
+   "group": "精品中文"
+  },
+  {
+   "id": "longyan_v3.1",
+   "name": "龙颜",
+   "detail": "女，温暖自然亲切",
+   "group": "精品中文"
+  },
+  {
+   "id": "longxiaobai_v3.1",
+   "name": "龙小白",
+   "detail": "女，磁性质感",
+   "group": "精品中文"
+  },
+  {
+   "id": "longyue_v3.1",
+   "name": "龙悦",
+   "detail": "女，温暖磁性",
+   "group": "精品中文"
+  },
+  {
+   "id": "longcheng_v3.1",
+   "name": "龙橙",
+   "detail": "男，智慧磁性",
+   "group": "精品中文"
+  },
+  {
+   "id": "longlaotie_v3.1",
+   "name": "龙老铁",
+   "detail": "男，东北直率",
+   "group": "精品中文"
+  },
+  {
+   "id": "longshao_v3.1",
+   "name": "龙邵",
+   "detail": "男，积极元气",
+   "group": "精品中文"
+  },
+  {
+   "id": "longshu_v3.1",
+   "name": "龙书",
+   "detail": "男，沉稳磁性",
+   "group": "精品中文"
+  },
+  {
+   "id": "longze_v3.1",
+   "name": "龙泽",
+   "detail": "男，温暖元气自然",
+   "group": "精品中文"
+  },
+  {
+   "id": "longhao_v3.1",
+   "name": "龙浩",
+   "detail": "男，多情忧郁",
+   "group": "精品中文"
+  },
+  {
+   "id": "longjin_v3.1",
+   "name": "龙津",
+   "detail": "男，优雅温润",
+   "group": "精品中文"
+  },
+  {
+   "id": "longnan_v3.1",
+   "name": "龙楠",
+   "detail": "男，睿智",
+   "group": "精品中文"
+  },
+  {
+   "id": "longshuo_v3.1",
+   "name": "龙硕",
+   "detail": "男，博才干练",
+   "group": "精品中文"
+  },
+  {
+   "id": "longtian_v3.1",
+   "name": "龙天",
+   "detail": "男，磁性理智",
+   "group": "精品中文"
+  },
+  {
+   "id": "longxiaocheng_v3.1",
+   "name": "龙小诚",
+   "detail": "男，磁性低音",
+   "group": "精品中文"
+  },
+  {
+   "id": "longke_v3.1",
+   "name": "龙可",
+   "detail": "儿童，懵懂童声",
+   "group": "精品中文"
+  },
+  {
+   "id": "loongbella_v3.1",
+   "name": "Bella",
+   "detail": "女，干练磁性知性",
+   "group": "精品中文"
+  },
+  {
+   "id": "Emily_v3.1",
+   "name": "Emily",
+   "detail": "女，英式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Luna_v3.1",
+   "name": "Luna",
+   "detail": "女，英式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Eric_v3.1",
+   "name": "Eric",
+   "detail": "男，英式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Luca_v3.1",
+   "name": "Luca",
+   "detail": "男，英式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Abby_v3.1",
+   "name": "Abby",
+   "detail": "女，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Annie_v3.1",
+   "name": "Annie",
+   "detail": "女，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Ava_v3.1",
+   "name": "Ava",
+   "detail": "女，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Beth_v3.1",
+   "name": "Beth",
+   "detail": "女，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Betty_v3.1",
+   "name": "Betty",
+   "detail": "女，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Cally_v3.1",
+   "name": "Cally",
+   "detail": "女，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Cindy_v3.1",
+   "name": "Cindy",
+   "detail": "女，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Donna_v3.1",
+   "name": "Donna",
+   "detail": "女，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Andy_v3.1",
+   "name": "Andy",
+   "detail": "男，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "Brian_v3.1",
+   "name": "Brian",
+   "detail": "男，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "David_v3.1",
+   "name": "David",
+   "detail": "男，美式",
+   "group": "精品英文"
+  },
+  {
+   "id": "longanyuanfei_v3.1",
+   "name": "龙安元妃",
+   "detail": "女，高傲妃子音",
+   "group": "其他音色"
+  },
+  {
+   "id": "longjielidou_v3.1",
+   "name": "龙杰力豆",
+   "detail": "男，天真男童音",
+   "group": "其他音色"
+  },
+  {
+   "id": "longanlingxi_v3.1",
+   "name": "龙安灵希",
+   "detail": "女，可爱甜美音",
+   "group": "其他音色"
+  },
+  {
+   "id": "longhuohuo_v3.1",
+   "name": "龙火火",
+   "detail": "男，顽皮少年音",
+   "group": "其他音色"
+  },
+  {
+   "id": "longyingtao_v3.1",
+   "name": "龙应桃",
+   "detail": "女，温柔淡定",
+   "group": "其他音色"
+  },
+  {
+   "id": "longanya_v3.1",
+   "name": "龙安雅",
+   "detail": "女，高雅气质",
+   "group": "其他音色"
+  },
+  {
+   "id": "longwan_v3.1",
+   "name": "龙婉",
+   "detail": "女，细腻柔声",
+   "group": "其他音色"
+  },
+  {
+   "id": "longxing_v3.1",
+   "name": "龙星",
+   "detail": "女，温婉邻家",
+   "group": "其他音色"
+  },
+  {
+   "id": "longhua_v3.1",
+   "name": "龙华",
+   "detail": "女，元气甜美",
+   "group": "其他音色"
+  },
+  {
+   "id": "longhan_v3.1",
+   "name": "龙寒",
+   "detail": "男，温暖痴情",
+   "group": "其他音色"
+  },
+  {
+   "id": "longanzhi_v3.1",
+   "name": "龙安智",
+   "detail": "男，睿智轻熟",
+   "group": "其他音色"
+  },
+  {
+   "id": "longzhe_v3.1",
+   "name": "龙哲",
+   "detail": "男，呆板大暖男",
+   "group": "其他音色"
+  },
+  {
+   "id": "longanyang_v3.1",
+   "name": "龙安洋",
+   "detail": "男，阳光大男孩",
+   "group": "其他音色"
+  },
+  {
+   "id": "libai_v3.1",
+   "name": "李白",
+   "detail": "男，古代诗仙",
+   "group": "其他音色"
+  },
+  {
+   "id": "longling_v3.1",
+   "name": "龙铃",
+   "detail": "女，稚气呆板",
+   "group": "其他音色"
+  },
+  {
+   "id": "longniuniu_v3.1",
+   "name": "龙牛牛",
+   "detail": "男，阳光男童声",
+   "group": "其他音色"
+  },
+  {
+   "id": "longshanshan_v3.1",
+   "name": "龙闪闪",
+   "detail": "男，戏剧化童声",
+   "group": "其他音色"
+  },
+  {
+   "id": "longpaopao_v3.1",
+   "name": "龙泡泡",
+   "detail": "女，飞天泡泡音",
+   "group": "其他音色"
+  },
+  {
+   "id": "loongstella_v3.1",
+   "name": "Stella",
+   "detail": "女，飒爽利落",
+   "group": "其他音色"
+  },
+  {
+   "id": "longyuan_v3.1",
+   "name": "龙媛",
+   "detail": "女，温暖治愈",
+   "group": "其他音色"
+  },
+  {
+   "id": "longmiao_v3.1",
+   "name": "龙妙",
+   "detail": "女，抑扬顿挫",
+   "group": "其他音色"
+  },
+  {
+   "id": "longsanshu_v3.1",
+   "name": "龙三叔",
+   "detail": "男，沉稳质感",
+   "group": "其他音色"
+  },
+  {
+   "id": "longanli_v3.1",
+   "name": "龙安莉",
+   "detail": "女，利落从容",
+   "group": "其他音色"
+  },
+  {
+   "id": "longanwen_v3.1",
+   "name": "龙安温",
+   "detail": "女，优雅知性",
+   "group": "其他音色"
+  },
+  {
+   "id": "longanlang_v3.1",
+   "name": "龙安朗",
+   "detail": "男，清爽利落",
+   "group": "其他音色"
+  },
+  {
+   "id": "longxiaoxia_v3.1",
+   "name": "龙小夏",
+   "detail": "女，沉稳权威",
+   "group": "其他音色"
+  },
+  {
+   "id": "longanchong_v3.1",
+   "name": "龙安冲",
+   "detail": "男，激情推销",
+   "group": "其他音色"
+  }
+ ],
+ "siliconflow": [
+  {
+   "id": "anna",
+   "name": "anna",
+   "detail": "沉稳女声",
+   "group": "女声"
+  },
+  {
+   "id": "bella",
+   "name": "bella",
+   "detail": "激情女声",
+   "group": "女声"
+  },
+  {
+   "id": "claire",
+   "name": "claire",
+   "detail": "温柔女声",
+   "group": "女声"
+  },
+  {
+   "id": "diana",
+   "name": "diana",
+   "detail": "欢快女声",
+   "group": "女声"
+  },
+  {
+   "id": "alex",
+   "name": "alex",
+   "detail": "沉稳男声",
+   "group": "男声"
+  },
+  {
+   "id": "benjamin",
+   "name": "benjamin",
+   "detail": "低沉男声",
+   "group": "男声"
+  },
+  {
+   "id": "charles",
+   "name": "charles",
+   "detail": "磁性男声",
+   "group": "男声"
+  },
+  {
+   "id": "david",
+   "name": "david",
+   "detail": "欢快男声",
+   "group": "男声"
+  }
+ ]
+}

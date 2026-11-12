@@ -222,6 +222,12 @@ class ProviderEditViewModel @Inject constructor(
             _state.update { it.copy(validationAttempt = it.validationAttempt + 1) }
             return null
         }
+        // 百炼的预置地址要先换成自己的业务空间地址（0.7.2）
+        if (BaseUrlRules.hasPlaceholder(s.baseUrl)) {
+            error(R.string.base_url_placeholder_required)
+            _state.update { it.copy(validationAttempt = it.validationAttempt + 1) }
+            return null
+        }
         val url = BaseUrlRules.normalize(s.baseUrl, allowLocalHttp = BuildConfig.DEBUG)
         if (url == null) {
             error(R.string.llm_base_url_invalid)
@@ -524,11 +530,11 @@ fun ProviderEditContent(
     var showModelSheet by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val nameError = state.messageIsError && state.messageRes == R.string.llm_name_required
-    val urlError = state.messageIsError && state.messageRes == R.string.llm_base_url_invalid
+    val urlError = state.messageIsError && (state.messageRes == R.string.llm_base_url_invalid || state.messageRes == R.string.base_url_placeholder_required)
     // 预置地址平时只读展示，点“修改”或校验失败后才能编辑；切换预置时恢复只读
     var editUrl by remember(state.presetId) { mutableStateOf(false) }
     LaunchedEffect(urlError) { if (urlError) editUrl = true }
-    val urlEditable = editUrl || urlError || state.presetId == null || state.baseUrl.isBlank()
+    val urlEditable = editUrl || urlError || state.presetId == null || state.baseUrl.isBlank() || BaseUrlRules.hasPlaceholder(state.baseUrl)
     val formLocation = remember { BringIntoViewRequester() }
     LaunchedEffect(state.validationAttempt) { if (state.validationAttempt > 0) formLocation.bringIntoView() }
 
@@ -568,7 +574,7 @@ fun ProviderEditContent(
                         }
                     }
                 }
-                if (urlError) FieldError(stringResource(R.string.llm_base_url_invalid))
+                if (urlError) FieldError(stringResource(state.messageRes ?: R.string.llm_base_url_invalid))
                 if (urlEditable) FootnoteText(stringResource(R.string.llm_base_url_note))
             }
 

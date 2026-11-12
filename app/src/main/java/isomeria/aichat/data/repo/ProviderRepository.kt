@@ -39,6 +39,9 @@ sealed interface DeleteProviderResult {
 
 /** Base URL 的规则：只接受 https（明文会把 Key 和聊天内容暴露在网络上，系统默认也不允许）。 */
 object BaseUrlRules {
+    /** 地址里还留着要替换的占位部分，比如百炼的 {WorkspaceId}（0.7.2） */
+    fun hasPlaceholder(input: String): Boolean = input.contains('{') || input.contains('}')
+
     /**
      * 规范化（去掉首尾空白和末尾的斜杠）；不合规时返回 null。
      * [allowLocalHttp] 只有 debug 包才打开，用来连本机的模拟接口。

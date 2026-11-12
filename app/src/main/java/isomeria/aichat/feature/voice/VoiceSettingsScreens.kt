@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,9 +57,12 @@ import isomeria.aichat.data.repo.BaseUrlRules
 import isomeria.aichat.data.repo.VoiceProviders
 import isomeria.aichat.data.repo.VoiceRepository
 import isomeria.aichat.data.settings.SettingsStore
+import isomeria.aichat.data.voice.VoiceCatalog
 import isomeria.aichat.data.voice.VoicePreset
 import isomeria.aichat.data.voice.VoicePresets
+import isomeria.aichat.data.voice.VoicePreview
 import isomeria.aichat.data.voice.VoiceProtocol
+import isomeria.aichat.data.voice.VoiceTarget
 import isomeria.aichat.feature.settings.ChoiceRow
 import isomeria.aichat.feature.settings.KeyMoveDialog
 import isomeria.aichat.feature.settings.keyMovesTo
@@ -74,8 +76,6 @@ import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.PasswordField
 import isomeria.aichat.ui.components.SectionHeader
-import isomeria.aichat.ui.components.SheetOption
-import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeDivider
 import isomeria.aichat.ui.components.WeIcons
@@ -104,6 +104,12 @@ internal fun replyTypeLabel(type: ReplyType): Int = when (type) {
 
 internal fun protocolLabel(protocol: String): Int = when (protocol) {
     VoiceProtocol.CHAT_AUDIO -> R.string.voice_protocol_chat_audio
+    VoiceProtocol.VOLC_TTS -> R.string.voice_protocol_volc_tts
+    VoiceProtocol.VOLC_ASR -> R.string.voice_protocol_volc_asr
+    VoiceProtocol.QWEN_TTS -> R.string.voice_protocol_qwen_tts
+    VoiceProtocol.QWEN_ASR -> R.string.voice_protocol_qwen_asr
+    VoiceProtocol.MINIMAX_TTS -> R.string.voice_protocol_minimax_tts
+    VoiceProtocol.FISH_TTS -> R.string.voice_protocol_fish_tts
     else -> R.string.voice_protocol_openai_audio
 }
 
@@ -328,6 +334,9 @@ data class VoiceProviderEditState(
 ) {
     val form: List<Any?> get() = listOf(presetId, protocol, name, baseUrl, model, voice, use)
     val dirty: Boolean get() = loaded && (form != savedForm || keyInput.isNotEmpty())
+
+    /** 能不能打开选音色页（0.7.2）：只有合成，且这个服务商有内置列表或能从服务商取 */
+    val canPickVoice: Boolean get() = kind == ProviderKind.TTS && VoiceCatalog.supports(presetId, protocol)
 }
 
 @HiltViewModel
@@ -335,11 +344,35 @@ class VoiceProviderEditViewModel @Inject constructor(
     savedState: SavedStateHandle,
     private val voices: VoiceRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    catalog: VoiceCatalog,
+    preview: VoicePreview,
 ) : ViewModel() {
     private val route = savedState.toRoute<VoiceProviderEditRoute>()
     private val kind = ProviderKind.valueOf(route.kind)
     private val _state = MutableStateFlow(VoiceProviderEditState(kind = kind))
     val state: StateFlow<VoiceProviderEditState> = _state.asStateFlow()
+
+    /** 选音色页（0.7.2） */
+    val picker = VoicePickerController(viewModelScope, catalog, preview, context.getString(R.string.voice_preview_text))
+
+    /** 打开选音色页：用页面上现在的地址、模型和 Key（新填的 Key 还没保存也用它） */
+    fun openPicker() {
+        val s = _state.value
+        viewModelScope.launch {
+            val url = s.baseUrl.takeUnless(VoicePresets::hasPlaceholder)?.let { BaseUrlRules.normalize(it, allowLocalHttp = BuildConfig.DEBUG) }
+            val key = s.keyInput.ifEmpty { s.providerId?.let { voices.config(it) }?.let(voices::apiKey).orEmpty() }
+            picker.open(url?.let { VoiceTarget(s.presetId, s.protocol, it, key, s.model) }, s.voice)
+        }
+    }
+
+    fun pickVoice(id: String) {
+        setVoice(id)
+        picker.close()
+    }
+
+    override fun onCleared() {
+        picker.close()
+    }
 
     init {
         viewModelScope.launch {
@@ -373,11 +406,15 @@ class VoiceProviderEditViewModel @Inject constructor(
     /** 选预置或自定义：只给新服务商填默认值，不改已保存的地址 */
     fun selectPreset(preset: VoicePreset?, customName: String = "") = _state.update {
         if (it.providerId != null) it else if (preset == null) {
-            it.copy(presetId = null, name = customName, baseUrl = "", model = "", voice = "", errorRes = null)
+            // 自定义只有通用格式
+            it.copy(presetId = null, protocol = it.protocol.takeIf { p -> p in VoiceProtocol.custom } ?: VoiceProtocol.OPENAI_AUDIO,
+                name = customName, baseUrl = "", model = "", voice = "", errorRes = null)
         } else {
+            val endpoint = preset.endpoint(kind)
             it.copy(
-                presetId = preset.id, protocol = preset.protocol, name = customName.ifBlank { context.getString(preset.nameRes) }, baseUrl = preset.baseUrl,
-                model = preset.model(kind).orEmpty(), voice = if (kind == ProviderKind.TTS) preset.defaultVoice else "", errorRes = null,
+                presetId = preset.id, protocol = endpoint?.protocol ?: it.protocol, name = customName.ifBlank { context.getString(preset.nameRes) },
+                baseUrl = endpoint?.baseUrl.orEmpty(), model = endpoint?.model.orEmpty(),
+                voice = if (kind == ProviderKind.TTS) endpoint?.defaultVoice.orEmpty() else "", errorRes = null,
             )
         }
     }
@@ -396,6 +433,7 @@ class VoiceProviderEditViewModel @Inject constructor(
         val s = _state.value
         val error = when {
             s.name.isBlank() -> R.string.llm_name_required
+            VoicePresets.hasPlaceholder(s.baseUrl) -> R.string.base_url_placeholder_required
             BaseUrlRules.normalize(s.baseUrl, allowLocalHttp = BuildConfig.DEBUG) == null -> R.string.llm_base_url_invalid
             s.model.isBlank() -> R.string.voice_model_required
             s.keyInput.isNotEmpty() && !LlmEndpoint.isUsableKey(s.keyInput) -> R.string.llm_api_key_invalid_chars
@@ -479,6 +517,12 @@ fun VoiceProviderEditScreen(onBack: () -> Unit, viewModel: VoiceProviderEditView
             viewModel.consumeSaved()
         }
     }
+    val picker by viewModel.picker.state.collectAsStateWithLifecycle()
+    if (picker.open) {
+        BackHandler { viewModel.picker.close() }
+        VoicePickerContent(picker, viewModel.picker::setQuery, viewModel.picker::search, viewModel::pickVoice, viewModel.picker::preview, viewModel.picker::close)
+        return
+    }
     BackHandler(enabled = state.dirty) { confirmDiscard = true }
     ImeBackHandler()
     VoiceProviderEditContent(
@@ -487,7 +531,7 @@ fun VoiceProviderEditScreen(onBack: () -> Unit, viewModel: VoiceProviderEditView
         actions = VoiceProviderEditActions(
             onSave = viewModel::save, onPreset = viewModel::selectPreset, onName = viewModel::setName, onProtocol = viewModel::setProtocol,
             onBaseUrl = viewModel::setBaseUrl, onKey = viewModel::setKey, onClearKey = viewModel::clearKey, onModel = viewModel::setModel,
-            onVoice = viewModel::setVoice, onUse = viewModel::setUse, onDelete = viewModel::delete,
+            onVoice = viewModel::setVoice, onUse = viewModel::setUse, onDelete = viewModel::delete, onPickVoice = viewModel::openPicker,
         ),
     )
     state.keyMoveUrl?.let { KeyMoveDialog(it, viewModel::dismissKeyMove, viewModel::confirmKeyMove) }
@@ -517,6 +561,7 @@ data class VoiceProviderEditActions(
     val onVoice: (String) -> Unit = {},
     val onUse: (Boolean) -> Unit = {},
     val onDelete: () -> Unit = {},
+    val onPickVoice: () -> Unit = {},
 )
 
 @Composable
@@ -525,8 +570,8 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
     val dimens = WeTheme.dimens
     val tts = state.kind == ProviderKind.TTS
     var confirmDelete by remember { mutableStateOf(false) }
-    var pickVoice by remember { mutableStateOf(false) }
     val preset = VoicePresets.byId(state.presetId)
+    val presetEndpoint = preset?.endpoint(state.kind)
     Column(Modifier.fillMaxSize().background(colors.pageBackground).imePadding()) {
         WeTopBar(
             title = stringResource(
@@ -558,7 +603,7 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
                 ChoiceRow(
                     stringResource(R.string.voice_protocol),
                     stringResource(protocolLabel(state.protocol)),
-                    options = VoiceProtocol.all.map { stringResource(protocolLabel(it)) to it },
+                    options = VoiceProtocol.custom.map { stringResource(protocolLabel(it)) to it },
                     showDivider = true,
                     onPick = actions.onProtocol,
                 )
@@ -575,23 +620,28 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
                 VoiceTextInput(state.model, actions.onModel, stringResource(R.string.voice_model_hint), KeyboardOptions(autoCorrectEnabled = false))
             }
             if (tts) {
-                val voices = preset != null && preset.voicesRes != 0
-                FormRow(stringResource(R.string.voice_voice), showDivider = voices) {
+                FormRow(stringResource(R.string.voice_voice), showDivider = state.canPickVoice) {
                     VoiceTextInput(state.voice, actions.onVoice, stringResource(R.string.voice_voice_hint), KeyboardOptions(autoCorrectEnabled = false))
                 }
                 // 单独一行：大字体、窄屏时不挤占音色输入框
-                if (voices) WeListRow(stringResource(R.string.voice_voice_pick), onClick = { pickVoice = true })
+                if (state.canPickVoice) WeListRow(stringResource(R.string.voice_voice_pick), onClick = actions.onPickVoice)
             }
             state.errorRes?.let { ErrorNote(stringResource(it)) }
             FootnoteText(
                 buildString {
                     append(stringResource(R.string.llm_base_url_note))
                     if (preset == null) append("\n").append(stringResource(R.string.voice_protocol_note))
-                    if (tts) append("\n").append(stringResource(R.string.voice_voice_note)).append("\n").append(stringResource(R.string.voice_style_mimo_note))
+                    protocolNote(state.protocol)?.let { append("\n").append(stringResource(it)) }
+                    if (tts) {
+                        append("\n").append(stringResource(R.string.voice_voice_note))
+                        append("\n").append(
+                            stringResource(if (VoiceProtocol.supportsStyle(state.protocol, state.model)) R.string.voice_style_supported_note else R.string.voice_style_unsupported_note),
+                        )
+                    }
                 },
             )
             val uri = LocalUriHandler.current
-            preset?.let { WeListRow(stringResource(R.string.provider_docs), onClick = { uri.openUri(VoicePresets.docs(it, state.kind)) }) }
+            presetEndpoint?.let { endpoint -> WeListRow(stringResource(R.string.provider_docs), onClick = { uri.openUri(endpoint.docs) }) }
 
             GroupSpacer()
             FormRow(stringResource(R.string.llm_api_key)) {
@@ -608,11 +658,7 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
                 showArrow = false,
                 trailing = { WeSwitch(state.use, actions.onUse, label = stringResource(R.string.voice_use_this)) },
             )
-            when {
-                preset == VoicePresets.MIMO && tts -> FootnoteText(stringResource(R.string.voice_price_mimo_tts))
-                preset == VoicePresets.MIMO -> FootnoteText(stringResource(R.string.voice_price_mimo_asr))
-                preset == VoicePresets.SILICONFLOW -> FootnoteText(stringResource(R.string.voice_price_siliconflow))
-            }
+            presetEndpoint?.priceRes?.takeIf { it != 0 }?.let { FootnoteText(stringResource(it)) }
             if (state.providerId != null) {
                 Spacer(Modifier.height(8.dp))
                 Box(
@@ -626,14 +672,6 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
             Spacer(Modifier.height(24.dp))
         }
     }
-    if (pickVoice && preset != null && preset.voicesRes != 0) {
-        val voices = stringArrayResource(preset.voicesRes)
-        WeActionSheet(
-            title = stringResource(R.string.voice_voice_pick),
-            options = voices.map { v -> SheetOption(v, selected = v == state.voice) { actions.onVoice(v) } },
-            onDismiss = { pickVoice = false },
-        )
-    }
     if (confirmDelete) {
         WeDialog(
             message = stringResource(R.string.voice_delete_confirm, state.name),
@@ -646,6 +684,14 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
             },
         )
     }
+}
+
+/** 这种格式要额外说明的：火山的“模型”填资源 ID，百炼的地址要换成业务空间地址 */
+internal fun protocolNote(protocol: String): Int? = when (protocol) {
+    VoiceProtocol.VOLC_TTS, VoiceProtocol.VOLC_ASR -> R.string.voice_volc_note
+    VoiceProtocol.QWEN_TTS, VoiceProtocol.QWEN_ASR -> R.string.voice_workspace_note
+    VoiceProtocol.FISH_TTS -> R.string.voice_fish_note
+    else -> null
 }
 
 @Composable

@@ -53,6 +53,8 @@ fun WeSearchBar(
     onCancel: () -> Unit,
     focusRequester: FocusRequester,
     hint: String = stringResource(R.string.search_hint),
+    /** 点键盘上的「搜索」时（0.7.2 选音色时到服务商搜索）；不设时只收起键盘 */
+    onSearch: (() -> Unit)? = null,
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -94,7 +96,7 @@ fun WeSearchBar(
                     textStyle = WeTheme.typography.listTitle.copy(color = colors.textPrimary),
                     cursorBrush = SolidColor(colors.brand),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); onSearch?.invoke() }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                 )
             }

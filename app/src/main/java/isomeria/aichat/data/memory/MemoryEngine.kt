@@ -34,13 +34,13 @@ data class MemoryLabels(
     /** 没有设置昵称时对方的称呼 */
     val defaultMyName: String,
     val imagePlaceholder: String,
-    /** 这段聊天没有值得记的内容时，模型按总结指令回答的这个词 */
-    val nothingReply: String = "无",
+    /** 这段聊天没有值得记的内容时，模型按总结指令回答的这个词（strings.xml 里是「无」） */
+    val nothingReply: String = "none",
     /** 整理时发给模型的内容。参数：现有的核心记忆（没有时是 [foldNoCore]）、要整理的近期记忆 */
-    val foldInput: String = "核心记忆：\n%1\$s\n\n近期记忆：\n%2\$s",
-    val foldNoCore: String = "（还没有）",
+    val foldInput: String = "%1\$s\n\n%2\$s",
+    val foldNoCore: String = "-",
     /** 要整理的一条近期记忆。参数：年、月、日、内容 */
-    val foldItem: String = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
+    val foldItem: String = "- [%1\$d-%2\$d-%3\$d] %4\$s",
 )
 
 /** 自己的昵称。单元测试里换成固定值（MMKV 需要原生库）。 */
@@ -262,7 +262,7 @@ class MemoryEngine @Inject constructor(
 
     /** 模型回答「无」（可能带句号、引号）时这段没有值得记的 */
     private fun isNothing(text: String): Boolean =
-        text.trim().trim('。', '.', '“', '”', '"', '「', '」', '！', '!').trim() == labels.nothingReply
+        text.trim().trim { it in NOTHING_PUNCTUATION }.trim() == labels.nothingReply
 
     private suspend fun save(contactId: Long, summary: Summary, batch: List<Message>) {
         summary.text?.let { saveSummary(contactId, it, batch) }
@@ -326,5 +326,8 @@ class MemoryEngine @Inject constructor(
 
     private companion object {
         const val TAG = "MemoryEngine"
+
+        /** 模型回答「无」时可能带的标点和引号 */
+        const val NOTHING_PUNCTUATION = "。.!！\"“”「」"
     }
 }

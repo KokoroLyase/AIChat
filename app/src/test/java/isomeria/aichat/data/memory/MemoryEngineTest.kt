@@ -69,6 +69,15 @@ class MemoryEngineTest {
     private lateinit var builder: ContextBuilder
     private var providerId = 0L
 
+    /** 和 strings.xml 一样的中文写法（默认值不是中文） */
+    private val labels = MemoryLabels(
+        "总结 %1\$s 和 %2\$s", "合并 %1\$s", "对方", "[图片]",
+        nothingReply = "无",
+        foldInput = "核心记忆：\n%1\$s\n\n近期记忆：\n%2\$s",
+        foldNoCore = "（还没有）",
+        foldItem = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
+    )
+
     private val cipher = object : SecretCipher {
         override fun encrypt(plain: String) = "enc:$plain"
         override fun decrypt(encoded: String) = encoded.removePrefix("enc:")
@@ -113,7 +122,7 @@ class MemoryEngineTest {
         )
         engine = MemoryEngine(
             db, providers, UsageRepository(db.usageDao()), builder,
-            MemoryLabels("总结 %1\$s 和 %2\$s", "合并 %1\$s", "对方", "[图片]"),
+            labels,
         ) { "阿哲" }
         runBlocking {
             providerId = db.providerDao().insert(
@@ -200,7 +209,7 @@ class MemoryEngineTest {
 
     private fun engineWithGlobals(globals: PromptGlobals) = MemoryEngine(
         db, providers, UsageRepository(db.usageDao()), builder,
-        MemoryLabels("总结 %1\$s 和 %2\$s", "合并 %1\$s", "对方", "[图片]"),
+        labels,
         PromptGlobalsSource { globals },
     ) { "阿哲" }
 

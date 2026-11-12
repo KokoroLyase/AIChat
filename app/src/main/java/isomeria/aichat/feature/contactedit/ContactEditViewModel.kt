@@ -125,7 +125,9 @@ class ContactEditViewModel @Inject constructor(
     memories: MemoryRepository,
     private val contextBuilder: ContextBuilder,
     private val clock: Clock,
-    voices: isomeria.aichat.data.repo.VoiceRepository,
+    private val voices: isomeria.aichat.data.repo.VoiceRepository,
+    catalog: isomeria.aichat.data.voice.VoiceCatalog,
+    preview: isomeria.aichat.data.voice.VoicePreview,
 ) : ViewModel() {
     private val contactId = savedState.toRoute<ContactEditRoute>().contactId
     private var existing: Contact? = null
@@ -148,6 +150,40 @@ class ContactEditViewModel @Inject constructor(
             else list.providers.firstOrNull { it.id == list.selectedId }?.voice.orEmpty()
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    /** 正在用的语音合成来源能不能打开选音色页（0.7.2）：系统语音，或有音色列表的服务商 */
+    val canPickVoice: StateFlow<Boolean> = voices.observe(isomeria.aichat.data.db.ProviderKind.TTS, settings.voiceSettings)
+        .map { list ->
+            list.local == isomeria.aichat.core.VoiceSource.SYSTEM_TTS ||
+                list.providers.firstOrNull { it.id == list.selectedId }?.let { isomeria.aichat.data.voice.VoiceCatalog.supports(it.presetId, it.provider) } == true
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** 选音色页（0.7.2）：列的是正在用的合成来源的音色 */
+    val picker = isomeria.aichat.feature.voice.VoicePickerController(viewModelScope, catalog, preview, context.getString(R.string.voice_preview_text))
+
+    fun openVoicePicker() {
+        val current = _state.value.form.ttsVoice
+        viewModelScope.launch {
+            if (voices.selectedLocal(isomeria.aichat.data.db.ProviderKind.TTS) == isomeria.aichat.core.VoiceSource.SYSTEM_TTS) {
+                picker.open(isomeria.aichat.data.voice.VoiceTarget(null, "", "", null, "", systemTts = true), current)
+                return@launch
+            }
+            val config = voices.selected(isomeria.aichat.data.db.ProviderKind.TTS)
+            if (config == null) {
+                picker.open(null, current, R.string.voice_picker_no_source)
+                return@launch
+            }
+            val url = isomeria.aichat.data.repo.BaseUrlRules.normalize(config.baseUrl, isomeria.aichat.BuildConfig.DEBUG)
+            picker.open(url?.let { isomeria.aichat.data.voice.VoiceTarget(config.presetId, config.provider, it, voices.apiKey(config), config.defaultModel) }, current)
+        }
+    }
+
+    fun pickVoice(id: String) {
+        update { it.copy(ttsVoice = id.take(Contact.VOICE_MAX_LENGTH)) }
+        picker.close()
+    }
+
     val state: StateFlow<ContactEditState> = _state.asStateFlow()
 
     /** 可选的服务商 */
@@ -385,6 +421,7 @@ class ContactEditViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        picker.close()
         // 没保存就离开，或保存时用的是另一张：删掉编辑中生成的头像文件
         val keep = if (saved) _state.value.form.avatarPath else existing?.avatarPath
         pendingAvatars.filter { it != keep }.forEach(files::delete)
