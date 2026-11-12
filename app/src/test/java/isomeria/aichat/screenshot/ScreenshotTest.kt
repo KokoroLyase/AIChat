@@ -1178,4 +1178,12 @@ class ScreenshotTest {
     @Test fun callDetailDark() = shot("85-call-detail", true) { CallDetailShot() }
     @Test fun callDetailLarge() = large("85-call-detail-large", false) { CallDetailShot() }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun callDetailNarrow() = large("85-call-detail-narrow", true) { CallDetailShot() }
+    /** 通话中聊天页的输入栏换成「回到通话」 */
+    @Composable private fun InCallBarShot() = Column(Modifier.fillMaxSize(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom) {
+        isomeria.aichat.feature.chat.InCallBar {}
+    }
+    @Test fun inCallBarLight() = shot("86-chat-in-call", false) { InCallBarShot() }
+    @Test fun inCallBarDark() = shot("86-chat-in-call", true) { InCallBarShot() }
+    @Test fun inCallBarLarge() = large("86-chat-in-call-large", false) { InCallBarShot() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun inCallBarNarrow() = large("86-chat-in-call-narrow", true) { InCallBarShot() }
 }

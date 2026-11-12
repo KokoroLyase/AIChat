@@ -111,9 +111,17 @@ class ChatViewModel @Inject constructor(
     private val recorder: isomeria.aichat.data.voice.VoiceRecorder,
     private val voices: isomeria.aichat.data.repo.VoiceRepository,
     private val playback: isomeria.aichat.data.voice.VoicePlayback,
+    callEngine: isomeria.aichat.data.call.CallEngine,
 ) : ViewModel() {
     private val route = savedState.toRoute<ChatRoute>()
     val contactId: Long = route.contactId
+
+    /**
+     * 正在和这个联系人通话（0.8.0）：输入栏换成「回到通话」，通话期间不从聊天页发消息（免得普通回复和通话同时请求）
+     */
+    val inCall: StateFlow<Boolean> = callEngine.state
+        .map { it != null && it.contactId == contactId && it.phase != isomeria.aichat.data.call.CallPhase.ENDED }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** 从搜索结果进来时要定位并高亮的消息；0 表示没有 */
     val focusMessageId: Long = route.focusMessageId

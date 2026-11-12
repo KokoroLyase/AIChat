@@ -23,6 +23,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
@@ -34,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -138,6 +142,7 @@ fun ChatScreen(
     val colors = WeTheme.colors
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val inCall by viewModel.inCall.collectAsStateWithLifecycle()
     val pageEntry by viewModel.entry.collectAsStateWithLifecycle()
     val pagedRows = viewModel.rows.collectAsLazyPagingItems()
     val newMessageCount by viewModel.newMessageCount.collectAsStateWithLifecycle()
@@ -513,7 +518,10 @@ fun ChatScreen(
         }
         }
 
-        if (contact != null) {
+        if (contact != null && inCall) {
+            // 0.8.0：正在和这个联系人通话，不从这里发消息
+            InCallBar { onCall(contact.id) }
+        } else if (contact != null) {
             ChatInputBar(
                 value = input,
                 onValueChange = { input = it },
@@ -816,6 +824,28 @@ private fun ChatBottomArea(reserve: Dp?, content: @Composable () -> Unit) {
                 .windowInsetsBottomHeight(WindowInsets.ime.union(navigationBars).union(reserveInsets)),
         )
         content()
+    }
+}
+
+/** 正在和这个联系人通话时代替输入栏（0.8.0）：点一下回到通话页 */
+@Composable
+internal fun InCallBar(onClick: () -> Unit) {
+    val colors = WeTheme.colors
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.barBackground)
+            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .navigationBarsPadding()
+            .heightIn(min = 56.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(isomeria.aichat.ui.components.WeIcons.Phone, null, tint = colors.brandText, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.chat_in_call), style = WeTheme.typography.listTitle, color = colors.brandText)
+        }
     }
 }
 

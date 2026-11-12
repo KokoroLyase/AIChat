@@ -109,6 +109,16 @@ class CallReplayTest {
     }
 
     @Test
+    fun lateEndOfAnEarlierTurn_doesNotStopTheCurrentOne() {
+        replay.toggleTurn(3)
+        val stale = player.onEnd!!
+        replay.toggleTurn(5)
+        stale(true)
+        scope.advanceUntilIdle()
+        assertEquals("还在放第 5 条", 5L, replay.state.value?.turnId)
+    }
+
+    @Test
     fun stop_cancelsTheNextTurn() {
         replay.playAll()
         val callback = player.onEnd!!

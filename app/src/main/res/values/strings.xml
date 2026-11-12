@@ -1060,6 +1060,7 @@
     <!-- 0.8.0 语音通话 -->
     <string name="contact_voice_call">语音通话</string>
     <string name="chat_voice_call">语音通话</string>
+    <string name="chat_in_call">正在通话，点按回到通话</string>
     <string name="call_status_connecting">正在接通…</string>
     <string name="call_status_ended">通话已结束</string>
     <string name="call_phase_listening">在听，请说话</string>
