@@ -218,6 +218,18 @@ class BackupVoiceTest {
     }
 
     @Test
+    fun contactLocalSource_ofTheWrongKindOrUnknown_followsGlobalAfterRestore() = runBlocking {
+        seed()
+        db.contactDao().update(db.contactDao().get(1)!!.copy(ttsSource = "local:offline-asr", asrSource = "local:future-engine"))
+        val zip = export()
+        db.contactDao().delete(1)
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+        val restored = db.contactDao().get(1)!!
+        assertNull("合成来源放了离线识别：跟随全局", restored.ttsSource)
+        assertNull("以后版本的新来源认不出：跟随全局", restored.asrSource)
+    }
+
+    @Test
     fun restoreWithoutProviders_unmatchedContactSourceFollowsGlobal() = runBlocking {
         seed()
         db.contactDao().update(db.contactDao().get(1)!!.copy(ttsSource = VoiceSource.provider(tts), asrSource = VoiceSource.provider(asr)))

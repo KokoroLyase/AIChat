@@ -60,6 +60,20 @@ class ContactOverridesTest {
     }
 
     @Test
+    fun save_dropsSourcesWhoseProviderWasDeleted_keepsLocalAndExisting() {
+        fun provider(id: Long, kind: isomeria.aichat.data.db.ProviderKind) =
+            isomeria.aichat.data.db.ProviderConfig(id = id, kind = kind, provider = "p", baseUrl = "https://a.test", defaultModel = "m")
+        val choices = ContactVoiceChoices(tts = listOf(provider(3, isomeria.aichat.data.db.ProviderKind.TTS)), asr = listOf(provider(4, isomeria.aichat.data.db.ProviderKind.ASR)))
+        val kept = ContactForm(ttsSource = "provider:3", asrSource = "local:offline-asr").withoutMissingSources(choices)
+        assertEquals("provider:3", kept.ttsSource)
+        assertEquals("local:offline-asr", kept.asrSource)
+        val gone = ContactForm(ttsSource = "provider:9", asrSource = "provider:3").withoutMissingSources(choices)
+        assertNull("服务商不在了：跟随全局", gone.ttsSource)
+        assertNull("id 是合成服务商的，不能当识别来源", gone.asrSource)
+        assertEquals(ContactForm(), ContactForm().withoutMissingSources(choices))
+    }
+
+    @Test
     fun replyPreferencesColumn_roundTrips_badJsonFollowsGlobal() {
         val converters = DbConverters()
         val own = ReplyPreferences(waitSeconds = 3, stripPunctuation = false, maxIntervalSeconds = 9)

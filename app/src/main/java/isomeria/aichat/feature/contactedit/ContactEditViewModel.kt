@@ -106,6 +106,18 @@ internal fun ContactForm.withTtsSource(source: String?, global: String): Contact
     return copy(ttsSource = source, ttsVoice = if (before == after) ttsVoice else "")
 }
 
+/**
+ * 保存前去掉指向已删除服务商的来源（0.7.2）：编辑期间服务商被删了，和删除时一样改为跟随全局；
+ * 本机来源和还在的服务商原样保留
+ */
+internal fun ContactForm.withoutMissingSources(choices: ContactVoiceChoices): ContactForm {
+    fun keep(source: String?, providers: List<ProviderConfig>): String? {
+        val parsed = source?.let(isomeria.aichat.core.VoiceSource::parse) as? isomeria.aichat.core.VoiceSource.Provider ?: return source
+        return source.takeIf { providers.any { it.id == parsed.id } }
+    }
+    return copy(ttsSource = keep(ttsSource, choices.tts), asrSource = keep(asrSource, choices.asr))
+}
+
 /** 联系人编辑页可选的语音来源（0.7.2）：各类的服务商，和「我 → 语音消息」现在用的来源 */
 data class ContactVoiceChoices(
     val tts: List<ProviderConfig> = emptyList(),
@@ -429,7 +441,12 @@ class ContactEditViewModel @Inject constructor(
             return null
         }
         finishContextInput()
-        val form = _state.value.form
+        // 编辑期间单独选的语音服务商被删了：改为跟随全局（按数据库里现在的服务商判断，不用页面上可能还没读出来的列表）
+        val providersNow = ContactVoiceChoices(
+            tts = voices.list(isomeria.aichat.data.db.ProviderKind.TTS),
+            asr = voices.list(isomeria.aichat.data.db.ProviderKind.ASR),
+        )
+        val form = _state.value.form.withoutMissingSources(providersNow)
         val name = form.name.trim()
         if (name.isEmpty()) {
             _state.update { it.copy(showNameError = true) }

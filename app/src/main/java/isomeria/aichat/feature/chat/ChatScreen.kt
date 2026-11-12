@@ -157,6 +157,7 @@ fun ChatScreen(
     val recording by viewModel.recording.collectAsStateWithLifecycle()
     val transcribing by viewModel.transcribing.collectAsStateWithLifecycle()
     val asrAvailable by viewModel.asrAvailable.collectAsStateWithLifecycle()
+    val asrOwnSource by viewModel.asrOwnSource.collectAsStateWithLifecycle()
     val playingId by viewModel.playingId.collectAsStateWithLifecycle()
     var showAsrSetup by remember { mutableStateOf(false) }
     var voiceIntroName by remember { mutableStateOf<String?>(null) }
@@ -638,14 +639,17 @@ fun ChatScreen(
     }
 
     if (showAsrSetup) {
+        // 0.7.2：联系人单独选的识别来源用不了时不换成全局的，提示去联系人资料改，或把那个来源设置好
+        val own = asrOwnSource && state.contact != null
         WeDialog(
-            title = stringResource(R.string.voice_asr_setup_title),
-            message = stringResource(R.string.voice_asr_setup_message),
-            confirmText = stringResource(R.string.action_go_settings),
+            title = stringResource(if (own) R.string.voice_asr_own_unavailable_title else R.string.voice_asr_setup_title),
+            message = if (own) stringResource(R.string.voice_asr_own_unavailable_message, state.contact?.name.orEmpty())
+            else stringResource(R.string.voice_asr_setup_message),
+            confirmText = stringResource(if (own) R.string.voice_asr_own_unavailable_action else R.string.action_go_settings),
             onDismiss = { showAsrSetup = false },
             onConfirm = {
                 showAsrSetup = false
-                onOpenVoiceSettings()
+                if (own) state.contact?.let { onEditContact(it.id) } else onOpenVoiceSettings()
             },
         )
     }

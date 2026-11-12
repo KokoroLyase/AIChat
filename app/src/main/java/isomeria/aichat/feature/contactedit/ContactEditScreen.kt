@@ -440,7 +440,7 @@ internal fun ContactVoiceRows(
     }
     // 单独一行：大字体、窄屏时不挤占音色输入框
     if (canPickVoice) WeListRow(stringResource(R.string.voice_voice_pick), onClick = onPickVoice, showDivider = true)
-    FormRow(stringResource(R.string.contact_tts_style)) {
+    FormRow(stringResource(R.string.contact_tts_style), showDivider = true) {
         InlineField(
             value = form.ttsStyle,
             onValueChange = { value -> onUpdate { it.copy(ttsStyle = value.take(Contact.STYLE_MAX_LENGTH)) } },

@@ -706,8 +706,8 @@ class BackupManager @Inject constructor(
                 // 单独选的语音服务商也换成替换后的同一个，找不到时改为跟随全局（0.7.2）
                 val updated = contact.copy(
                     providerId = provider,
-                    ttsSource = contactSource(contact.ttsSource, ids.fromLocal),
-                    asrSource = contactSource(contact.asrSource, ids.fromLocal),
+                    ttsSource = contactSource(contact.ttsSource, ids.fromLocal, VoiceSource.SYSTEM_TTS),
+                    asrSource = contactSource(contact.asrSource, ids.fromLocal, VoiceSource.OFFLINE_ASR),
                 )
                 if (updated != contact) contactDao.update(updated)
             }
@@ -1009,14 +1009,17 @@ class BackupManager @Inject constructor(
         proactiveEnabled = proactiveEnabled, proactiveFrequency = proactiveFrequency,
         replyType = replyType, ttsVoice = ttsVoice?.take(Contact.VOICE_MAX_LENGTH), ttsStyle = ttsStyle.take(Contact.STYLE_MAX_LENGTH),
         replyPreferences = replyPreferences?.toModel(),
-        ttsSource = contactSource(ttsSource, providerIds),
-        asrSource = contactSource(asrSource, providerIds),
+        ttsSource = contactSource(ttsSource, providerIds, VoiceSource.SYSTEM_TTS),
+        asrSource = contactSource(asrSource, providerIds, VoiceSource.OFFLINE_ASR),
     )
 
-    /** 联系人单独选的来源换成本机的：服务商按 [map] 换 id，换不到时为 null（跟随全局）；本机来源原样；认不出的为 null */
-    private fun contactSource(source: String?, map: Map<Long, Long>): String? = when (val parsed = source?.let(VoiceSource::parse)) {
+    /**
+     * 联系人单独选的来源换成本机的：服务商按 [map] 换 id，换不到时为 null（跟随全局）；
+     * 本机来源只认这一类的 [local]（合成是系统语音、识别是离线识别），别的（放错类、以后版本的新来源）为 null；认不出的为 null
+     */
+    private fun contactSource(source: String?, map: Map<Long, Long>, local: VoiceSource.Local): String? = when (val parsed = source?.let(VoiceSource::parse)) {
         is VoiceSource.Provider -> map[parsed.id]?.let(VoiceSource::provider)
-        is VoiceSource.Local -> source
+        is VoiceSource.Local -> source.takeIf { parsed == local }
         null -> null
     }
 

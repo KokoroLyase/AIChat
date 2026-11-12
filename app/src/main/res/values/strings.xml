@@ -830,7 +830,7 @@
     <string name="contact_reply_mode_off">不使用</string>
     <string name="contact_reply_mode_follow_desc">按「我 → 回复偏好」的设置回复，那里改了这里跟着变</string>
     <string name="contact_reply_mode_custom_desc">这个联系人用自己的一套，不受「我 → 回复偏好」影响</string>
-    <string name="contact_reply_mode_off_desc">不等待、不加间隔，回复按「分条显示」拆分</string>
+    <string name="contact_reply_mode_off_desc">不等待，回复按「分条显示」拆分，约 1 秒一条</string>
     <string name="contact_reply_follow_summary">「我 → 回复偏好」现在是：等待 %1$d 秒，每条约 %2$d 字，每轮 %3$d–%4$d 条，每条间隔 %5$d–%6$d 秒。</string>
     <string name="contact_reply_off_summary">不使用回复偏好时，收到消息马上开始回复；回复里有空行时是否拆成多条，看联系人资料里的「分条显示」。之前单独设置的值会保留，改回「单独设置」时还在。</string>
     <!-- 0.7.2 联系人单独选语音来源 -->
@@ -851,16 +851,16 @@
     <string name="voice_reply_text">文字</string>
     <string name="voice_reply_voice">语音</string>
     <string name="voice_reply_global_value">使用全局设置（%1$s）</string>
-    <string name="voice_reply_type_note">联系人回复你时发文字还是语音。跟随：你发文字就回文字，你发语音就回语音；语音：总是回语音，主动聊天的消息也是；文字：总是回文字。联系人可以在「朋友资料」里单独设置。语音回复要先在下面设置语音合成，没设置或合成失败时回文字。</string>
+    <string name="voice_reply_type_note">联系人回复你时发文字还是语音。跟随：你发文字就回文字，你发语音就回语音；语音：总是回语音，主动聊天的消息也是；文字：总是回文字。联系人可以在「朋友资料」里单独设置，语音合成和语音识别也可以给联系人单独选。语音回复要先在下面设置语音合成，没设置或合成失败时回文字。</string>
     <string name="voice_tts_source">语音合成</string>
     <string name="voice_asr_source">语音识别</string>
     <string name="voice_source_unset">未设置</string>
-    <string name="voice_privacy_note">选用服务商时，语音合成会把联系人回复的文字发给你选的语音合成服务商，发送语音和录音转文字会把录音发给你选的语音识别服务商，服务商按各自的规则收费；选用本机的系统语音、离线识别时，文字和录音不离开手机。本 App 不收集这些内容。</string>
+    <string name="voice_privacy_note">选用服务商时，语音合成会把联系人回复的文字发给你选的语音合成服务商，发送语音和录音转文字会把录音发给你选的语音识别服务商（联系人单独选了的，发给他的），服务商按各自的规则收费；选用本机的系统语音、离线识别时，文字和录音不离开手机。本 App 不收集这些内容。</string>
     <string name="voice_providers_tts_title">语音合成</string>
     <string name="voice_providers_asr_title">语音识别</string>
     <string name="voice_providers_empty">还没有服务商，点右上角「添加」。</string>
-    <string name="voice_providers_tts_hint">把联系人的回复读成语音。预置了火山引擎（豆包）、阿里云百炼（千问）、Xiaomi MiMo、MiniMax、Fish Audio 和硅基流动，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/speech）。只用标着“正在使用”的那一个（本机的系统语音或一个服务商），在它的页面里打开开关切换。</string>
-    <string name="voice_providers_asr_hint">把你的语音转成文字再发给联系人。预置了火山引擎（豆包）、阿里云百炼（千问）、Xiaomi MiMo 和硅基流动，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/transcriptions）。只用标着“正在使用”的那一个（本机的离线识别或一个服务商），在它的页面里打开开关切换。</string>
+    <string name="voice_providers_tts_hint">把联系人的回复读成语音。预置了火山引擎（豆包）、阿里云百炼（千问）、BigModel（智谱）、Xiaomi MiMo、MiniMax、Fish Audio、硅基流动和 OpenRouter，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/speech）。联系人默认用标着“正在使用”的那一个（本机的系统语音或一个服务商），在它的页面里打开开关切换；也可以在联系人资料里给某个联系人单独选。</string>
+    <string name="voice_providers_asr_hint">把你的语音转成文字再发给联系人。预置了火山引擎（豆包）、阿里云百炼（千问）、BigModel（智谱）、Xiaomi MiMo、Fish Audio、硅基流动和 OpenRouter，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/transcriptions）。和联系人聊天时默认用标着“正在使用”的那一个（本机的离线识别或一个服务商），在它的页面里打开开关切换；也可以在联系人资料里给某个联系人单独选。</string>
     <string name="voice_provider_in_use">正在使用</string>
     <string name="voice_local_group">本机</string>
     <string name="voice_providers_group">服务商</string>
@@ -1009,6 +1009,9 @@
     <string name="voice_transcribing">正在识别…</string>
     <string name="voice_transcribe_failed">语音识别失败，请稍后再试</string>
     <string name="voice_asr_setup_title">还没有设置语音识别</string>
+    <string name="voice_asr_own_unavailable_title">这个联系人的语音识别用不了</string>
+    <string name="voice_asr_own_unavailable_message">「%1$s」单独选了语音识别，现在用不了（没填 API Key、地址不对，或离线识别模型还没下好）。录音不会改发给别的服务商。可以在联系人资料里改回使用全局设置，或者去「我 → 语音消息」把那个来源设置好。</string>
+    <string name="voice_asr_own_unavailable_action">去联系人资料</string>
     <string name="voice_asr_setup_message">发送语音和录音转文字，要先在「我 → 语音消息」里设置语音识别服务商并填写 API Key。录音会发给它转成文字。</string>
     <string name="voice_intro_title">使用语音前请知悉</string>
     <string name="voice_intro_message">按住说话和录音转文字会录下你的声音，发给你选的语音识别服务商（%1$s）转成文字，识别出的文字再像普通消息一样发给联系人的模型服务商。服务商按自己的规则收费。</string>

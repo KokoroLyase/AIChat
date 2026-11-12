@@ -354,6 +354,10 @@ class ChatViewModel @Inject constructor(
             .map { contact -> voices.available(isomeria.aichat.data.db.ProviderKind.ASR, contact) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    /** 这个联系人单独选了语音识别来源（0.7.2）：识别用不了时提示去改联系人资料，而不是去「我 → 语音消息」 */
+    val asrOwnSource: StateFlow<Boolean> = contactFlow.map { it?.asrSource != null }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     /** 这个联系人用的语音识别服务商的名称（第一次录音前的说明里写明录音发给谁）；用的是本机离线识别（0.7.1）时为空串 */
     suspend fun asrName(): String {
         val contact = contacts.get(contactId)
