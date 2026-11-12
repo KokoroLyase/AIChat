@@ -54,7 +54,14 @@ class BackupMigrations(
             4 to { data -> v4ToV5(data) },
             5 to { data -> v5ToV6(data) },
             6 to { data -> v6ToV7(data) },
+            7 to { data -> v7ToV8(data) },
         )
+
+        /**
+         * v7 → v8（0.7.2）：记忆多了「是否核心记忆」，旧记忆都是近期记忆（默认值）；manifest 多了导出了哪些内容，
+         * 旧文件没有时按全部内容处理。data.json 不用改
+         */
+        private fun v7ToV8(data: JsonObject): JsonObject = data
 
         /**
          * v1 → v2（0.3.0）：

@@ -25,6 +25,8 @@ import kotlinx.serialization.json.Json
  *                   免打扰时段和每日上限。今日已用次数、暂停计数和约定提醒是设备状态，不导出。
  *                   v7 起消息带语音文件和状态、联系人带消息发送类型和音色、服务商包括语音合成和识别的（Key 同样默认不导出）、
  *                   设置带语音消息的全局设置
+ *                   v8 起记忆带「是否核心记忆」；可以只导出一部分（[BackupModule]），manifest 记下导出了哪些，
+ *                   没导出服务商时用 providerRefs 记下联系人和语音来源用到的服务商（只有格式和地址，没有 Key）
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
  *   background/…    聊天背景（v4 起）
@@ -37,7 +39,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 7
+    const val VERSION = 8
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -59,6 +61,51 @@ object BackupFormat {
     }
 }
 
+/**
+ * 导出和恢复时可以选择的内容（v8 起）。名字写进 manifest，不能改名。
+ * [requiresContacts] 的几项挂在联系人下面：不选联系人时也不导出、不恢复。
+ */
+enum class BackupModule(val requiresContacts: Boolean = false) {
+    /** 联系人：人设、模型和各项设置、头像、置顶和免打扰 */
+    CONTACTS,
+
+    /** 聊天记录：消息、图片、语音、聊天背景、草稿 */
+    CHATS(requiresContacts = true),
+
+    /** 联系人的长期记忆 */
+    MEMORIES(requiresContacts = true),
+
+    /** 用量统计 */
+    USAGE(requiresContacts = true),
+    GLOBAL_MEMORY,
+
+    /** 模型配置：大模型和语音服务商、模型列表；API Key 另外选 */
+    PROVIDERS,
+    REPLY_PREFERENCES,
+
+    /** 主动聊天的免打扰时段和每日上限 */
+    PROACTIVE,
+
+    /** 语音消息的发送类型、合成和识别来源 */
+    VOICE_SETTINGS,
+
+    /** 昵称、头像、主题、字号、通知和自动检查更新 */
+    PROFILE,
+    ;
+
+    companion object {
+        val ALL: Set<BackupModule> = entries.toSet()
+
+        /** 去掉依赖联系人、但没选联系人的几项 */
+        fun normalize(modules: Set<BackupModule>): Set<BackupModule> =
+            if (CONTACTS in modules) modules else modules.filterNotTo(LinkedHashSet()) { it.requiresContacts }
+
+        /** manifest 里的名字；没有时（v7 及更早）是全部内容，不认识的名字忽略 */
+        fun parse(names: List<String>?): Set<BackupModule> =
+            names?.mapNotNullTo(LinkedHashSet()) { name -> entries.firstOrNull { it.name == name } }?.let(::normalize) ?: ALL
+    }
+}
+
 @Serializable
 data class BackupManifest(
     val app: String = BackupFormat.APP_ID,
@@ -70,6 +117,8 @@ data class BackupManifest(
     val contactCount: Int = 0,
     val messageCount: Int = 0,
     val imageCount: Int = 0,
+    /** 导出了哪些内容（v8 起，[BackupModule] 的名字）；没有时是全部 */
+    val modules: List<String>? = null,
 )
 
 @Serializable
@@ -85,6 +134,17 @@ data class BackupData(
     val globalCategories: List<GlobalCategoryDto> = emptyList(),
     val globalTopics: List<GlobalTopicDto> = emptyList(),
     val globalItems: List<GlobalItemDto> = emptyList(),
+    /** 没导出模型配置时，联系人和语音来源用到的服务商（v8 起）：恢复时按格式和地址找本机的同一个 */
+    val providerRefs: List<ProviderRefDto> = emptyList(),
+)
+
+/** 只用来认出「同一个服务商」的引用：没有名称、模型和 Key */
+@Serializable
+data class ProviderRefDto(
+    val id: Long,
+    val kind: ProviderKind,
+    val provider: String,
+    val baseUrl: String,
 )
 
 @Serializable

@@ -221,7 +221,7 @@ class BackupManagerTest {
         db.contactDao().update(db.contactDao().get(2)!!.copy(memoryModel = "local", memoryThinkingOption = "native", thinkingOption = "on"))
         val before = dump()
         val zip = export(password = "pw123456")
-        assertEquals(7, backup.inspect(zip).manifest.formatVersion)
+        assertEquals(8, backup.inspect(zip).manifest.formatVersion)
         scramble()
         backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(before, dump())
@@ -378,34 +378,170 @@ class BackupManagerTest {
         assertEquals(prefs, settings.value.replyPreferences)
     }
 
+    // ---------- 0.7.2 只导出、只恢复一部分 ----------
+
+    private suspend fun exportModules(modules: Set<BackupModule>): File {
+        val out = ByteArrayOutputStream()
+        backup.export(out, null, modules = modules)
+        return File(context.cacheDir, "partial-${System.nanoTime()}.zip").apply { writeBytes(out.toByteArray()) }
+    }
+
     @Test
-    fun overwrite_userChoosesToKeepLocalGlobalMemory_forNewAndOldBackups() = runBlocking {
+    fun partialExport_containsOnlySelected_noMedia_manifestListsModules() = runBlocking {
+        seed()
+        val zip = exportModules(setOf(BackupModule.GLOBAL_MEMORY, BackupModule.REPLY_PREFERENCES))
+        val preview = backup.inspect(zip)
+        assertEquals(setOf(BackupModule.GLOBAL_MEMORY, BackupModule.REPLY_PREFERENCES), preview.modules)
+        assertEquals(listOf("GLOBAL_MEMORY", "REPLY_PREFERENCES"), preview.manifest.modules)
+        assertEquals(BackupFormat.VERSION, preview.manifest.formatVersion)
+        val data = preview.data
+        assertTrue(data.contacts.isEmpty() && data.conversations.isEmpty() && data.messages.isEmpty())
+        assertTrue(data.memories.isEmpty() && data.usage.isEmpty() && data.providers.isEmpty() && data.providerRefs.isEmpty())
+        assertEquals(2, data.globalCategories.size)
+        assertEquals(ReplyPreferencesDto(5, 20, 2, 4, false, 2, 6), data.settings.replyPreferences)
+        assertEquals(SettingsDto(replyPreferences = data.settings.replyPreferences), data.settings)
+        ZipFile(zip).use { z -> assertEquals(listOf(BackupFormat.MANIFEST, BackupFormat.DATA), z.entries().toList().map(ZipEntry::getName)) }
+        assertEquals(0, preview.manifest.contactCount)
+    }
+
+    @Test
+    fun dependentModulesNeedContacts_andKeyOnlyWithProviders() = runBlocking {
+        seed()
+        val out = ByteArrayOutputStream()
+        // 没选联系人时聊天记录也不导出；没选模型配置时即使要求带 Key 也不带
+        backup.export(out, "pw123456".toCharArray(), includeApiKey = true, modules = setOf(BackupModule.CHATS, BackupModule.GLOBAL_MEMORY))
+        val zip = File(context.cacheDir, "dep-${System.nanoTime()}.zip").apply {
+            writeBytes(ByteArrayOutputStream().also { BackupContainer.decrypt(out.toByteArray().inputStream(), it, "pw123456".toCharArray()) }.toByteArray())
+        }
+        val preview = backup.inspect(zip)
+        assertEquals(setOf(BackupModule.GLOBAL_MEMORY), preview.modules)
+        assertTrue(preview.data.messages.isEmpty())
+        assertFalse(preview.manifest.includesApiKey)
+        assertFalse(preview.needsPassword)
+    }
+
+    @Test
+    fun contactsWithoutProviders_carryRefsNotKeys_overwriteMatchesLocalProviders_keepsTotalUsage() = runBlocking {
+        seed()
+        val zip = exportModules(setOf(BackupModule.CONTACTS))
+        val data = backup.inspect(zip).data
+        assertEquals(listOf("小雨", "阿哲"), data.contacts.map { it.name })
+        assertTrue(data.providers.isEmpty() && data.messages.isEmpty() && data.memories.isEmpty())
+        assertEquals(setOf(1L, secondProviderId), data.providerRefs.map { it.id }.toSet())
+        data.conversations.first { it.contactId == 1L }.let {
+            assertTrue("置顶和免打扰跟着联系人", it.pinned && it.muted)
+            assertEquals("", it.draft)
+            assertEquals(0, it.unreadCount)
+            assertEquals(null, it.background)
+            assertEquals("没有聊天记录时记忆进度重新确定", null, it.memoryCursor)
+        }
+        val raw = ZipFile(zip).use { z -> z.getInputStream(z.getEntry(BackupFormat.DATA)).readBytes().toString(Charsets.UTF_8) }
+        assertFalse(raw.contains("sk-"))
+        // 只有头像，没有聊天图片和背景
+        ZipFile(zip).use { z -> assertEquals(1, z.entries().toList().count { it.name.startsWith(BackupFormat.AVATARS_DIR) }) }
+
+        val totalUsage = db.usageDao().listAll().sumOf { it.promptTokens }
+        val globalBefore = db.globalMemoryDao().items()
+        val summary = backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(0, summary.contactsNeedModel)
+        val contacts = db.contactDao().listAll()
+        assertEquals(listOf("小雨", "阿哲"), contacts.map { it.name })
+        assertEquals(secondProviderId, contacts.first { it.name == "阿哲" }.providerId)
+        assertTrue("替换联系人时本机的聊天记录一起删除", db.messageDao().listAll().isEmpty())
+        assertTrue(db.memoryDao().listAll().isEmpty())
+        val usage = db.usageDao().listAll()
+        assertTrue("没选用量统计：并到已删除的联系人", usage.all { it.contactId == UsageDaily.DELETED_CONTACT })
+        assertEquals(totalUsage, usage.sumOf { it.promptTokens })
+        assertEquals(globalBefore, db.globalMemoryDao().items())
+        assertEquals("Isomeria", settings.value.nickname)
+        assertEquals("sk-real-key", cipher.decrypt(deepSeek().apiKeyEncrypted!!))
+
+        // 本机没有阿哲用的服务商：改用第一个，提醒重新选模型
+        db.contactDao().update(contacts.first { it.name == "阿哲" }.copy(providerId = 1))
+        db.providerDao().deleteModels(secondProviderId)
+        db.providerDao().delete(secondProviderId)
+        val again = backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(1, again.contactsNeedModel)
+        assertEquals(1L, db.contactDao().listAll().first { it.name == "阿哲" }.providerId)
+    }
+
+    @Test
+    fun overwrite_selectedFromFullBackup_onlyGlobalMemory_keepsEverythingElse() = runBlocking {
         seed()
         val zip = export(password = null)
-        val dao = db.globalMemoryDao()
-        dao.insertCategory(GlobalMemoryCategory(name = "后来加的", sortOrder = 2, createdAt = 8_000, updatedAt = 8_000))
-        val local = Triple(dao.categories(), dao.topics(), dao.items())
-        // 页面用这些数量决定要不要问、怎么问
-        assertEquals(GlobalMemoryCount(3, 4), backup.localGlobalMemory())
-        val preview = backup.inspect(zip)
-        assertEquals(GlobalMemoryCount(2, 4), preview.globalMemory)
+        scramble()
+        val before = dump()
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null, setOf(BackupModule.GLOBAL_MEMORY))
+        val after = dump()
+        assertEquals(listOf("个人信息", "工作"), after.globalCategories.map { it.name })
+        assertEquals(before.copy(globalCategories = after.globalCategories, globalTopics = after.globalTopics, globalItems = after.globalItems), after)
+    }
 
-        // 备份里有全局记忆，用户选保留本机的：本机三张表原样不动，其他数据照常换成备份里的
-        db.contactDao().insert(Contact(name = "本机新加", avatarColor = 0, providerId = 1, model = "m", createdAt = 9_000, updatedAt = 9_000))
-        backup.restore(preview, RestoreMode.OVERWRITE, null, keepGlobalMemory = true)
-        assertEquals(local, Triple(dao.categories(), dao.topics(), dao.items()))
-        assertTrue(db.contactDao().listAll().none { it.name == "本机新加" })
+    @Test
+    fun overwrite_providersOnly_keepsLocalContacts_remappedToSameProvider() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        // 本机：第二家删掉后按同一个地址重新添加，id 变了，阿哲改用新的
+        val old = db.providerDao().get(secondProviderId)!!
+        db.providerDao().deleteModels(secondProviderId)
+        db.providerDao().delete(secondProviderId)
+        val readded = db.providerDao().insert(old.copy(id = 0, name = "重新添加的"))
+        db.contactDao().update(db.contactDao().get(2)!!.copy(providerId = readded))
+        val messages = db.messageDao().listAll()
+        val summary = backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null, setOf(BackupModule.PROVIDERS))
+        assertEquals(0, summary.contactsNeedModel)
+        assertEquals("第二家", db.providerDao().get(secondProviderId)!!.name)
+        assertEquals(secondProviderId, db.contactDao().get(2)!!.providerId)
+        assertEquals(1L, db.contactDao().get(1)!!.providerId)
+        assertEquals(messages, db.messageDao().listAll())
+    }
 
-        // 0.4.2 的备份没有全局记忆：选保留时也不会被清空
-        val v4 = writeZip(
-            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.4.2","appVersionCode":402,"formatVersion":4,"exportedAt":1}""",
-            BackupFormat.DATA to """{"contacts":[{"id":1,"name":"小雨","avatarColor":0,"providerId":1,"model":"m","temperature":1.3,"createdAt":1,"updatedAt":1}]}""",
+    @Test
+    fun merge_selectedContactsOnly_addsContactWithoutChatsOrMemories() = runBlocking {
+        seed()
+        val zip = export(password = null)
+        db.messageDao().deleteByContact(2)
+        db.usageDao().deleteByContact(2)
+        db.contactDao().delete(2)
+        val memories = db.memoryDao().listAll()
+        val summary = backup.restore(backup.inspect(zip), RestoreMode.MERGE, null, setOf(BackupModule.CONTACTS))
+        assertEquals(1, summary.contactsAdded)
+        assertEquals(0, summary.messagesAdded)
+        val added = db.contactDao().listAll().first { it.name == "阿哲" }
+        assertTrue(db.messageDao().listByContact(added.id).isEmpty())
+        assertEquals(memories, db.memoryDao().listAll())
+        assertTrue(db.usageDao().listAll().none { it.contactId == added.id })
+    }
+
+    @Test
+    fun voiceSettingsWithoutProviders_pointToLocalSameProvider() = runBlocking {
+        seed()
+        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "chat-audio", baseUrl = "https://tts.example.com/v1", defaultModel = "t"))
+        settings.value = settings.value.copy(voice = isomeria.aichat.core.VoiceSettings(isomeria.aichat.data.db.ReplyType.VOICE, isomeria.aichat.core.VoiceSource.provider(tts), ""))
+        val zip = exportModules(setOf(BackupModule.VOICE_SETTINGS))
+        assertEquals(listOf(tts), backup.inspect(zip).data.providerRefs.filter { it.kind == ProviderKind.TTS }.map { it.id })
+        // 本机按同一个地址重新添加，id 变了；来源也临时换掉
+        db.providerDao().delete(tts)
+        val again = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "chat-audio", baseUrl = "https://tts.example.com/v1/", defaultModel = "t"))
+        settings.value = settings.value.copy(voice = isomeria.aichat.core.VoiceSettings())
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals(isomeria.aichat.core.VoiceSource.provider(again), settings.value.voice.ttsSource)
+        assertEquals(isomeria.aichat.data.db.ReplyType.VOICE, settings.value.voice.replyType)
+        assertEquals("Isomeria", settings.value.nickname)
+    }
+
+    @Test
+    fun manifestModules_unknownNamesIgnored_oldFilesAreEverything() = runBlocking {
+        val zip = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.9.0","appVersionCode":900,"formatVersion":8,"exportedAt":1,"modules":["GLOBAL_MEMORY","SOMETHING_NEW"]}""",
+            BackupFormat.DATA to """{}""",
         )
-        val old = backup.inspect(v4)
-        assertTrue(old.globalMemory.isEmpty)
-        backup.restore(old, RestoreMode.OVERWRITE, null, keepGlobalMemory = true)
-        assertEquals(local, Triple(dao.categories(), dao.topics(), dao.items()))
-        assertEquals(listOf("小雨"), db.contactDao().listAll().map { it.name })
+        assertEquals(setOf(BackupModule.GLOBAL_MEMORY), backup.inspect(zip).modules)
+        val old = writeZip(
+            BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.7.1","appVersionCode":701,"formatVersion":7,"exportedAt":1}""",
+            BackupFormat.DATA to """{}""",
+        )
+        assertEquals(BackupModule.ALL, backup.inspect(old).modules)
     }
 
     @Test
@@ -966,7 +1102,7 @@ class BackupManagerTest {
         assertTrue(preview.decryptedTemporary)
         assertTrue(preview.file.canonicalPath.startsWith(files.restoreCacheDir.canonicalPath + File.separator))
         assertTrue(preview.file.isFile)
-        assertEquals(7, preview.manifest.formatVersion)
+        assertEquals(8, preview.manifest.formatVersion)
         val result = backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(expected, dump())
         assertFalse(result.cleanupPending)

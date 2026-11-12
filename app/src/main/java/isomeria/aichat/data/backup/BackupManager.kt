@@ -91,6 +91,9 @@ data class BackupPreview(
 
     /** 备份里的全局记忆；0.4.2 及更早的备份没有 */
     val globalMemory: GlobalMemoryCount get() = GlobalMemoryCount(data.globalCategories.size, data.globalItems.size)
+
+    /** 文件里导出了哪些内容（0.7.2）；0.7.1 及更早的备份是全部 */
+    val modules: Set<BackupModule> get() = BackupModule.parse(manifest.modules)
 }
 
 /** 全局记忆的类别数和条数。类别数为 0 时就是没有全局记忆 */
@@ -100,13 +103,26 @@ data class GlobalMemoryCount(val categories: Int, val items: Int) {
 
 data class ExportSummary(val contacts: Int, val messages: Int, val images: Int, val includesApiKey: Boolean, val encrypted: Boolean = false)
 
-data class RestoreSummary(val contactsAdded: Int, val messagesAdded: Int, val apiKeyRestored: Boolean, val cleanupPending: Boolean = false)
+/**
+ * [contactsNeedModel]：恢复后服务商在本机找不到、改用本机第一个服务商的联系人数（0.7.2，没恢复模型配置时可能出现），
+ * 要提醒用户去重新选模型
+ */
+data class RestoreSummary(
+    val contactsAdded: Int,
+    val messagesAdded: Int,
+    val apiKeyRestored: Boolean,
+    val cleanupPending: Boolean = false,
+    val contactsNeedModel: Int = 0,
+)
 
 /**
  * 导出与恢复。
  *
- * **导出：** 在一个读事务里取出全部数据，写成 zip（格式见 [BackupFormat]）。API Key 默认不导出；
- * 给了密码时用 [PasswordCipher] 加密后放进去。
+ * **导出：** 在一个读事务里取出全部数据，按用户选的内容（[BackupModule]）写成 zip（格式见 [BackupFormat]）。
+ * API Key 默认不导出；给了密码时用 [PasswordCipher] 加密后放进去。
+ *
+ * **只恢复一部分（0.7.2）：** 用户可以只恢复文件里的某几项。覆盖恢复只替换选中的内容，没选的保持本机原样；
+ * 替换联系人时本机联系人的聊天记录、记忆一起删除，用量统计没选时并到「已删除的联系人」。
  *
  * **恢复：**
  * 1. [inspect] 读 manifest：不是智信的备份、文件损坏时拒绝；数据格式比当前新时拒绝并提示先升级 App；
@@ -150,15 +166,23 @@ class BackupManager @Inject constructor(
     /**
      * A password always encrypts the entire file. Including keys additionally uses the unchanged SecretDto scheme.
      */
-    suspend fun export(out: OutputStream, password: CharArray?, includeApiKey: Boolean = password != null): ExportSummary = mutex.withLock {
+    suspend fun export(
+        out: OutputStream,
+        password: CharArray?,
+        includeApiKey: Boolean = password != null,
+        modules: Set<BackupModule> = BackupModule.ALL,
+    ): ExportSummary = mutex.withLock {
         StorageOperations.gate.activity { withContext(Dispatchers.IO) {
             out.use { target ->
                 require(!includeApiKey || password != null)
-                val key = if (includeApiKey) KeyExport.Password(requireNotNull(password)) else KeyExport.None
+                val selected = BackupModule.normalize(modules)
+                require(selected.isNotEmpty())
+                // Key 只跟着模型配置导出
+                val key = if (includeApiKey && BackupModule.PROVIDERS in selected) KeyExport.Password(requireNotNull(password)) else KeyExport.None
                 val stream = if (password != null) BackupContainer.encrypting(target, password) else target
                 // writeBackup 的 zip 关闭时只收尾到这一层；成功才写认证的最后块
                 try {
-                    val summary = writeBackup(NonClosingOutputStream(stream), key).copy(encrypted = password != null)
+                    val summary = writeBackup(NonClosingOutputStream(stream), key, selected).copy(encrypted = password != null)
                     stream.close()
                     summary
                 } catch (error: Throwable) {
@@ -206,25 +230,26 @@ class BackupManager @Inject constructor(
         } catch (_: Exception) { false }
     }
 
-    /** 本机现有的全局记忆；覆盖恢复前用它决定要不要问用户保留 */
-    suspend fun localGlobalMemory(): GlobalMemoryCount = withContext(Dispatchers.IO) {
-        GlobalMemoryCount(globalDao.categories().size, globalDao.items().size)
-    }
-
     /**
      * 恢复。备份里有加密的 API Key 但 [password] 为空时，跳过 Key、照常恢复其他数据；
      * 密码错误时抛 [WrongPasswordException]，本机数据不变。
      *
-     * [keepGlobalMemory] 只对覆盖恢复有效：为 true 时本机的全局记忆原样保留，不用备份里的
-     * （0.4.2 及更早的备份没有全局记忆，不保留就会被清空）。由用户在覆盖前选择。
+     * [modules] 是用户选的要恢复的内容，只取文件里有的；没选的内容本机原样保留（0.7.2）。
      */
-    suspend fun restore(preview: BackupPreview, mode: RestoreMode, password: CharArray?, keepGlobalMemory: Boolean = false): RestoreSummary =
+    suspend fun restore(
+        preview: BackupPreview,
+        mode: RestoreMode,
+        password: CharArray?,
+        modules: Set<BackupModule> = preview.modules,
+    ): RestoreSummary =
         try { mutex.withLock {
             StorageOperations.gate.activity { withContext(Dispatchers.IO) {
-                val apiKeys = importedApiKeys(preview, password)
+                val selected = BackupModule.normalize(modules.intersect(preview.modules))
+                require(selected.isNotEmpty())
+                val apiKeys = if (BackupModule.PROVIDERS in selected) importedApiKeys(preview, password) else emptyMap()
                 writeSnapshot()
-                if (mode == RestoreMode.OVERWRITE) stopAllReplies()
-                val summary = apply(preview, mode, apiKeys, exactKey = false, rollback = snapshotFile, keepGlobalMemory = keepGlobalMemory)
+                if (mode == RestoreMode.OVERWRITE && BackupModule.CONTACTS in selected) stopAllReplies()
+                val summary = apply(preview, mode, apiKeys, exactKey = false, rollback = snapshotFile, modules = selected)
                 // apply includes post-transaction settings writes and any required rollback.
                 val snapshotDeleted = !snapshotFile.exists() || snapshotFile.delete()
                 val temporaryDeleted = discardPreview(preview)
@@ -256,7 +281,7 @@ class BackupManager @Inject constructor(
         data object Keystore : KeyExport
     }
 
-    private suspend fun writeBackup(out: OutputStream, key: KeyExport): ExportSummary {
+    private suspend fun writeBackup(out: OutputStream, key: KeyExport, modules: Set<BackupModule> = BackupModule.ALL): ExportSummary {
         val tables = db.withTransaction {
             val configs = providerDao.listConfigs()
             Tables(
@@ -318,22 +343,27 @@ class BackupManager @Inject constructor(
             globalCategories = tables.globalCategories.map { it.toDto() },
             globalTopics = tables.globalTopics.map { it.toDto() },
             globalItems = tables.globalItems.map { it.toDto() },
-        )
+        ).restrictTo(modules)
+        // 只打包选中内容用到的头像、图片和语音
+        val usedMedia = data.mediaNames()
+        val mediaEntries = media.entries.filterKeys { it in usedMedia }
+        val keyExported = keyIncluded && data.providers.any { it.apiKey != null }
         val summary = ExportSummary(
-            contacts = contacts.size,
-            messages = messages.size,
-            images = messages.count { it.type == MessageType.IMAGE },
-            includesApiKey = keyIncluded,
+            contacts = data.contacts.size,
+            messages = data.messages.size,
+            images = data.messages.count { it.type == MessageType.IMAGE },
+            includesApiKey = keyExported,
         )
         val manifest = BackupManifest(
             appVersion = BuildConfig.VERSION_NAME,
             appVersionCode = BuildConfig.VERSION_CODE,
             formatVersion = BackupFormat.VERSION,
             exportedAt = System.currentTimeMillis(),
-            includesApiKey = keyIncluded,
+            includesApiKey = keyExported,
             contactCount = summary.contacts,
             messageCount = summary.messages,
             imageCount = summary.images,
+            modules = BackupModule.entries.filter { it in modules }.map { it.name },
         )
 
         ZipOutputStream(BufferedOutputStream(out)).use { zip ->
@@ -347,7 +377,7 @@ class BackupManager @Inject constructor(
 
             // 图片本身已经是 JPEG、语音是 AAC/MP3，再压缩没有意义
             zip.setLevel(Deflater.NO_COMPRESSION)
-            for ((name, file) in media.entries) {
+            for ((name, file) in mediaEntries) {
                 try {
                     file.inputStream().use { input ->
                         zip.putNextEntry(ZipEntry(name))
@@ -526,16 +556,17 @@ class BackupManager @Inject constructor(
         apiKeys: Map<Long, String>,
         exactKey: Boolean,
         rollback: File?,
-        keepGlobalMemory: Boolean = false,
+        modules: Set<BackupModule> = BackupModule.ALL,
     ): RestoreSummary {
         db.restoreInProgress.incrementAndGet()
         db.restoreGeneration.incrementAndGet()
         val created = ArrayList<File>()
         try {
-            val paths = ZipFile(preview.file).use { zip -> extractMedia(zip, preview.data, created) }
-            val (summary, providerIds) = writeDatabase(preview.data, mode, paths, apiKeys, exactKey, keepGlobalMemory)
+            val data = preview.data.restrictTo(modules)
+            val paths = ZipFile(preview.file).use { zip -> extractMedia(zip, data, created) }
+            val (summary, providerIds) = writeDatabase(data, mode, paths, apiKeys, exactKey, modules)
             try {
-                writeSettings(preview.data.settings, mode, paths, providerIds)
+                writeSettings(data.settings, mode, paths, providerIds, modules)
             } catch (e: Exception) {
                 if (rollback != null) rollbackFrom(rollback)
                 throw e
@@ -591,37 +622,55 @@ class BackupManager @Inject constructor(
         paths: Map<String, String>,
         apiKeys: Map<Long, String>,
         exactKey: Boolean,
-        keepGlobalMemory: Boolean,
+        modules: Set<BackupModule>,
     ): Pair<RestoreSummary, ProviderIds> = db.withTransaction {
         when (mode) {
-            RestoreMode.OVERWRITE -> overwrite(data, data.providers, paths, apiKeys, exactKey, keepGlobalMemory)
-            RestoreMode.MERGE -> merge(data, data.providers, paths, apiKeys)
+            RestoreMode.OVERWRITE -> overwrite(data, paths, apiKeys, exactKey, modules)
+            RestoreMode.MERGE -> merge(data, paths, apiKeys, modules)
         }
     }
 
     /**
-     * 恢复后服务商 id 的对应关系，用来改写语音来源（provider:{id}）：
-     * [fromBackup] 是备份里的 id → 本机的 id；[fromLocal] 是覆盖恢复时保留下来、换了 id 的本机语音服务商
+     * 恢复后服务商 id 的对应关系，用来改写联系人的服务商和语音来源（provider:{id}）：
+     * [fromBackup] 是备份里的 id → 本机的 id（没恢复模型配置时按 [BackupData.providerRefs] 找本机的同一个）；
+     * [fromLocal] 只在覆盖恢复替换了服务商时有：替换前本机的 id → 替换后同一个服务商的 id，找不到的没有这一项
      */
-    private data class ProviderIds(val fromBackup: Map<Long, Long>, val fromLocal: Map<Long, Long> = emptyMap())
+    private data class ProviderIds(val fromBackup: Map<Long, Long>, val fromLocal: Map<Long, Long>? = null)
 
+    /** 没恢复模型配置时：备份里的服务商引用 → 本机格式和地址都相同的服务商 */
+    private suspend fun matchRefs(refs: List<ProviderRefDto>): Map<Long, Long> {
+        val local = providerDao.listConfigs()
+        return refs.mapNotNull { ref ->
+            local.firstOrNull { it.kind == ref.kind && it.provider == ref.provider && BaseUrlRules.isSameUrl(it.baseUrl, ref.baseUrl) }
+                ?.let { ref.id to it.id }
+        }.toMap()
+    }
+
+    /** 覆盖恢复：只替换 [modules] 里的内容（[data] 已经按它裁过），没选的保持本机原样 */
     private suspend fun overwrite(
         data: BackupData,
-        sources: List<ProviderDto>,
         paths: Map<String, String>,
         apiKeys: Map<Long, String>,
         exactKey: Boolean,
-        keepGlobalMemory: Boolean,
+        modules: Set<BackupModule>,
     ): Pair<RestoreSummary, ProviderIds> {
-        messageDao.deleteAll()
-        memoryDao.deleteAll()
-        usageDao.deleteAll()
-        // 约定提醒跟着本机的聊天走，不在备份里；今日已用次数（proactive_state）是设备状态，覆盖恢复不动它
-        db.proactiveDao().deleteAllReminders()
-        conversationDao.deleteAll()
-        contactDao.deleteAll()
-        // 用户选了保留本机的全局记忆时不动它，备份里的全局记忆不导入
-        if (!keepGlobalMemory) {
+        val replaceContacts = BackupModule.CONTACTS in modules
+        if (replaceContacts) {
+            val localContacts = contactDao.listAll().map { it.id }
+            messageDao.deleteAll()
+            memoryDao.deleteAll()
+            if (BackupModule.USAGE in modules) {
+                usageDao.deleteAll()
+            } else {
+                // 没选用量统计：本机的用量和删除联系人时一样并到「已删除的联系人」，总量不变
+                localContacts.forEach { usageDao.mergeIntoDeleted(it); usageDao.deleteByContact(it) }
+            }
+            // 约定提醒跟着本机的聊天走，不在备份里；今日已用次数（proactive_state）是设备状态，覆盖恢复不动它
+            db.proactiveDao().deleteAllReminders()
+            conversationDao.deleteAll()
+            contactDao.deleteAll()
+        }
+        if (BackupModule.GLOBAL_MEMORY in modules) {
             globalDao.deleteAllItems()
             globalDao.deleteAllTopics()
             globalDao.deleteAllCategories()
@@ -630,22 +679,34 @@ class BackupManager @Inject constructor(
             globalDao.insertItems(data.globalItems.map { it.toEntity(it.topicId) })
         }
 
-        val ids = overwriteProviders(sources, apiKeys, exactKey)
+        val ids = if (BackupModule.PROVIDERS in modules) overwriteProviders(data.providers, apiKeys, exactKey) else ProviderIds(matchRefs(data.providerRefs))
         val providerIds = ids.fromBackup
         val fallback = providerDao.llmList().firstOrNull()?.id ?: error("缺少服务商配置")
+        var needModel = 0
 
-        contactDao.insertAll(
-            data.contacts.map { it.toEntity(providerIds[it.providerId] ?: fallback, it.avatar?.let(paths::get)) },
-        )
-        val withConversation = data.conversations.mapTo(HashSet()) { it.contactId }
-        conversationDao.upsertAll(
-            data.conversations.map { it.toEntity(it.background?.let(paths::get)) } +
-                data.contacts.filter { it.id !in withConversation }.map { Conversation(contactId = it.id, memoryCursor = null) },
-        )
-        messageDao.insertAll(data.messages.map { it.toEntity(it.contactId, it.image?.let(paths::get), it.voice?.let(paths::get)) })
-        memoryDao.insertAll(data.memories.map { it.toEntity(it.contactId) })
-        usageDao.insertIgnore(data.usage.map { it.toEntity(it.contactId) })
-        return RestoreSummary(data.contacts.size, data.messages.size, apiKeys.isNotEmpty()) to ids
+        if (replaceContacts) {
+            contactDao.insertAll(
+                data.contacts.map { contact ->
+                    val provider = providerIds[contact.providerId] ?: fallback.also { needModel++ }
+                    contact.toEntity(provider, contact.avatar?.let(paths::get))
+                },
+            )
+            val withConversation = data.conversations.mapTo(HashSet()) { it.contactId }
+            conversationDao.upsertAll(
+                data.conversations.map { it.toEntity(it.background?.let(paths::get)) } +
+                    data.contacts.filter { it.id !in withConversation }.map { Conversation(contactId = it.id, memoryCursor = null) },
+            )
+            messageDao.insertAll(data.messages.map { it.toEntity(it.contactId, it.image?.let(paths::get), it.voice?.let(paths::get)) })
+            memoryDao.insertAll(data.memories.map { it.toEntity(it.contactId) })
+            usageDao.insertIgnore(data.usage.map { it.toEntity(it.contactId) })
+        } else if (ids.fromLocal != null) {
+            // 保留本机联系人、替换了服务商：联系人改用替换后的同一个服务商，找不到时用第一个
+            for (contact in contactDao.listAll()) {
+                val provider = ids.fromLocal[contact.providerId] ?: fallback.also { needModel++ }
+                if (provider != contact.providerId) contactDao.update(contact.copy(providerId = provider))
+            }
+        }
+        return RestoreSummary(data.contacts.size, data.messages.size, apiKeys.isNotEmpty(), contactsNeedModel = needModel) to ids
     }
 
     /**
@@ -675,9 +736,17 @@ class BackupManager @Inject constructor(
             val id = insertProvider(source, key, keepId = true)
             source.id to id
         }
-        val fromLocal = if (voiceSources.isNotEmpty()) emptyMap() else localVoice.associate { old ->
+        val keptVoice = if (voiceSources.isNotEmpty()) emptyMap() else localVoice.associate { old ->
             old.id to providerDao.insert(old.copy(id = 0))
         }
+        // 替换前本机的每个服务商 → 替换后的同一个：保留下来的语音服务商、没被替换的大模型服务商、备份里的同一个
+        val after = providerDao.listConfigs()
+        val fromLocal = local.mapNotNull { old ->
+            val id = keptVoice[old.id]
+                ?: old.id.takeIf { old.kind == ProviderKind.LLM && llmSources.isEmpty() }
+                ?: after.firstOrNull { it.kind == old.kind && it.provider == old.provider && BaseUrlRules.isSameUrl(it.baseUrl, old.baseUrl) }?.id
+            id?.let { old.id to it }
+        }.toMap()
         return ProviderIds(fromBackup, fromLocal)
     }
 
@@ -721,15 +790,18 @@ class BackupManager @Inject constructor(
         return ids to keyRestored
     }
 
+    /** 合并恢复：[data] 已经按 [modules] 裁过，没选的内容在里面是空的 */
     private suspend fun merge(
         data: BackupData,
-        sources: List<ProviderDto>,
         paths: Map<String, String>,
         apiKeys: Map<Long, String>,
+        modules: Set<BackupModule>,
     ): Pair<RestoreSummary, ProviderIds> {
-        val (providerIds, keyRestored) = mergeProviders(sources, apiKeys)
+        val (providerIds, keyRestored) =
+            if (BackupModule.PROVIDERS in modules) mergeProviders(data.providers, apiKeys) else matchRefs(data.providerRefs) to false
         val fallback = providerDao.llmList().firstOrNull()?.id ?: error("缺少服务商配置")
-        fun providerOf(contact: ContactDto) = providerIds[contact.providerId] ?: fallback
+        var needModel = 0
+        fun providerOf(contact: ContactDto) = providerIds[contact.providerId] ?: fallback.also { needModel++ }
 
         val local = contactDao.listAll().associateBy { it.id }
         val idMap = HashMap<Long, Long>()
@@ -803,7 +875,7 @@ class BackupManager @Inject constructor(
             },
         )
         mergeGlobalMemory(data)
-        return RestoreSummary(contactsAdded, newMessages.size, keyRestored) to ProviderIds(providerIds)
+        return RestoreSummary(contactsAdded, newMessages.size, keyRestored, contactsNeedModel = needModel) to ProviderIds(providerIds)
     }
 
     /**
@@ -849,24 +921,30 @@ class BackupManager @Inject constructor(
         MessageType.VOICE -> context.getString(R.string.preview_voice)
     }
 
-    private fun writeSettings(dto: SettingsDto, mode: RestoreMode, paths: Map<String, String>, ids: ProviderIds) {
+    private fun writeSettings(dto: SettingsDto, mode: RestoreMode, paths: Map<String, String>, ids: ProviderIds, modules: Set<BackupModule>) {
         val current = settings.read()
         // 语音来源里的服务商 id 换成本机的；对应不上的（服务商不在了）当作没有选
         fun remap(source: String, map: Map<Long, Long>): String {
             val parsed = VoiceSource.parse(source) as? VoiceSource.Provider ?: return source
             return map[parsed.id]?.let(VoiceSource::provider).orEmpty()
         }
-        val backupVoice = dto.voice?.let { VoiceSettings(it.replyType, remap(it.ttsSource, ids.fromBackup), remap(it.asrSource, ids.fromBackup)) }
-        val keptVoice = if (ids.fromLocal.isEmpty()) current.voice else current.voice.copy(
-            ttsSource = remap(current.voice.ttsSource, ids.fromLocal),
-            asrSource = remap(current.voice.asrSource, ids.fromLocal),
+        // 没恢复模型配置时，备份里的来源在本机找不到同一个服务商就保留本机的来源
+        val providersRestored = BackupModule.PROVIDERS in modules
+        fun backupSource(source: String, local: String): String =
+            remap(source, ids.fromBackup).ifEmpty { if (!providersRestored && source.isNotEmpty()) local else "" }
+        val localFromLocal = ids.fromLocal
+        val keptVoice = if (localFromLocal == null) current.voice else current.voice.copy(
+            ttsSource = remap(current.voice.ttsSource, localFromLocal),
+            asrSource = remap(current.voice.asrSource, localFromLocal),
         )
+        val backupVoice = dto.voice?.let { VoiceSettings(it.replyType, backupSource(it.ttsSource, keptVoice.ttsSource), backupSource(it.asrSource, keptVoice.asrSource)) }
+        val profile = BackupModule.PROFILE in modules
         val next = when (mode) {
             RestoreMode.OVERWRITE -> AppSettingsSnapshot(
                 themeMode = dto.themeMode?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } } ?: current.themeMode,
                 fontSize = dto.fontSize?.let { name -> FontSize.entries.firstOrNull { it.name == name } } ?: current.fontSize,
                 nickname = dto.nickname ?: current.nickname,
-                avatarPath = dto.avatar?.let(paths::get),
+                avatarPath = if (profile) dto.avatar?.let(paths::get) else current.avatarPath,
                 notifyEnabled = dto.notifyEnabled ?: current.notifyEnabled,
                 notifyPreview = dto.notifyPreview ?: current.notifyPreview,
                 autoCheckUpdate = dto.autoCheckUpdate ?: current.autoCheckUpdate,
@@ -879,9 +957,9 @@ class BackupManager @Inject constructor(
                 nickname = current.nickname.ifBlank { dto.nickname.orEmpty() },
                 avatarPath = current.avatarPath ?: dto.avatar?.let(paths::get),
                 // 合并时保留本机的；本机还没选来源时才用备份里的
-                voice = current.voice.copy(
-                    ttsSource = current.voice.ttsSource.ifEmpty { backupVoice?.ttsSource.orEmpty() },
-                    asrSource = current.voice.asrSource.ifEmpty { backupVoice?.asrSource.orEmpty() },
+                voice = keptVoice.copy(
+                    ttsSource = keptVoice.ttsSource.ifEmpty { backupVoice?.ttsSource.orEmpty() },
+                    asrSource = keptVoice.asrSource.ifEmpty { backupVoice?.asrSource.orEmpty() },
                 ),
             )
         }

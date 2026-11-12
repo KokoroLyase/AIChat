@@ -274,7 +274,7 @@
 
     <!-- 导出数据 -->
     <string name="export_title">导出数据</string>
-    <string name="export_intro">导出联系人、聊天记录（含语音消息）、记忆、用量统计、服务商（含语音合成和识别）、头像、聊天图片、聊天背景和设置。不设密码时是普通 zip 文件，拿到文件的人都能打开；设置密码后整个文件都会加密。卸载 App 后，只能靠导出文件找回数据。</string>
+    <string name="export_intro">选择要导出的内容，默认全部导出。不设密码时是普通 zip 文件，拿到文件的人都能打开；设置密码后整个文件都会加密。卸载 App 后，只能靠导出文件找回数据。</string>
     <string name="export_include_key">包含 API Key</string>
     <string name="export_no_key">还没有保存 API Key</string>
     <string name="export_key_hint">包含 API Key 时必须设置密码。忘记密码后，这个文件里的所有数据都无法恢复。</string>
@@ -294,7 +294,7 @@
 
     <!-- 恢复数据 -->
     <string name="restore_title">恢复数据</string>
-    <string name="restore_intro">从导出的 .zip 或 .aichat 文件恢复联系人、聊天记录、记忆、用量统计、服务商和设置。恢复前会临时备份当前数据，失败时自动撤销，成功后删除这份临时备份。</string>
+    <string name="restore_intro">从导出的 .zip 或 .aichat 文件恢复，可以只恢复其中一部分内容。恢复前会临时备份当前数据，失败时自动撤销，成功后删除这份临时备份。</string>
     <string name="restore_pick">选择备份文件</string>
     <string name="restore_pick_hint">加密文件（.aichat）在系统选择器的“最近”里可能看不到，可以到导出时保存的文件夹里找。</string>
     <string name="restore_pick_again">重新选择</string>
@@ -318,20 +318,12 @@
     <string name="restore_key_kept_note">备份里没有 API Key，恢复后保留本机相同服务商的 Key。</string>
     <string name="restore_mode">恢复方式</string>
     <string name="restore_mode_merge">合并</string>
-    <string name="restore_mode_merge_desc">保留本机数据，只加入本机没有的联系人、消息、记忆和服务商</string>
+    <string name="restore_mode_merge_desc">保留本机数据，只加入选中内容里本机没有的联系人、消息、记忆和服务商</string>
     <string name="restore_mode_overwrite">覆盖</string>
-    <string name="restore_mode_overwrite_desc">清空本机的联系人、聊天记录、记忆和用量统计，服务商也换成备份里的；本机有全局记忆时，会先问你是否保留</string>
+    <string name="restore_mode_overwrite_desc">用备份里选中的内容替换本机的同类内容，没选的保持本机原样</string>
     <string name="restore_button">开始恢复</string>
-    <string name="restore_overwrite_confirm">本机现有的联系人、聊天记录、记忆、用量统计、服务商和设置将被备份里的内容替换。恢复前会自动备份当前数据。</string>
+    <string name="restore_overwrite_confirm">本机的这些内容将被备份里的替换：%1$s。没选的内容保持本机原样。恢复前会自动备份当前数据。</string>
     <string name="restore_overwrite_action">覆盖</string>
-    <string name="restore_global_choice_backup_has" tools:ignore="PluralsCandidate">本机有全局记忆（%1$d 个类别，%2$d 条），备份里也有（%3$d 个类别，%4$d 条）。覆盖恢复时用哪一份？</string>
-    <string name="restore_global_choice_backup_none" tools:ignore="PluralsCandidate">本机有全局记忆（%1$d 个类别，%2$d 条），这个备份里没有（0.4.2 及更早的备份不含全局记忆）。覆盖恢复时要保留本机的吗？</string>
-    <string name="restore_global_keep">保留本机的全局记忆</string>
-    <string name="restore_global_use_backup">用备份里的全局记忆</string>
-    <string name="restore_global_clear">清空本机的全局记忆</string>
-    <string name="restore_overwrite_global_keep">全局记忆：保留本机的。</string>
-    <string name="restore_overwrite_global_replace">全局记忆：换成备份里的。</string>
-    <string name="restore_overwrite_global_clear">全局记忆：清空。</string>
     <string name="restore_running">正在恢复…</string>
     <string name="restore_done_title">恢复完成</string>
     <string name="restore_done_message">新增 %1$d 位联系人、%2$d 条消息。</string>
@@ -342,6 +334,24 @@
     <string name="restore_too_new">这个备份来自更新版本的智信（数据格式 v%1$d），请先升级 App 再恢复。</string>
     <string name="restore_invalid">不是有效的智信备份文件</string>
     <string name="restore_read_failed">读取文件失败，请重试</string>
+    <!-- 0.7.2 导出和恢复时选择内容 -->
+    <string name="export_modules">导出内容</string>
+    <string name="export_modules_note">聊天记录、联系人记忆和用量统计跟着联系人走，不导出联系人时也不导出它们。API Key 只跟着模型配置导出。导出的文件要用 0.7.2 及以上版本的智信恢复。</string>
+    <string name="restore_modules">恢复内容</string>
+    <string name="restore_modules_partial">这个文件只导出了一部分内容，没导出的不会出现在这里，恢复时本机的这些内容保持不变。</string>
+    <string name="restore_overwrite_contacts_note">替换联系人时，本机现有联系人连同他们的聊天记录、记忆和用量统计都会删除，换成备份里选中的。</string>
+    <string name="restore_overwrite_contacts_note_usage_kept">替换联系人时，本机现有联系人连同他们的聊天记录和记忆都会删除，换成备份里选中的；本机的用量统计并入“已删除的联系人”，总量不变。</string>
+    <string name="restore_contacts_need_model" tools:ignore="PluralsCandidate">有 %1$d 位联系人用的服务商在本机找不到，已改用本机的第一个服务商，请到联系人设置里重新选择模型。</string>
+    <string name="backup_module_contacts">联系人</string>
+    <string name="backup_module_chats">聊天记录</string>
+    <string name="backup_module_memories">联系人记忆</string>
+    <string name="backup_module_usage">用量统计</string>
+    <string name="backup_module_global_memory">全局记忆</string>
+    <string name="backup_module_providers">模型配置</string>
+    <string name="backup_module_reply_preferences">回复偏好</string>
+    <string name="backup_module_proactive">主动聊天设置</string>
+    <string name="backup_module_voice">语音消息设置</string>
+    <string name="backup_module_profile">个人资料和外观</string>
     <string name="restore_failed">恢复失败，本机数据已撤销到恢复前的状态。</string>
 
     <!-- 大语言模型设置 -->

@@ -723,23 +723,32 @@ class ScreenshotTest {
         ContactPromptContent(longPrompt, {}, {}, isomeria.aichat.feature.contactedit.PromptUsage(2_300, 4_000))
     }
 
-    // ---------- 0.5.0 覆盖恢复前问是否保留本机全局记忆 ----------
+    // ---------- 0.7.2 导出和恢复时选择内容 ----------
 
-    private fun overwriteState(choice: Boolean, keep: Boolean? = null) = RestoreUiState(
-        preview = sampleBackupPreview(decrypted = false, keyEncrypted = false), mode = RestoreMode.OVERWRITE,
-    ).let { if (choice) it.askingOverwrite(isomeria.aichat.data.backup.GlobalMemoryCount(3, 12)) else it.askingOverwrite(isomeria.aichat.data.backup.GlobalMemoryCount(3, 12)).choseGlobalMemory(keep ?: true) }
-
-    private fun restoreGlobalShot(name: String, dark: Boolean, fontScale: Float = 1f, state: RestoreUiState) {
+    private fun partialPreview() = BackupPreview(
+        java.io.File("fixture.zip"),
+        BackupManifest(
+            appVersion = "0.7.2", appVersionCode = 702, formatVersion = 8, exportedAt = 1793664000000, contactCount = 2, messageCount = 0,
+            modules = listOf("CONTACTS", "GLOBAL_MEMORY", "REPLY_PREFERENCES"),
+        ),
+        BackupData(),
+    )
+    private fun overwriteConfirm(modules: Set<isomeria.aichat.data.backup.BackupModule>?) = RestoreUiState(
+        preview = sampleBackupPreview(decrypted = false, keyEncrypted = false), mode = RestoreMode.OVERWRITE, modules = modules, confirmOverwrite = true,
+    )
+    private fun restoreDialogShot(name: String, dark: Boolean, fontScale: Float = 1f, state: RestoreUiState) {
         compose.setContent { AIChatTheme(darkTheme = dark, fontScale = fontScale) { RestoreSample(state) } }
         captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
-    @Test fun restoreGlobalChoiceLight() = restoreGlobalShot("65-restore-global-choice", false, state = overwriteState(choice = true))
-    @Test fun restoreGlobalChoiceDark() = restoreGlobalShot("65-restore-global-choice", true, state = overwriteState(choice = true))
-    @Test fun restoreGlobalChoiceLarge() = restoreGlobalShot("65-restore-global-choice-large", false, 1.6f, overwriteState(choice = true))
-    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun restoreGlobalChoiceNarrow() = restoreGlobalShot("65-restore-global-choice-narrow", true, 1.6f, overwriteState(choice = true))
-    @Test fun restoreOverwriteKeepLight() = restoreGlobalShot("65-restore-overwrite-keep", false, state = overwriteState(choice = false, keep = true))
-    @Test fun restoreOverwriteClearDark() = restoreGlobalShot("65-restore-overwrite-clear", true, state = overwriteState(choice = false, keep = false))
-    @Test fun restoreOverwriteKeepLarge() = restoreGlobalShot("65-restore-overwrite-keep-large", true, 1.6f, overwriteState(choice = false, keep = true))
+    private val exportPartial = ExportUiState(hasApiKey = true, modules = setOf(isomeria.aichat.data.backup.BackupModule.GLOBAL_MEMORY, isomeria.aichat.data.backup.BackupModule.REPLY_PREFERENCES))
+    @Test fun exportPartialLight() = shot("43-export-partial", false) { ExportSample(exportPartial) }
+    @Test fun exportPartialDark() = shot("43-export-partial", true) { ExportSample(exportPartial) }
+    @Test fun restorePartialLight() = shot("65-restore-partial", false) { RestoreSample(RestoreUiState(preview = partialPreview())) }
+    @Test fun restorePartialDark() = shot("65-restore-partial", true) { RestoreSample(RestoreUiState(preview = partialPreview(), modules = setOf(isomeria.aichat.data.backup.BackupModule.GLOBAL_MEMORY))) }
+    @Test fun restoreOverwriteAllLight() = restoreDialogShot("65-restore-overwrite-all", false, state = overwriteConfirm(null))
+    @Test fun restoreOverwriteContactsDark() = restoreDialogShot("65-restore-overwrite-contacts", true, state = overwriteConfirm(setOf(isomeria.aichat.data.backup.BackupModule.CONTACTS, isomeria.aichat.data.backup.BackupModule.PROFILE)))
+    @Test fun restoreOverwriteLarge() = restoreDialogShot("65-restore-overwrite-large", true, 1.6f, overwriteConfirm(null))
+    @Test fun restoreNeedModelLight() = backupDialogShot("65-restore-need-model", false) { RestoreSample(RestoreUiState(done = RestoreSummary(2, 0, false, contactsNeedModel = 1))) }
 
     // ---------- 0.6.0 主动聊天 ----------
 
