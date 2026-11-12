@@ -714,6 +714,26 @@ class BackupManagerTest {
         assertEquals(9L, usage.first { it.contactId == UsageDaily.DELETED_CONTACT }.promptTokens)
     }
 
+    /** 0.7.2：核心记忆随备份往返；合并时本机已有核心记忆，备份里的按近期记忆加入，一个联系人不会有两条核心记忆 */
+    @Test
+    fun coreMemory_roundTrips_andMergeNeverCreatesTwoCores() = runBlocking {
+        seed()
+        db.memoryDao().insert(Memory(contactId = 1, content = "备份里的核心", fromTime = 100, toTime = 200, createdAt = 300, updatedAt = 300, core = true))
+        val zip = export(password = null)
+        assertEquals(listOf(true), backup.inspect(zip).data.memories.filter { it.core }.map { it.core })
+
+        db.memoryDao().deleteAll()
+        backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
+        assertEquals("备份里的核心", db.memoryDao().listByContact(1).single { it.core }.content)
+
+        val local = db.memoryDao().listByContact(1).single { it.core }
+        db.memoryDao().update(local.copy(content = "本机的核心", fromTime = 50))
+        backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
+        val rows = db.memoryDao().listByContact(1)
+        assertEquals("本机的核心", rows.single { it.core }.content)
+        assertTrue("备份里的核心作为近期记忆加入", rows.any { !it.core && it.content == "备份里的核心" })
+    }
+
     @Test
     fun overwrite_contactWithMissingProvider_fallsBackToFirst() = runBlocking {
         val zip = writeZip(

@@ -441,8 +441,8 @@ class ScreenshotTest {
     private val missingMemoryModel = memorySettings.copy(contact = memorySettings.contact!!.copy(memoryModel = "gone"), task = MemoryTaskState())
     @Test fun memoryMissingLight() = shot("27-memory-model-missing", false) { MemoryContent(missingMemoryModel, {}, {}, {}, {}) }
     @Test fun memoryMissingDark() = shot("27-memory-model-missing", true) { MemoryContent(missingMemoryModel, {}, {}, {}, {}) }
-    @Test fun memoryRunningLight() = shot("28-memory-running", false) { MemoryContent(memorySettings.copy(rows = emptyList(), backlog = 128, task = memorySettings.task.copy(manual = true)), {}, {}, {}, {}) }
-    @Test fun memoryRunningDark() = shot("28-memory-running", true) { MemoryContent(memorySettings.copy(rows = emptyList(), backlog = 128, task = memorySettings.task.copy(manual = true)), {}, {}, {}, {}) }
+    @Test fun memoryRunningLight() = shot("28-memory-running", false) { MemoryContent(memorySettings.copy(core = null, rows = emptyList(), backlog = 128, task = memorySettings.task.copy(manual = true)), {}, {}, {}, {}) }
+    @Test fun memoryRunningDark() = shot("28-memory-running", true) { MemoryContent(memorySettings.copy(core = null, rows = emptyList(), backlog = 128, task = memorySettings.task.copy(manual = true)), {}, {}, {}, {}) }
     private val fetchFailed = previewProviderState.copy(messageRes = isomeria.aichat.R.string.fetch_failed_not_found, messageIsError = true)
     @Test fun fetchFailedLight() = shot("29-provider-fetch-failed", false) { ProviderEditSample(fetchFailed) }
     @Test fun fetchFailedDark() = shot("29-provider-fetch-failed", true) { ProviderEditSample(fetchFailed) }
@@ -574,7 +574,7 @@ class ScreenshotTest {
     @Test fun contextInputLarge() = large("48-context-input-large", false) { isomeria.aichat.feature.contactedit.ContextBudgetRow(200000, {}) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun contextInputNarrow() = large("48-context-input-narrow", true) { isomeria.aichat.feature.contactedit.ContextBudgetRow(200000, {}) }
     @Test fun contextInvalid() = shot("48-context-invalid", false) { isomeria.aichat.feature.contactedit.ContextBudgetRow(4000, {}, "") }
-    private val emptyMemory = memorySettings.copy(rows = emptyList(), backlog = 0, task = MemoryTaskState())
+    private val emptyMemory = memorySettings.copy(core = null, rows = emptyList(), backlog = 0, task = MemoryTaskState())
     @Test fun emptyMemoryLight() = shot("49-memory-empty", false) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
     @Test fun emptyMemoryDark() = shot("49-memory-empty", true) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
     @Test fun emptyMemoryLarge() {

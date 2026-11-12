@@ -473,35 +473,60 @@ class MemoryEngineTest {
         assertEquals(BacklogResult.NO_API_KEY, engine.summarizeBacklog(1))
     }
 
-    // ---- 合并 ----
+    // ---- 整理核心记忆（0.7.2） ----
 
-    private suspend fun memoryRow(content: String, time: Long, edited: Boolean = false) = db.memoryDao().insert(
-        Memory(contactId = 1, content = content, fromTime = time, toTime = time + 10, edited = edited, createdAt = time, updatedAt = time),
+    private suspend fun memoryRow(content: String, time: Long, edited: Boolean = false, core: Boolean = false) = db.memoryDao().insert(
+        Memory(contactId = 1, content = content, fromTime = time, toTime = time + 10, edited = edited, createdAt = time, updatedAt = time, core = core),
     )
 
     @Test
-    fun overBudget_mergesOldestUneditedIntoOne_keepsEdited() = runBlocking {
-        contact(budget = 1000) // 记忆预算 250 token
+    fun recentOverBudget_oldestUneditedFoldedIntoNewCore_keepsEdited() = runBlocking {
+        contact(budget = 4000) // 记忆预算 1000，近期上限 800
         memoryRow("改过的记忆", 100, edited = true)
-        val text = "一".repeat(100)
+        val text = "一".repeat(300)
         memoryRow(text, 200)
         memoryRow(text, 300)
         memoryRow(text, 400)
-        fake.reply = "合并后的记忆"
+        fake.reply = "整理后的核心记忆"
         engine.autoRun(1)
 
         val request = fake.requests.single()
         assertEquals("合并 小雨", request.messages[0].plainText())
+        val input = request.messages[1].plainText()
+        assertTrue(input, input.contains("（还没有）"))
+        assertEquals("最早的两条没改过的", 2, input.lines().count { it.startsWith("- [") })
         val rows = db.memoryDao().listByContact(1)
-        assertEquals(listOf("改过的记忆", "合并后的记忆", text), rows.map { it.content })
-        val merged = rows[1]
-        assertEquals("覆盖合并前的整段时间", 200L, merged.fromTime)
-        assertEquals(310L, merged.toTime)
-        assertFalse(merged.edited)
+        val core = rows.single { it.core }
+        assertEquals("整理后的核心记忆", core.content)
+        assertEquals("覆盖整理前的整段时间", 200L, core.fromTime)
+        assertEquals(310L, core.toTime)
+        assertEquals(listOf("改过的记忆", text), rows.filterNot { it.core }.map { it.content })
+        assertEquals(UsagePurpose.MEMORY, db.usageDao().listAll().single().purpose)
     }
 
     @Test
-    fun withinBudget_noMerge() = runBlocking {
+    fun existingCoreIsSentAndUpdated_inPlace() = runBlocking {
+        contact(budget = 4000)
+        val coreId = memoryRow("旧的核心", 50, edited = true, core = true)
+        val text = "一".repeat(500)
+        memoryRow(text, 200)
+        memoryRow(text, 300)
+        fake.reply = "新的核心"
+        engine.autoRun(1)
+
+        val input = fake.requests.single().messages[1].plainText()
+        assertTrue(input, input.startsWith("核心记忆：\n旧的核心"))
+        val core = db.memoryDao().get(coreId)!!
+        assertTrue(core.core)
+        assertEquals("新的核心", core.content)
+        assertFalse("模型整理过，不再算用户改过的", core.edited)
+        assertEquals(50L, core.fromTime)
+        assertEquals(210L, core.toTime)
+        assertEquals(2, db.memoryDao().listByContact(1).size)
+    }
+
+    @Test
+    fun withinBudget_noFold() = runBlocking {
         contact(budget = 1000)
         memoryRow("一条记忆", 100)
         memoryRow("又一条记忆", 200)
@@ -510,9 +535,18 @@ class MemoryEngineTest {
     }
 
     @Test
-    fun memoryEditedWhileMerging_mergeIsAbandoned() = runBlocking {
-        contact(budget = 1000)
-        val text = "一".repeat(150)
+    fun hugeContext_memoryBudgetIsCapped_soFoldHappensEarly() = runBlocking {
+        contact(budget = 200_000) // 以前预算是 5 万 token，这些记忆永远不会合并
+        repeat(5) { memoryRow("一".repeat(200), 100L + it * 100) }
+        engine.autoRun(1)
+        assertEquals(1, fake.requests.size)
+        assertEquals(1, db.memoryDao().listByContact(1).count { it.core })
+    }
+
+    @Test
+    fun memoryEditedWhileFolding_foldIsAbandoned() = runBlocking {
+        contact(budget = 4000)
+        val text = "一".repeat(450)
         val first = memoryRow(text, 200)
         memoryRow(text, 300)
         fake.whileWaiting = {
@@ -521,7 +555,38 @@ class MemoryEngineTest {
         engine.autoRun(1)
         val rows = db.memoryDao().listByContact(1)
         assertEquals(2, rows.size)
+        assertTrue(rows.none { it.core })
         assertEquals("用户刚改的", rows[0].content)
+    }
+
+    @Test
+    fun coreEditedWhileFolding_foldIsAbandoned() = runBlocking {
+        contact(budget = 4000)
+        val coreId = memoryRow("旧的核心", 50, core = true)
+        val text = "一".repeat(500)
+        memoryRow(text, 200)
+        memoryRow(text, 300)
+        fake.whileWaiting = {
+            db.memoryDao().update(db.memoryDao().get(coreId)!!.copy(content = "用户刚改的核心", edited = true))
+        }
+        engine.autoRun(1)
+        assertEquals("用户刚改的核心", db.memoryDao().get(coreId)!!.content)
+        assertEquals(3, db.memoryDao().listByContact(1).size)
+    }
+
+    @Test
+    fun nothingWorthRemembering_advancesWithoutMemory() = runBlocking {
+        contact()
+        messages(70)
+        fake.reply = "无。"
+        engine.autoRun(1)
+        assertEquals(1, fake.requests.size)
+        assertTrue(db.memoryDao().listAll().isEmpty())
+        assertTrue("进度照样往前", db.conversationDao().get(1)!!.memoryCursor!! > 0)
+        assertTrue(engine.tasks.states.value[1]!!.lastSuccess != null)
+        fake.requests.clear()
+        engine.autoRun(1)
+        assertTrue("不会重复总结同一段", fake.requests.isEmpty())
     }
 
     @Test fun memoryUsesIndependentNativeEffortAndOnlySavesBody() = runBlocking {

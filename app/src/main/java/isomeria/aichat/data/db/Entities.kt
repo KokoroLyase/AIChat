@@ -307,8 +307,8 @@ data class ProviderModel(
 }
 
 /**
- * 长期记忆：一段较早的聊天总结成的一条记忆，每次请求都带上。
- * 删除联系人时一起删除；清空聊天记录时保留。
+ * 长期记忆（0.7.2 起分两层）：核心记忆（[core]，每个联系人最多一条）和近期记忆（一段较早的聊天总结成的一条）。
+ * 每次请求带上核心记忆和预算内最新的近期记忆。删除联系人时一起删除；清空聊天记录时保留。
  */
 @Entity(
     tableName = "memory",
@@ -329,10 +329,15 @@ data class Memory(
     /** 这条记忆覆盖的聊天时间范围 */
     val fromTime: Long,
     val toTime: Long,
-    /** 用户改过的记忆不会被自动合并 */
+    /** 用户改过的近期记忆不会被整理进核心记忆 */
     val edited: Boolean = false,
     val createdAt: Long,
     val updatedAt: Long,
+    /**
+     * 核心记忆（0.7.2）：每个联系人最多一条，记着现在仍然成立的重要事实，近期记忆超出上限时由模型更新。
+     * false 是近期记忆：按时间的一段段总结
+     */
+    @ColumnInfo(defaultValue = "0") val core: Boolean = false,
 )
 
 /**

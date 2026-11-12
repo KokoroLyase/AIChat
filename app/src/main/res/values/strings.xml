@@ -193,10 +193,20 @@
     <string name="prompt_memory_header">下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：</string>
     <!-- 参数：年、月、日、内容 -->
     <string name="prompt_memory_item">- [%1$d年%2$d月%3$d日] %4$s</string>
+    <!-- 核心记忆在请求里的写法（0.7.2）。参数：内容 -->
+    <string name="prompt_memory_core">[一直记着的事]\n%1$s</string>
+    <string name="prompt_memory_recent">[最近的事]</string>
     <!-- 总结记忆的提示词。参数：联系人名称、对方称呼 -->
-    <string name="memory_summary_prompt">你在帮聊天角色「%1$s」整理长期记忆。下面是它和「%2$s」较早的一段聊天记录。用不超过 200 字的中文写一段总结：保留对方的个人信息、喜好、重要经历、约定和情绪变化，以及两人关系的进展；不写寒暄和无关细节，不编造记录里没有的内容。只输出总结本身，不要标题和列表。</string>
-    <!-- 合并记忆的提示词。参数：联系人名称 -->
-    <string name="memory_merge_prompt">下面是聊天角色「%1$s」的几条较早的记忆，按时间排列。把它们合并成一段不超过 300 字的中文：保留重要的事实、约定和关系变化，去掉重复和次要内容，不编造。只输出合并后的内容，不要标题和列表。</string>
+    <string name="memory_summary_prompt">你在帮聊天角色「%1$s」整理长期记忆。下面是它和「%2$s」较早的一段聊天记录。只记以后聊天用得上的重要内容：对方的个人信息、喜好、重要经历、约定、明显的情绪变化，以及两人关系的进展；不写寒暄、闲聊和无关细节，不编造记录里没有的内容。用不超过 150 字的中文写成一段，只输出总结本身，不要标题和列表。如果这段聊天里没有值得长期记住的内容，只回答一个字：无</string>
+    <!-- 整理核心记忆的提示词。参数：联系人名称 -->
+    <string name="memory_fold_prompt">你在帮聊天角色「%1$s」维护核心记忆：一段始终带在聊天里、记着重要事实的文字。下面是现有的核心记忆和几条较新的近期记忆。把近期记忆里重要的内容并入核心记忆，输出更新后的完整核心记忆：保留对方的个人信息、喜好、重要经历、仍然有效的约定和两人关系的现状；现有核心记忆里的内容，除非被新的内容推翻或已经过时，都要保留；去掉重复、次要和已经结束的事，不编造。用不超过 500 字的中文，可以分几行写，每行一件事；只输出核心记忆本身，不要标题。</string>
+    <!-- 整理核心记忆时发给模型的内容。参数：现有的核心记忆、要整理的近期记忆 -->
+    <string name="memory_fold_input">现有的核心记忆：\n%1$s\n\n较新的近期记忆（按时间排列）：\n%2$s</string>
+    <string name="memory_fold_no_core">（还没有，请根据近期记忆写出第一版）</string>
+    <!-- 要整理的一条近期记忆。参数：年、月、日、内容 -->
+    <string name="memory_fold_item">- [%1$d年%2$d月%3$d日] %4$s</string>
+    <!-- 总结指令里约定的“没有值得记的”回答，要和 memory_summary_prompt 末尾的字一致 -->
+    <string name="memory_summary_nothing">无</string>
     <string name="memory_default_my_name">对方</string>
 
     <!-- 我 -->
@@ -375,7 +385,7 @@
     <!-- 长期记忆 -->
     <string name="memory_title">记忆</string>
     <string name="memory_count">%1$d 条</string>
-    <string name="memory_hint">每次请求都会带上这些记忆，最多占上下文上限的四分之一。超出时最早的、没改过的记忆会被合并。</string>
+    <string name="memory_hint">每次请求先带上核心记忆，再带上最新的近期记忆，合计最多约 1500 token（上下文上限较小时最多占四分之一）。近期记忆超出约 800 token 时，最早的、没改过的几条会和核心记忆一起整理成新的核心记忆。</string>
     <string name="memory_hint_off">这个联系人关闭了自动记忆，不再生成新的记忆，已有的记忆仍会带上。可以在联系人编辑页打开。</string>
     <string name="memory_edited">已修改</string>
     <string name="memory_backlog">总结更早的聊天</string>
@@ -387,7 +397,11 @@
     <string name="memory_clear">清空全部记忆</string>
     <string name="memory_clear_confirm">确定清空这个联系人的全部记忆吗？此操作无法撤销。</string>
     <string name="memory_edit_title">编辑记忆</string>
-    <string name="memory_edit_hint">改过的记忆不会被自动合并。</string>
+    <string name="memory_edit_hint">改过的近期记忆不会被整理进核心记忆。</string>
+    <string name="memory_edit_core_title">编辑核心记忆</string>
+    <string name="memory_edit_core_hint">之后整理核心记忆时，模型会在保留这些内容的基础上加入新的事；被新的聊天推翻或已经过时的内容可能会被改掉。</string>
+    <string name="memory_delete_core">删除核心记忆</string>
+    <string name="memory_delete_core_confirm">确定删除核心记忆吗？之后会从近期记忆重新整理。</string>
     <string name="memory_delete">删除这条记忆</string>
     <string name="memory_delete_confirm">确定删除这条记忆吗？</string>
 
@@ -569,9 +583,12 @@
     <string name="memory_value_fallback">%1$s（聊天模型）</string>
     <string name="memory_section_settings">记忆设置</string>
     <string name="memory_section_tasks">任务状态</string>
-    <string name="memory_section_list">已有记忆</string>
+    <string name="memory_section_list">近期记忆</string>
+    <string name="memory_section_core">核心记忆</string>
+    <string name="memory_core_empty">还没有核心记忆。近期记忆超出上限时，最早的几条会整理到这里。</string>
+    <string name="memory_recent_empty">近期记忆都已整理进核心记忆。</string>
     <string name="memory_thinking">记忆思考强度</string>
-    <string name="memory_model_note">只使用当前联系人的服务商。设置同时作用于自动总结、手动总结与合并；只保存总结正文。</string>
+    <string name="memory_model_note">只使用当前联系人的服务商。设置同时作用于自动总结、手动总结和整理核心记忆；只保存总结正文。</string>
     <string name="memory_queue">排队中（%1$d）</string>
     <string name="memory_generating">生成中</string>
     <string name="memory_last_success">最近成功：%1$s</string>

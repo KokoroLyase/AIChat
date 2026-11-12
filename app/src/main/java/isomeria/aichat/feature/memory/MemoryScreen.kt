@@ -96,6 +96,9 @@ data class MemoryRow(val id: Long, val range: String, val content: String, val e
 data class MemoryListState(
     val loaded: Boolean = false,
     val autoMemory: Boolean = true,
+    /** 核心记忆（0.7.2）；还没有时为 null */
+    val core: MemoryRow? = null,
+    /** 近期记忆，新的在前 */
     val rows: List<MemoryRow> = emptyList(),
     /** 还没总结的更早消息有多少条 */
     val backlog: Int = 0,
@@ -130,7 +133,8 @@ class MemoryViewModel @Inject constructor(
     ) { list, backlog, settings, tasks ->
         val now = System.currentTimeMillis()
         MemoryListState(loaded = true, autoMemory = settings.first?.autoMemory ?: true,
-            rows = list.asReversed().map { it.toRow(now) }, backlog = backlog, contact = settings.first,
+            core = list.firstOrNull { it.core }?.toRow(now),
+            rows = list.filterNot { it.core }.asReversed().map { it.toRow(now) }, backlog = backlog, contact = settings.first,
             provider = settings.second, models = settings.third, task = tasks[contactId] ?: MemoryTaskState())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MemoryListState())
 
@@ -278,18 +282,34 @@ fun MemoryContent(
                 MemoryTaskFeedback(state.task)
             }
 
-            SectionHeader(stringResource(if (state.rows.isEmpty()) R.string.memory_section_empty else R.string.memory_section_list))
+            val hasAny = state.core != null || state.rows.isNotEmpty()
+            if (hasAny) {
+                SectionHeader(stringResource(R.string.memory_section_core))
+                val core = state.core
+                if (core != null) {
+                    MemoryItem(core, onOpen)
+                } else {
+                    Text(
+                        stringResource(R.string.memory_core_empty),
+                        style = WeTheme.typography.small,
+                        color = colors.textTertiary,
+                        modifier = Modifier.fillMaxWidth().background(colors.listBackground)
+                            .padding(horizontal = dimens.horizontalPadding, vertical = 12.dp),
+                    )
+                }
+            }
+            SectionHeader(stringResource(if (!hasAny) R.string.memory_section_empty else R.string.memory_section_list))
             // 入口放在列表上面：记忆多的时候不用翻到底，也离任务状态近
             if (state.backlog > 0) {
                 ConfigActionRow(
                     title = stringResource(R.string.memory_backlog),
                     value = if (state.task.manual) stringResource(R.string.memory_backlog_running) else stringResource(R.string.memory_backlog_count, state.backlog),
                     enabled = !state.task.manual,
-                    showDivider = state.rows.isNotEmpty(),
+                    showDivider = state.rows.isNotEmpty() || !hasAny,
                     onClick = onSummarizeBacklog,
                 )
             }
-            if (state.rows.isEmpty()) {
+            if (!hasAny) {
                 Column(Modifier.fillMaxWidth().background(colors.listBackground)
                     .padding(horizontal = dimens.horizontalPadding, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -297,42 +317,26 @@ fun MemoryContent(
                     Text(stringResource(if (state.autoMemory) R.string.memory_empty_on else R.string.memory_empty_off),
                         style = WeTheme.typography.small, color = colors.textTertiary)
                 }
+            } else if (state.rows.isEmpty()) {
+                Text(
+                    stringResource(R.string.memory_recent_empty),
+                    style = WeTheme.typography.small,
+                    color = colors.textTertiary,
+                    modifier = Modifier.fillMaxWidth().background(colors.listBackground)
+                        .padding(horizontal = dimens.horizontalPadding, vertical = 12.dp),
+                )
             } else {
                 state.rows.forEachIndexed { index, row ->
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .background(colors.listBackground)
-                            .clickable { onOpen(row.id) }
-                            .padding(horizontal = dimens.horizontalPadding, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                row.range,
-                                style = WeTheme.typography.listTime,
-                                color = colors.textTertiary,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (row.edited) {
-                                Text(
-                                    stringResource(R.string.memory_edited),
-                                    style = WeTheme.typography.listTime,
-                                    color = colors.textTertiary,
-                                )
-                            }
-                        }
-                        Text(row.content, style = WeTheme.typography.small, color = colors.textPrimary)
-                    }
+                    MemoryItem(row, onOpen)
                     if (index != state.rows.lastIndex) WeDivider(startIndent = dimens.horizontalPadding)
                 }
             }
 
-            if (state.rows.isNotEmpty()) FootnoteText(
+            if (hasAny) FootnoteText(
                 stringResource(if (state.autoMemory) R.string.memory_hint else R.string.memory_hint_off),
             )
 
-            if (state.rows.isNotEmpty()) {
+            if (hasAny) {
                 GroupSpacer()
                 Box(
                     Modifier
@@ -347,6 +351,37 @@ fun MemoryContent(
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+/** 一条记忆：时间范围、是否改过、内容；点开编辑。 */
+@Composable
+private fun MemoryItem(row: MemoryRow, onOpen: (Long) -> Unit) {
+    val colors = WeTheme.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.listBackground)
+            .clickable { onOpen(row.id) }
+            .padding(horizontal = WeTheme.dimens.horizontalPadding, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                row.range,
+                style = WeTheme.typography.listTime,
+                color = colors.textTertiary,
+                modifier = Modifier.weight(1f),
+            )
+            if (row.edited) {
+                Text(
+                    stringResource(R.string.memory_edited),
+                    style = WeTheme.typography.listTime,
+                    color = colors.textTertiary,
+                )
+            }
+        }
+        Text(row.content, style = WeTheme.typography.small, color = colors.textPrimary)
     }
 }
 
@@ -377,7 +412,7 @@ private fun TaskProgress(text: String) {
     }
 }
 
-data class MemoryEditState(val loaded: Boolean = false, val exists: Boolean = false, val content: String = "", val original: String = "") {
+data class MemoryEditState(val loaded: Boolean = false, val exists: Boolean = false, val content: String = "", val original: String = "", val core: Boolean = false) {
     val dirty: Boolean get() = loaded && content.trim() != original
 }
 
@@ -399,6 +434,7 @@ class MemoryEditViewModel @Inject constructor(
                 exists = memory != null,
                 content = memory?.content.orEmpty(),
                 original = memory?.content.orEmpty(),
+                core = memory?.core == true,
             )
         }
     }
@@ -435,7 +471,7 @@ fun MemoryEditScreen(onBack: () -> Unit, viewModel: MemoryEditViewModel = hiltVi
 
     ImeBackHandler()
     Column(Modifier.fillMaxSize().background(colors.pageBackground).imePadding()) {
-        WeTopBar(title = stringResource(R.string.memory_edit_title), onBack = onBack) {
+        WeTopBar(title = stringResource(if (state.core) R.string.memory_edit_core_title else R.string.memory_edit_title), onBack = onBack) {
             WeSmallButton(
                 stringResource(R.string.action_save),
                 { saving = true },
@@ -459,7 +495,7 @@ fun MemoryEditScreen(onBack: () -> Unit, viewModel: MemoryEditViewModel = hiltVi
                         .padding(10.dp),
                 )
             }
-            FootnoteText(stringResource(R.string.memory_edit_hint))
+            FootnoteText(stringResource(if (state.core) R.string.memory_edit_core_hint else R.string.memory_edit_hint))
             GroupSpacer()
             Box(
                 Modifier
@@ -469,7 +505,7 @@ fun MemoryEditScreen(onBack: () -> Unit, viewModel: MemoryEditViewModel = hiltVi
                     .heightIn(min = dimens.listRowHeight),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(stringResource(R.string.memory_delete), style = WeTheme.typography.listTitle, color = colors.danger)
+                Text(stringResource(if (state.core) R.string.memory_delete_core else R.string.memory_delete), style = WeTheme.typography.listTitle, color = colors.danger)
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -477,7 +513,7 @@ fun MemoryEditScreen(onBack: () -> Unit, viewModel: MemoryEditViewModel = hiltVi
 
     if (confirmDelete) {
         WeDialog(
-            message = stringResource(R.string.memory_delete_confirm),
+            message = stringResource(if (state.core) R.string.memory_delete_core_confirm else R.string.memory_delete_confirm),
             confirmText = stringResource(R.string.action_delete),
             destructive = true,
             onDismiss = { confirmDelete = false },
@@ -492,6 +528,7 @@ fun MemoryEditScreen(onBack: () -> Unit, viewModel: MemoryEditViewModel = hiltVi
 /** 截图用的示例数据 */
 internal val previewMemoryState = MemoryListState(
     loaded = true,
+    core = MemoryRow(3, "9月2日 – 10月19日", "对方是大三学生，学设计，周末在咖啡店打工。\n喜欢猫，不太吃辣。\n约好期末考完一起去看海。", edited = false),
     rows = listOf(
         MemoryRow(2, "10月28日 – 11月1日", "对方最近在准备考试，压力有点大，约好考完一起去看海。喜欢喝不加糖的拿铁。", edited = true),
         MemoryRow(1, "10月20日 – 10月27日", "对方养了一只叫团子的橘猫，常在晚上聊天。提到过想学吉他。", edited = false),

@@ -211,6 +211,8 @@ data class MemoryDto(
     val edited: Boolean = false,
     val createdAt: Long,
     val updatedAt: Long,
+    /** 核心记忆（v8 起；旧备份里都是近期记忆） */
+    val core: Boolean = false,
 )
 
 @Serializable

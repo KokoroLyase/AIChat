@@ -131,9 +131,9 @@ class ContextWindowTest {
 
     // ---- 记忆策略 ----
 
-    private fun memory(content: String, edited: Boolean = false) = Memory(
+    private fun memory(content: String, edited: Boolean = false, core: Boolean = false) = Memory(
         id = nextId++, contactId = 1, content = content, fromTime = nextId, toTime = nextId, edited = edited,
-        createdAt = 0, updatedAt = 0,
+        createdAt = 0, updatedAt = 0, core = core,
     )
 
     @Test
@@ -219,21 +219,59 @@ class ContextWindowTest {
     }
 
     @Test
-    fun merge_onlyOverBudget_oldestUneditedHalf() {
-        val edited = memory("改过的", edited = true)
-        val a = memory("一二三四五")
-        val b = memory("一二三四五")
-        val c = memory("一二三四五")
-        val all = listOf(edited, a, b, c)
-        assertTrue(MemoryPolicy.planMerge(all, budget = 100, estimator).isEmpty())
-        assertEquals(listOf(a, b), MemoryPolicy.planMerge(all, budget = 5, estimator))
+    fun budget_isQuarterOfContext_butCappedSoItDoesNotGrowWithContext() {
+        assertEquals(1000, MemoryPolicy.memoryBudget(4000))
+        assertEquals(MemoryPolicy.MEMORY_MAX_TOKENS, MemoryPolicy.memoryBudget(32_000))
+        assertEquals(MemoryPolicy.MEMORY_MAX_TOKENS, MemoryPolicy.memoryBudget(200_000))
     }
 
     @Test
-    fun merge_needsAtLeastTwoUnedited() {
-        val edited = memory("一二三四五", edited = true)
-        val only = memory("一二三四五")
-        assertTrue(MemoryPolicy.planMerge(listOf(edited, only), budget = 1, estimator).isEmpty())
+    fun forRequest_coreFirst_thenNewestRecent() {
+        val core = memory("核心核心核心", core = true) // 6
+        val a = memory("一二三四五")
+        val b = memory("一二三四五")
+        val c = memory("一二三四五")
+        assertEquals(listOf(core, b, c), MemoryPolicy.forRequest(listOf(core, a, b, c), budget = 16, estimator))
+        // 核心记忆放不下时不带，近期记忆照常按预算放
+        assertEquals(listOf(c), MemoryPolicy.forRequest(listOf(core, a, b, c), budget = 5, estimator))
+        // 核心记忆不一定排在最前（按时间排序时），结果里仍在最前
+        assertEquals(listOf(core, c), MemoryPolicy.forRequest(listOf(a, b, core, c), budget = 11, estimator))
+    }
+
+    @Test
+    fun fold_onlyWhenRecentOverBudget_oldestUneditedHalf() {
+        val edited = memory("改过的", edited = true)
+        val recent = List(4) { memory("一".repeat(300)) } // 共 1200
+        val all = listOf(edited) + recent
+        // 预算 1500，近期上限 800：超了，整理最早的一半没改过的
+        assertEquals(recent.take(2), MemoryPolicy.planFold(all, budget = 1500, estimator))
+        assertTrue(MemoryPolicy.planFold(listOf(edited) + recent.take(2), budget = 1500, estimator).isEmpty())
+    }
+
+    @Test
+    fun fold_singleUneditedIsEnough_editedAloneNeverFolded() {
+        val only = memory("一".repeat(900))
+        assertEquals(listOf(only), MemoryPolicy.planFold(listOf(only), budget = 1500, estimator))
+        val edited = memory("一".repeat(900), edited = true)
+        assertTrue(MemoryPolicy.planFold(listOf(edited), budget = 1500, estimator).isEmpty())
+    }
+
+    @Test
+    fun fold_longCoreLeavesLessRoomForRecent_butAtLeastAThird() {
+        val core = memory("一".repeat(1300), core = true)
+        val recent = memory("一".repeat(450))
+        // 1500 - 1300 = 200，但至少留 500：450 不用整理
+        assertTrue(MemoryPolicy.planFold(listOf(core, recent), budget = 1500, estimator).isEmpty())
+        val more = memory("一".repeat(100))
+        assertEquals(listOf(recent), MemoryPolicy.planFold(listOf(core, recent, more), budget = 1500, estimator))
+    }
+
+    @Test
+    fun fold_isCappedPerRequest_soOldPilesAreFoldedInSeveralSteps() {
+        val pile = List(100) { memory("一".repeat(200)) } // 20000
+        val first = MemoryPolicy.planFold(pile, budget = 1500, estimator)
+        assertEquals(pile.take(30), first)
+        assertTrue(first.sumOf { estimator.text(it.content) } <= MemoryPolicy.FOLD_MAX_TOKENS)
     }
 
     @Test

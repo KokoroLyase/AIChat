@@ -25,15 +25,22 @@ import isomeria.aichat.data.repo.UsageRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** 总结用到的文字，从 strings.xml 读取后传入。 */
+/** 总结和整理用到的文字，从 strings.xml 读取后传入。 */
 data class MemoryLabels(
     /** 参数：联系人名称、对方称呼 */
     val summaryPrompt: String,
-    /** 参数：联系人名称 */
-    val mergePrompt: String,
+    /** 整理核心记忆的指令。参数：联系人名称 */
+    val foldPrompt: String,
     /** 没有设置昵称时对方的称呼 */
     val defaultMyName: String,
     val imagePlaceholder: String,
+    /** 这段聊天没有值得记的内容时，模型按总结指令回答的这个词 */
+    val nothingReply: String = "无",
+    /** 整理时发给模型的内容。参数：现有的核心记忆（没有时是 [foldNoCore]）、要整理的近期记忆 */
+    val foldInput: String = "核心记忆：\n%1\$s\n\n近期记忆：\n%2\$s",
+    val foldNoCore: String = "（还没有）",
+    /** 要整理的一条近期记忆。参数：年、月、日、内容 */
+    val foldItem: String = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
 )
 
 /** 自己的昵称。单元测试里换成固定值（MMKV 需要原生库）。 */
@@ -54,14 +61,14 @@ enum class BacklogResult {
 }
 
 /**
- * 把较早的聊天总结成记忆。
+ * 把较早的聊天总结成记忆（0.7.2 起分两层，规则见 [MemoryPolicy]）。
  *
  * - 使用联系人独立的记忆模型和思考设置，未指定模型时跟随服务商默认，默认空时回退聊天模型。
  *   这样 Key 一定可用，聊天内容也不会发给联系人没在用的服务商
  * - [autoRun] 在回复成功后由后台任务调用，失败时不打扰用户，下次回复后再试
  * - 等模型返回期间聊天可能被恢复数据改掉，写库前检查进度没有变
  * - 日志不记录消息和记忆的内容
- * - 总结和合并的请求只用原来的总结/合并指令，不带全局记忆和回复偏好要求；
+ * - 总结和整理的请求只用各自的指令，不带全局记忆和回复偏好要求；
  *   但判断何时触发时，系统提示词按聊天请求的完整内容算（[historyBudget]），和聊天一致
  */
 @Singleton
@@ -73,6 +80,7 @@ class MemoryEngine @Inject constructor(
     private val labels: MemoryLabels,
     private val promptGlobals: PromptGlobalsSource = PromptGlobalsSource.NONE,
     val tasks: MemoryTasks = MemoryTasks(),
+    private val zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
     private val nickname: NicknameSource,
 ) {
     private val contactDao get() = db.contactDao()
@@ -81,7 +89,7 @@ class MemoryEngine @Inject constructor(
     private val memoryDao get() = db.memoryDao()
 
 
-    /** 一次回复成功后检查：需要时总结一批，记忆超预算时合并 */
+    /** 一次回复成功后检查：需要时总结一批，近期记忆超出时整理一次核心记忆 */
     suspend fun autoRun(contactId: Long) {
         try {
             tasks.run(contactId) {
@@ -92,7 +100,7 @@ class MemoryEngine @Inject constructor(
                 val estimator = TokenEstimator.forProtocol(config.provider)
                 val conversation = readyConversation(contact, config, estimator) ?: return@run
                 summarizeNewBatch(contact, estimator, conversation)
-                mergeIfOverBudget(contact, estimator)
+                foldIfOverBudget(contact, estimator)
             }
         } catch (e: LlmException) {
             debugLog("auto memory failed: ${e.error} http=${e.httpCode}")
@@ -123,7 +131,7 @@ class MemoryEngine @Inject constructor(
         db.withTransaction {
             val current = conversationDao.get(contact.id) ?: return@withTransaction
             if (db.restoreInProgress.get() > 0 || db.restoreGeneration.get() != generation || current.memoryStart != start || contactDao.get(contact.id)?.createdAt != contact.createdAt) return@withTransaction
-            summary?.let { saveSummary(contact.id, it, batch); tasks.succeeded(contact.id) }
+            save(contact.id, summary, batch)
             val newStart = batch.first().createdAt
             val rest = messageDao.countBefore(contact.id, newStart)
             conversationDao.setMemoryRange(contact.id, current.memoryCursor, if (rest > 0) newStart else 0)
@@ -163,41 +171,64 @@ class MemoryEngine @Inject constructor(
         db.withTransaction {
             val current = conversationDao.get(contact.id) ?: return@withTransaction
             if (db.restoreInProgress.get() > 0 || db.restoreGeneration.get() != generation || current.memoryCursor != cursor || contactDao.get(contact.id)?.createdAt != contact.createdAt) return@withTransaction
-            summary?.let { saveSummary(contact.id, it, batch); tasks.succeeded(contact.id) }
+            save(contact.id, summary, batch)
             conversationDao.setMemoryRange(contact.id, batch.last().createdAt, current.memoryStart)
         }
         debugLog("memory saved: messages=${batch.size}")
     }
 
-    private suspend fun mergeIfOverBudget(
+    /**
+     * 近期记忆超出时整理一次：把最早的几条和现有的核心记忆一起交给模型，换成更新后的核心记忆。
+     * 一次最多处理 [MemoryPolicy.FOLD_MAX_TOKENS]，升级前积累的大量记忆在之后的几次回复里陆续整理完
+     */
+    private suspend fun foldIfOverBudget(
         contact: Contact,
         estimator: TokenEstimator,
     ) {
         val generation = db.restoreGeneration.get()
-        val budget = MemoryPolicy.memoryBudget(contact.contextTokens)
-        val rows = MemoryPolicy.planMerge(memoryDao.listByContact(contact.id), budget, estimator)
+        val all = memoryDao.listByContact(contact.id)
+        val rows = MemoryPolicy.planFold(all, MemoryPolicy.memoryBudget(contact.contextTokens), estimator)
         if (rows.isEmpty()) return
-        val text = rows.joinToString("\n") { "- ${it.content}" }
-        val result = complete(contact, labels.mergePrompt.format(contact.name), text)
+        val core = all.firstOrNull { it.core }
+        val recent = rows.joinToString("\n") { memory ->
+            val date = java.time.Instant.ofEpochMilli(memory.toTime).atZone(zone)
+            labels.foldItem.format(date.year, date.monthValue, date.dayOfMonth, memory.content)
+        }
+        val input = labels.foldInput.format(core?.content ?: labels.foldNoCore, recent)
+        val result = complete(contact, labels.foldPrompt.format(contact.name), input)
         db.withTransaction {
-            // 等待期间用户改过或删过其中的记忆时放弃这次合并
-            val still = memoryDao.listByContact(contact.id).filter { row -> rows.any { it.id == row.id } }
-            if (db.restoreInProgress.get() > 0 || db.restoreGeneration.get() != generation || still != rows) return@withTransaction
+            // 等待期间用户改过、删过其中的记忆或核心记忆时放弃这次整理
+            val current = memoryDao.listByContact(contact.id)
+            val still = current.filter { row -> rows.any { it.id == row.id } }
+            if (db.restoreInProgress.get() > 0 || db.restoreGeneration.get() != generation || still != rows || current.firstOrNull { it.core } != core) return@withTransaction
             memoryDao.deleteIds(rows.map { it.id })
             val now = System.currentTimeMillis()
-            memoryDao.insert(
-                Memory(
-                    contactId = contact.id,
-                    content = result.text,
-                    fromTime = rows.first().fromTime,
-                    toTime = rows.last().toTime,
-                    createdAt = now,
-                    updatedAt = now,
-                ),
-            )
+            if (core != null) {
+                memoryDao.update(
+                    core.copy(
+                        content = result.text,
+                        fromTime = minOf(core.fromTime, rows.first().fromTime),
+                        toTime = maxOf(core.toTime, rows.last().toTime),
+                        edited = false,
+                        updatedAt = now,
+                    ),
+                )
+            } else {
+                memoryDao.insert(
+                    Memory(
+                        contactId = contact.id,
+                        content = result.text,
+                        fromTime = rows.first().fromTime,
+                        toTime = rows.last().toTime,
+                        createdAt = now,
+                        updatedAt = now,
+                        core = true,
+                    ),
+                )
+            }
             tasks.succeeded(contact.id)
         }
-        debugLog("memory merged: rows=${rows.size}")
+        debugLog("memory folded: rows=${rows.size}")
     }
 
     /** 留给聊天记录的预算：总预算减去系统提示词和带上的记忆 */
@@ -212,15 +243,30 @@ class MemoryEngine @Inject constructor(
         return contact.contextTokens - estimator.text(system)
     }
 
-    /** 这批消息的总结；里面没有可总结的内容（比如都是失败的消息）时为 null */
+    /**
+     * 一批消息的总结结果。[text] 为 null 表示不生成记忆：里面没有可总结的内容（比如都是失败的消息，[requested] 为 false），
+     * 或者模型回答这段没有值得记的（[requested] 为 true）
+     */
+    private class Summary(val text: String?, val requested: Boolean)
+
     private suspend fun summarize(
         contact: Contact,
         batch: List<Message>,
-    ): String? {
+    ): Summary {
         val myName = nickname.nickname().trim().ifEmpty { labels.defaultMyName }
         val transcript = MemoryPolicy.transcript(batch, myName, contact.name, labels.imagePlaceholder)
-        if (transcript.isBlank()) return null
-        return complete(contact, labels.summaryPrompt.format(contact.name, myName), transcript).text
+        if (transcript.isBlank()) return Summary(null, requested = false)
+        val text = complete(contact, labels.summaryPrompt.format(contact.name, myName), transcript).text
+        return Summary(text.takeUnless(::isNothing), requested = true)
+    }
+
+    /** 模型回答「无」（可能带句号、引号）时这段没有值得记的 */
+    private fun isNothing(text: String): Boolean =
+        text.trim().trim('。', '.', '“', '”', '"', '「', '」', '！', '!').trim() == labels.nothingReply
+
+    private suspend fun save(contactId: Long, summary: Summary, batch: List<Message>) {
+        summary.text?.let { saveSummary(contactId, it, batch) }
+        if (summary.requested) tasks.succeeded(contactId)
     }
 
     private suspend fun saveSummary(contactId: Long, content: String, batch: List<Message>) {

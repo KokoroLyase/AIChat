@@ -115,6 +115,29 @@ class ContextBuilderTest {
         )
     }
 
+    /** 0.7.2：核心记忆在前、不带日期，有近期记忆时加小标题 */
+    @Test
+    fun coreMemory_comesFirst_withoutDate_thenRecent() {
+        val labeled = ContextBuilder(
+            ContextLabels(
+                namePlaceholder = "{名称}", personaPlaceholderPrefix = "{在这里写人设",
+                timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。", nicknameLine = "对方的昵称是「%1\$s」。",
+                weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"), imagePlaceholder = "[图片]",
+                memoryHeader = "下面是记忆：", memoryItem = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
+                memoryCore = "[一直记着的事]\n%1\$s", memoryRecentHeader = "[最近的事]",
+            ),
+            java.time.ZoneId.of("Asia/Shanghai"),
+        )
+        val core = memory("  学设计\n喜欢猫  ").copy(core = true)
+        val prompt = labeled.systemPrompt(contact(""), "", now, listOf(core, memory("养了猫")))!!
+        assertEquals(
+            "下面是记忆：\n[一直记着的事]\n学设计\n喜欢猫\n[最近的事]\n- [2026年11月1日] 养了猫\n\n现在是 2026年11月1日 星期日 23:40。",
+            prompt,
+        )
+        val onlyCore = labeled.systemPrompt(contact(""), "", now, listOf(core))!!
+        assertEquals("下面是记忆：\n[一直记着的事]\n学设计\n喜欢猫\n\n现在是 2026年11月1日 星期日 23:40。", onlyCore)
+    }
+
     @Test
     fun emptyPersonaWithMemories_stillSendsSystemMessage() {
         val prompt = builder.systemPrompt(contact(""), "", now, listOf(memory("喜欢拿铁")))!!

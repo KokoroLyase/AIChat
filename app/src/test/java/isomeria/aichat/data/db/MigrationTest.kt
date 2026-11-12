@@ -72,7 +72,7 @@ class MigrationTest {
     private fun JsonObject.sql(key: String) = this[key]!!.jsonPrimitive.content
 
     private fun open(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
         .allowMainThreadQueries()
         .build()
         .also { room = it }
@@ -394,6 +394,25 @@ class MigrationTest {
         val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "mimo-audio", baseUrl = "https://x.test/v1", defaultModel = "tts", voice = "冰糖"))
         assertEquals(listOf(tts), db.providerDao().listByKind(ProviderKind.TTS).map { it.id })
         assertEquals(listOf(1L), db.providerDao().llmList().map { it.id })
+    }
+
+    /** 0.7.2：旧记忆都成为近期记忆，内容、时间范围、是否改过原样保留；核心记忆可以写入 */
+    @Test
+    fun v7ToV8_oldMemoriesBecomeRecent_otherFieldsKept() = runBlocking {
+        createV1(version = 7) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility,voice) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com','encrypted','m',1,'deepseek','DEEPSEEK','')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,thinkingOption,memoryModel,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency,replyType,ttsVoice,ttsStyle) VALUES(8,'甲',1,1,'m','OFF',0.4,'人设',6000,1,1,10,20,'high',NULL,'off',1,1,0,'MEDIUM','VOICE','冰糖','温柔')")
+            execSQL("INSERT INTO memory(id,contactId,content,fromTime,toTime,edited,createdAt,updatedAt) VALUES(1,8,'旧记忆',100,200,0,300,300),(2,8,'改过的',400,500,1,600,700)")
+        }
+        val db = open()
+        val memories = db.memoryDao().listByContact(8)
+        assertEquals(listOf("旧记忆", "改过的"), memories.map { it.content })
+        assertTrue(memories.none { it.core })
+        assertEquals(listOf(false, true), memories.map { it.edited })
+        assertEquals(listOf(100L to 200L, 400L to 500L), memories.map { it.fromTime to it.toTime })
+        assertEquals("冰糖", db.contactDao().get(8)!!.ttsVoice)
+        db.memoryDao().insert(Memory(contactId = 8, content = "核心", fromTime = 100, toTime = 500, createdAt = 800, updatedAt = 800, core = true))
+        assertEquals(1, db.memoryDao().listByContact(8).count { it.core })
     }
 
     /** 清空或删除聊天时连续未回复次数清零；用户发言用的清零和主动发送的计数互不影响别的字段 */

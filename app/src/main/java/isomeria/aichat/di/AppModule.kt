@@ -29,6 +29,7 @@ import isomeria.aichat.data.db.MIGRATION_3_4
 import isomeria.aichat.data.db.MIGRATION_4_5
 import isomeria.aichat.data.db.MIGRATION_5_6
 import isomeria.aichat.data.db.MIGRATION_6_7
+import isomeria.aichat.data.db.MIGRATION_7_8
 import isomeria.aichat.data.db.GlobalMemoryDao
 import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.MessageDao
@@ -63,7 +64,7 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .addCallback(AppDatabase.seedCallback)
             .build()
 
@@ -119,6 +120,8 @@ object AppModule {
                 imagePlaceholder = res.getString(R.string.preview_image),
                 memoryHeader = res.getString(R.string.prompt_memory_header),
                 memoryItem = res.getString(R.string.prompt_memory_item),
+                memoryCore = res.getString(R.string.prompt_memory_core),
+                memoryRecentHeader = res.getString(R.string.prompt_memory_recent),
                 globalMemoryHeader = res.getString(R.string.prompt_global_memory_header),
                 globalMemoryTopic = res.getString(R.string.prompt_global_memory_topic),
                 globalMemoryItem = res.getString(R.string.prompt_global_memory_item),
@@ -167,9 +170,13 @@ object AppModule {
         val res = context.resources
         return MemoryLabels(
             summaryPrompt = res.getString(R.string.memory_summary_prompt),
-            mergePrompt = res.getString(R.string.memory_merge_prompt),
+            foldPrompt = res.getString(R.string.memory_fold_prompt),
             defaultMyName = res.getString(R.string.memory_default_my_name),
             imagePlaceholder = res.getString(R.string.preview_image),
+            nothingReply = res.getString(R.string.memory_summary_nothing),
+            foldInput = res.getString(R.string.memory_fold_input),
+            foldNoCore = res.getString(R.string.memory_fold_no_core),
+            foldItem = res.getString(R.string.memory_fold_item),
         )
     }
 

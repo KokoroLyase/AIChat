@@ -4,6 +4,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
+ * v7 → v8（0.7.2）：记忆分两层，记忆加「是否核心记忆」。旧记忆都是近期记忆，第一次自动记忆时按预算整理出核心记忆。
+ */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE memory ADD COLUMN core INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/**
  * v6 → v7（0.7.0）：语音消息。消息加语音文件路径、时长、是否播放过、是否显示转写文字（旧消息都没有语音）；
  * 联系人加消息发送类型（NULL：用全局设置，默认跟随）、音色（NULL：服务商默认）和语气风格；服务商加默认音色。
  * 只加列，旧消息、旧联系人的行为不变；语音服务商（kind 为 TTS、ASR）由用户在设置里新建，迁移不写入。

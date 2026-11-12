@@ -27,8 +27,12 @@ data class ContextLabels(
     val imagePlaceholder: String,
     /** 记忆前面的说明 */
     val memoryHeader: String,
-    /** 一条记忆。参数：年、月、日、内容 */
+    /** 一条近期记忆。参数：年、月、日、内容 */
     val memoryItem: String,
+    /** 核心记忆（0.7.2）。参数：内容 */
+    val memoryCore: String = "%1\$s",
+    /** 有核心记忆时，近期记忆前面的小标题 */
+    val memoryRecentHeader: String = "",
     /** 全局记忆前面的说明（0.5.0） */
     val globalMemoryHeader: String = "",
     /** 全局记忆的一个主题。参数：类别、主题 */
@@ -205,12 +209,23 @@ class ContextBuilder(
         return labels.replyStyle.format(count, p.targetLength)
     }
 
+    /** 核心记忆在前（0.7.2），近期记忆按时间正序、带日期；没有核心记忆时和 0.7.1 完全一样 */
     private fun memoryBlock(memories: List<Memory>): String {
         if (memories.isEmpty()) return ""
-        return memories.joinToString("\n", prefix = labels.memoryHeader + "\n") { memory ->
+        val core = memories.firstOrNull { it.core }
+        val recent = memories.filterNot { it.core }.map { memory ->
             val date = Instant.ofEpochMilli(memory.toTime).atZone(zone)
             labels.memoryItem.format(date.year, date.monthValue, date.dayOfMonth, memory.content)
         }
+        val lines = buildList {
+            add(labels.memoryHeader)
+            if (core != null) {
+                add(labels.memoryCore.format(core.content.trim()))
+                if (recent.isNotEmpty() && labels.memoryRecentHeader.isNotEmpty()) add(labels.memoryRecentHeader)
+            }
+            addAll(recent)
+        }
+        return lines.joinToString("\n")
     }
 
     /** 替换 {名称}，去掉没改过的人设占位行 */

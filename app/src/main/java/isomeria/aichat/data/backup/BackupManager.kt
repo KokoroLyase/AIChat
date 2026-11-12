@@ -461,7 +461,8 @@ class BackupManager @Inject constructor(
                 .map { it.copy(content = it.content.take(GlobalMemoryItem.CONTENT_MAX_LENGTH)) },
             providers = data.providers.distinctBy { it.id },
             memories = data.memories.filter { it.contactId in ids && it.content.isNotBlank() }.distinctBy { it.id }
-                .map { it.copy(content = it.content.take(MemoryPolicy.CONTENT_MAX_LENGTH)) },
+                .map { it.copy(content = it.content.take(MemoryPolicy.CONTENT_MAX_LENGTH)) }
+                .let(::oneCorePerContact),
             usage = data.usage.filter { it.contactId in ids || it.contactId == UsageDaily.DELETED_CONTACT }
                 .distinctBy { Triple(it.day, it.contactId, it.purpose) }
                 .map {
@@ -781,13 +782,17 @@ class BackupManager @Inject constructor(
         val sameTargets = same.mapNotNullTo(HashSet()) { idMap[it] }
         newMessages.mapTo(HashSet()) { it.contactId }.filter { it in sameTargets }.forEach { refreshLastMessage(it) }
 
-        // 记忆：同一条（时间范围和内容都相同）不重复加入
-        val existingMemories = memoryDao.listAll().mapTo(HashSet()) { listOf(it.contactId, it.fromTime, it.toTime, it.content) }
+        // 记忆：同一条（时间范围和内容都相同）不重复加入。
+        // 本机这个联系人已经有核心记忆时，备份里的核心记忆按近期记忆加入，之后自动记忆会把它整理进本机的核心记忆
+        val localMemories = memoryDao.listAll()
+        val existingMemories = localMemories.mapTo(HashSet()) { listOf(it.contactId, it.fromTime, it.toTime, it.content) }
+        val withCore = localMemories.filter { it.core }.mapTo(HashSet()) { it.contactId }
         memoryDao.insertAll(
             data.memories.mapNotNull { memory ->
                 val target = idMap[memory.contactId] ?: return@mapNotNull null
                 if (listOf(target, memory.fromTime, memory.toTime, memory.content) in existingMemories) return@mapNotNull null
-                memory.toEntity(target).copy(id = 0)
+                val core = memory.core && withCore.add(target)
+                memory.toEntity(target).copy(id = 0, core = core)
             },
         )
         // 用量：本机已有的那一天、那个联系人保留本机的
@@ -932,13 +937,19 @@ class BackupManager @Inject constructor(
 
     private fun Memory.toDto() = MemoryDto(
         id = id, contactId = contactId, content = content, fromTime = fromTime, toTime = toTime,
-        edited = edited, createdAt = createdAt, updatedAt = updatedAt,
+        edited = edited, createdAt = createdAt, updatedAt = updatedAt, core = core,
     )
 
     private fun MemoryDto.toEntity(contactId: Long) = Memory(
         id = id, contactId = contactId, content = content, fromTime = fromTime, toTime = toTime,
-        edited = edited, createdAt = createdAt, updatedAt = updatedAt,
+        edited = edited, createdAt = createdAt, updatedAt = updatedAt, core = core,
     )
+
+    /** 每个联系人最多一条核心记忆：异常文件里多出来的按近期记忆处理 */
+    private fun oneCorePerContact(memories: List<MemoryDto>): List<MemoryDto> {
+        val seen = HashSet<Long>()
+        return memories.map { if (it.core && !seen.add(it.contactId)) it.copy(core = false) else it }
+    }
 
     private fun GlobalMemoryCategory.toDto() = GlobalCategoryDto(id, name, sortOrder, createdAt, updatedAt)
 
