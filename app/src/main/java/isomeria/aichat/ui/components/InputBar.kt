@@ -210,13 +210,14 @@ private fun SendButton(onClick: () -> Unit) {
     }
 }
 
-/** 「+」面板：相册、拍照。当前模型不支持图片时置灰。 */
+/** 「+」面板：相册、拍照（当前模型不支持图片时置灰），语音通话（0.8.0）。 */
 @Composable
 fun MorePanel(
     imageEnabled: Boolean,
     onAlbum: () -> Unit,
     onCamera: () -> Unit,
     modifier: Modifier = Modifier,
+    onCall: () -> Unit = {},
 ) {
     val colors = WeTheme.colors
     // 高度由调用方给（和键盘一样高）
@@ -229,6 +230,7 @@ fun MorePanel(
         Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             PanelItem(Icons.Outlined.Image, stringResource(R.string.chat_album), imageEnabled, onAlbum)
             PanelItem(Icons.Outlined.PhotoCamera, stringResource(R.string.chat_camera), imageEnabled, onCamera)
+            PanelItem(WeIcons.Phone, stringResource(R.string.chat_voice_call), true, onCall)
         }
     }
 }

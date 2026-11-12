@@ -160,6 +160,65 @@ object WeIcons {
         }
     }
 
+    /** 麦克风（0.8.0 通话的静音按钮） */
+    val Mic: ImageVector by lazy { lineIcon("Mic") { mic() } }
+
+    /** 麦克风划掉（静音中） */
+    val MicOff: ImageVector by lazy {
+        lineIcon("MicOff") {
+            mic()
+            moveTo(4.5f, 4.5f)
+            lineTo(19.5f, 19.5f)
+        }
+    }
+
+    /** 扬声器（免提） */
+    val Speaker: ImageVector by lazy {
+        lineIcon("Speaker") {
+            moveTo(4f, 9.2f)
+            lineTo(7.8f, 9.2f)
+            lineTo(12.4f, 5f)
+            lineTo(12.4f, 19f)
+            lineTo(7.8f, 14.8f)
+            lineTo(4f, 14.8f)
+            close()
+            moveTo(15.6f, 9.3f)
+            arcTo(3.6f, 3.6f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 15.6f, y1 = 14.7f)
+            moveTo(17.8f, 6.6f)
+            arcTo(7f, 7f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 17.8f, y1 = 17.4f)
+        }
+    }
+
+    /** 挂断：横放的听筒 */
+    val HangUp: ImageVector by lazy {
+        lineIcon("HangUp") {
+            moveTo(4.2f, 15.6f)
+            lineTo(3.4f, 12.9f)
+            quadTo(12f, 6.4f, 20.6f, 12.9f)
+            lineTo(19.8f, 15.6f)
+            lineTo(16.5f, 15f)
+            lineTo(16f, 12.7f)
+            quadTo(12f, 11.3f, 8f, 12.7f)
+            lineTo(7.5f, 15f)
+            close()
+        }
+    }
+
+    /** 麦克风：上面的胶囊、下面的托和支架 */
+    private fun PathBuilder.mic() {
+        moveTo(9f, 6f)
+        arcTo(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 15f, y1 = 6f)
+        lineTo(15f, 11f)
+        arcTo(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 9f, y1 = 11f)
+        close()
+        moveTo(5.8f, 11f)
+        arcTo(6.2f, 6.2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 18.2f, y1 = 11f)
+        moveTo(12f, 17.2f)
+        lineTo(12f, 20.5f)
+        moveTo(9f, 20.5f)
+        lineTo(15f, 20.5f)
+    }
+
     private fun lineIcon(name: String, strokeWidth: Float = 1.6f, block: PathBuilder.() -> Unit): ImageVector =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
             path(

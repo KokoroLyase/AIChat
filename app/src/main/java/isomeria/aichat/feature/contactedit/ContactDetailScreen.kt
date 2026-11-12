@@ -131,6 +131,8 @@ fun ContactDetailScreen(
     onEdit: () -> Unit,
     onOpenMemory: () -> Unit,
     onOpenModel: (Long, String) -> Unit = { _, _ -> },
+    /** 语音通话（0.8.0） */
+    onCall: () -> Unit = {},
     viewModel: ContactDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -138,7 +140,7 @@ fun ContactDetailScreen(
     if (state.loaded && state.contact == null) {
         androidx.compose.runtime.LaunchedEffect(Unit) { onBack() }
     }
-    ContactDetailContent(state, onBack, onSendMessage, onEdit, onOpenMemory, onOpenModel)
+    ContactDetailContent(state, onBack, onSendMessage, onEdit, onOpenMemory, onOpenModel, onCall)
 }
 
 @Composable
@@ -149,6 +151,7 @@ fun ContactDetailContent(
     onEdit: () -> Unit,
     onOpenMemory: () -> Unit,
     onOpenModel: (Long, String) -> Unit = { _, _ -> },
+    onCall: () -> Unit = {},
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -236,6 +239,11 @@ fun ContactDetailContent(
         )
         GroupSpacer()
         ActionRow(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.contact_send_message), onSendMessage)
+        // 0.8.0：「发消息」下面是「语音通话」
+        Box(Modifier.fillMaxWidth().background(colors.listBackground).padding(start = WeTheme.dimens.horizontalPadding)) {
+            Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.divider))
+        }
+        ActionRow(isomeria.aichat.ui.components.WeIcons.Phone, stringResource(R.string.contact_voice_call), onCall)
         }
     }
 }

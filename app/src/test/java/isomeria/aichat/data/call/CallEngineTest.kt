@@ -155,7 +155,8 @@ class CallEngineTest {
 
     private val host = object : CallHost {
         var running = false
-        override fun start(contactId: Long) { running = true }
+        var name = ""
+        override fun start(contactId: Long, contactName: String) { running = true; name = contactName }
         override fun stop() { running = false }
     }
 
@@ -288,6 +289,7 @@ class CallEngineTest {
         assertTrue(call.callOngoing)
         assertEquals("[CALL]", runBlocking { db.conversationDao().get(contactId)!!.lastMessagePreview })
         assertTrue(tracker.inCall(contactId) && host.running && speaker.began == 1)
+        assertEquals("通知里写联系人名称", "小雨", host.name)
         assertEquals(CallPhase.LISTENING, phase())
 
         mic.say()

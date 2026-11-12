@@ -56,6 +56,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class ChatRoute(val contactId: Long, val focusMessageId: Long = 0L)
 @Serializable data class ContactDetailRoute(val contactId: Long)
 
+/** 语音通话（0.8.0） */
+@Serializable data class CallRoute(val contactId: Long)
+
 /** contactId 为 -1 时是新建 */
 @Serializable data class ContactEditRoute(val contactId: Long = NEW_CONTACT)
 
@@ -112,9 +115,21 @@ const val NEW_GLOBAL_ITEM = -1L
  * 侧边返回手势和点返回箭头效果相同（见 PageTransitions.kt）。
  */
 @Composable
-fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit) {
+fun AppNavHost(
+    openChatRequest: StateFlow<Long?>,
+    onOpenChatHandled: () -> Unit,
+    openCallRequest: StateFlow<Long?> = kotlinx.coroutines.flow.MutableStateFlow(null),
+    onOpenCallHandled: () -> Unit = {},
+) {
     val nav = rememberNavController()
     val pendingChat by openChatRequest.collectAsStateWithLifecycle()
+    val pendingCall by openCallRequest.collectAsStateWithLifecycle()
+    // 0.8.0：点通话的通知、或通话中重新打开 App，回到通话页
+    LaunchedEffect(pendingCall) {
+        val id = pendingCall ?: return@LaunchedEffect
+        nav.navigate(CallRoute(id)) { launchSingleTop = true }
+        onOpenCallHandled()
+    }
     LaunchedEffect(pendingChat) {
         val id = pendingChat ?: return@LaunchedEffect
         nav.navigate(ChatRoute(id)) {
@@ -216,6 +231,15 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onEditContact = { nav.navigate(ContactEditRoute(it)) },
                 onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
                 onOpenVoiceSettings = { nav.navigate(VoiceProviderListRoute(isomeria.aichat.data.db.ProviderKind.ASR.name)) },
+                onCall = { nav.navigate(CallRoute(it)) { launchSingleTop = true } },
+            )
+        }
+        page<CallRoute>(nav) {
+            isomeria.aichat.feature.call.CallScreen(
+                onClose = nav::popBackStackSafely,
+                onEditContact = { nav.navigate(ContactEditRoute(it)) },
+                onOpenVoiceSettings = { nav.navigate(VoiceSettingsRoute) },
+                onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
             )
         }
         page<ChatInfoRoute>(nav) {
@@ -249,6 +273,7 @@ fun AppNavHost(openChatRequest: StateFlow<Long?>, onOpenChatHandled: () -> Unit)
                 onEdit = { nav.navigate(ContactEditRoute(route.contactId)) },
                 onOpenMemory = { nav.navigate(MemoryRoute(route.contactId)) },
                 onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
+                onCall = { nav.navigate(CallRoute(route.contactId)) { launchSingleTop = true } },
             )
         }
         page<ModelEditRoute>(nav) { ModelEditScreen(onBack = nav::popBackStackSafely) }

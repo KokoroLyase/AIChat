@@ -90,6 +90,17 @@ data class WeColors(
     val emojiKey: Color,
     /** 加载提示框的底色（估） */
     val loadingBackground: Color,
+    /** 通话页（0.8.0）：浅色、深色模式下都是深色底 */
+    val callBackground: Color = Color(0xFF262626),
+    val callText: Color = Color(0xFFFFFFFF),
+    val callTextSecondary: Color = Color(0xB3FFFFFF),
+    /** 通话页的圆形按钮 */
+    val callButton: Color = Color(0x33FFFFFF),
+    /** 开着的按钮（静音、免提）和上面的图标 */
+    val callButtonOn: Color = Color(0xFFFFFFFF),
+    val callButtonOnIcon: Color = Color(0xFF191919),
+    /** 挂断 */
+    val callHangUp: Color = Color(0xFFFA5151),
 )
 
 val LightWeColors = WeColors(

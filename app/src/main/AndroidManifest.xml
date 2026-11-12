@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- 0.7.0 语音消息：长按菜单「后台播放」时的前台服务；「听筒播放」时把声音切到听筒 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- 0.8.0 语音通话：回到桌面、锁屏时接着听（只在通话页在前台、发起通话时启动） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- 应用内更新：校验通过后拉起系统安装界面 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -88,6 +90,12 @@
             android:name=".data.voice.VoicePlaybackService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- 0.8.0 语音通话 -->
+        <service
+            android:name=".data.call.CallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|mediaPlayback" />
 
         <!-- 等待回复较久时转为前台任务 -->
         <service

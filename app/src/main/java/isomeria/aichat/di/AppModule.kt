@@ -234,6 +234,7 @@ abstract class BindingsModule {
     @Binds abstract fun systemTts(impl: isomeria.aichat.data.voice.AndroidSystemTts): isomeria.aichat.data.voice.SystemTts
 
     @Binds abstract fun offlineAsr(impl: isomeria.aichat.data.voice.SherpaOfflineAsrEngine): isomeria.aichat.data.voice.OfflineAsrEngine
+    @Binds abstract fun callHost(impl: isomeria.aichat.data.call.ServiceCallHost): isomeria.aichat.data.call.CallHost
     @Binds abstract fun callSpeaker(impl: isomeria.aichat.data.voice.AndroidCallSpeaker): isomeria.aichat.data.voice.CallSpeaker
     @Binds abstract fun callControl(impl: isomeria.aichat.data.call.CallTracker): isomeria.aichat.data.call.CallControl
     @Binds abstract fun callMicrophone(impl: isomeria.aichat.data.voice.AndroidCallMicrophone): isomeria.aichat.data.voice.CallMicrophone
@@ -260,11 +261,4 @@ abstract class BindingsModule {
     @Binds abstract fun updateSource(impl: GitHubUpdateSource): UpdateSource
 
     @Binds abstract fun apkVerifier(impl: PackageManagerApkVerifier): ApkVerifier
-}
-
-/** 0.8.0：通话的前台服务（第 4 批接上 CallService，这之前什么也不做） */
-@Module
-@InstallIn(SingletonComponent::class)
-object CallHostModule {
-    @Provides fun callHost(): isomeria.aichat.data.call.CallHost = isomeria.aichat.data.call.CallHost.NONE
 }

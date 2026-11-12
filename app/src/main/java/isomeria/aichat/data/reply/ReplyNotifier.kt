@@ -74,7 +74,16 @@ class ReplyNotifier @Inject constructor(
             description = context.getString(R.string.notification_channel_model_download_desc)
             setShowBadge(false)
         }
-        manager.createNotificationChannels(listOf(messages, receiving, playback, download))
+        // 0.8.0：语音通话期间的常驻通知
+        val call = NotificationChannel(
+            CHANNEL_CALL,
+            context.getString(R.string.notification_channel_call),
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = context.getString(R.string.notification_channel_call_desc)
+            setShowBadge(false)
+        }
+        manager.createNotificationChannels(listOf(messages, receiving, playback, download, call))
     }
 
     fun canNotify(): Boolean =
@@ -155,6 +164,38 @@ class ReplyNotifier @Inject constructor(
             .addAction(0, context.getString(R.string.voice_stop), stop)
             .build()
 
+    /**
+     * 通话期间的常驻通知（0.8.0）：“正在和 X 通话”（关掉内容预览时不写名称），点按回到通话页，带「挂断」
+     */
+    fun callNotification(contactName: String, hangUp: PendingIntent): android.app.Notification {
+        val title = if (settings.notifyPreview.value && contactName.isNotBlank()) {
+            context.getString(R.string.notification_call, contactName)
+        } else {
+            context.getString(R.string.notification_call_hidden)
+        }
+        val open = PendingIntent.getActivity(
+            context,
+            CALL_REQUEST,
+            Intent(context, MainActivity::class.java).apply {
+                action = ACTION_OPEN_CALL
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        return NotificationCompat.Builder(context, CHANNEL_CALL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(BRAND_COLOR)
+            .setContentTitle(title)
+            .setContentText(context.getString(R.string.notification_call_text))
+            .setOngoing(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(open)
+            .addAction(0, context.getString(R.string.call_action_hang_up), hangUp)
+            .build()
+    }
+
     private fun openChatIntent(contactId: Long): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             action = ACTION_OPEN_CHAT
@@ -201,10 +242,13 @@ class ReplyNotifier @Inject constructor(
         const val CHANNEL_RECEIVING = "receiving"
         const val CHANNEL_PLAYBACK = "voice_playback"
         const val CHANNEL_MODEL_DOWNLOAD = "model_download"
+        const val CHANNEL_CALL = "call"
+        const val ACTION_OPEN_CALL = "isomeria.aichat.action.OPEN_CALL"
+        private const val CALL_REQUEST = -2
         const val ACTION_OPEN_CHAT = "isomeria.aichat.action.OPEN_CHAT"
         const val EXTRA_CONTACT_ID = "contact_id"
         private const val RECEIVING_ID = 1
-        /** 2 是后台播放（VoicePlaybackService）；回复通知从 1000 起 */
+        /** 2 是后台播放（VoicePlaybackService），4 是通话（CallService）；回复通知从 1000 起 */
         const val MODEL_DOWNLOAD_ID = 3
         private const val MESSAGE_ID_BASE = 1000
         private const val BRAND_COLOR = 0xFF07C160.toInt()

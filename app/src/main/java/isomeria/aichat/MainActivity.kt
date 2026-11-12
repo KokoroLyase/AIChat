@@ -42,15 +42,21 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var settings: SettingsStore
     @Inject lateinit var updateChecker: UpdateChecker
     @Inject lateinit var updateInstaller: UpdateInstaller
+    @Inject lateinit var callEngine: isomeria.aichat.data.call.CallEngine
 
     /** 点通知进入的聊天 */
     private val openChatRequest = MutableStateFlow<Long?>(null)
+
+    /** 回到通话页（0.8.0）：点通话的通知，或通话中重新打开 App */
+    private val openCallRequest = MutableStateFlow<Long?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) {
             handleIntent(intent)
+            // 通话中 App 的界面被关掉后重新打开：直接回到通话页
+            callEngine.state.value?.takeIf { it.phase != isomeria.aichat.data.call.CallPhase.ENDED }?.let { openCallRequest.value = it.contactId }
             // 启动时静默检查更新（24 小时最多一次，失败不提示）
             lifecycleScope.launch { updateChecker.autoCheck() }
             // 上次下载的安装包已经没用了
@@ -68,6 +74,8 @@ class MainActivity : ComponentActivity() {
                 AppNavHost(
                     openChatRequest = openChatRequest,
                     onOpenChatHandled = { openChatRequest.value = null },
+                    openCallRequest = openCallRequest,
+                    onOpenCallHandled = { openCallRequest.value = null },
                 )
                 val release by updateChecker.pending.collectAsStateWithLifecycle()
                 release?.let { info ->
@@ -167,6 +175,9 @@ class MainActivity : ComponentActivity() {
         if (intent?.action == ReplyNotifier.ACTION_OPEN_CHAT) {
             val contactId = intent.getLongExtra(ReplyNotifier.EXTRA_CONTACT_ID, -1L)
             if (contactId >= 0) openChatRequest.value = contactId
+        }
+        if (intent?.action == ReplyNotifier.ACTION_OPEN_CALL) {
+            callEngine.state.value?.takeIf { it.phase != isomeria.aichat.data.call.CallPhase.ENDED }?.let { openCallRequest.value = it.contactId }
         }
     }
 }

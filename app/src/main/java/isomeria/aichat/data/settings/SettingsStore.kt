@@ -148,6 +148,27 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
             mmkv.encode(KEY_VOICE_INTRO, value)
         }
 
+    /** 第一次通话前的说明（0.8.0）是否已经看过；和设备有关，不随备份 */
+    var callIntroShown: Boolean
+        get() = mmkv.decodeBool(KEY_CALL_INTRO, false)
+        set(value) {
+            mmkv.encode(KEY_CALL_INTRO, value)
+        }
+
+    /** 通话页显示字幕（0.8.0），默认显示；和设备有关，不随备份 */
+    var callSubtitles: Boolean
+        get() = mmkv.decodeBool(KEY_CALL_SUBTITLES, true)
+        set(value) {
+            mmkv.encode(KEY_CALL_SUBTITLES, value)
+        }
+
+    /** 通话用免提（0.8.0），默认听筒，记住上次的选择；和设备有关，不随备份 */
+    var callSpeakerphone: Boolean
+        get() = mmkv.decodeBool(KEY_CALL_SPEAKER, false)
+        set(value) {
+            mmkv.encode(KEY_CALL_SPEAKER, value)
+        }
+
     /** 是否已经申请过麦克风权限（拒绝后再点按住说话时显示说明和设置入口） */
     var micPermissionAsked: Boolean
         get() = mmkv.decodeBool(KEY_MIC_ASKED, false)
@@ -281,5 +302,8 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
         const val KEY_VOICE_INTRO = "voice_intro_shown"
         const val KEY_SYSTEM_TTS_VOICE = "voice_system_tts_voice"
         const val KEY_MIC_ASKED = "mic_permission_asked"
+        const val KEY_CALL_INTRO = "call_intro_shown"
+        const val KEY_CALL_SUBTITLES = "call_subtitles"
+        const val KEY_CALL_SPEAKER = "call_speakerphone"
     }
 }

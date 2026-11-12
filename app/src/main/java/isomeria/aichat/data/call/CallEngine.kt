@@ -150,13 +150,13 @@ enum class CallBlock {
 
 /** 通话期间的前台服务（麦克风和放音，回到桌面、锁屏也接着通话）；真实实现见 CallService */
 interface CallHost {
-    fun start(contactId: Long)
+    fun start(contactId: Long, contactName: String)
 
     fun stop()
 
     companion object {
         val NONE = object : CallHost {
-            override fun start(contactId: Long) = Unit
+            override fun start(contactId: Long, contactName: String) = Unit
             override fun stop() = Unit
         }
     }
@@ -262,7 +262,7 @@ class CallEngine @Inject constructor(
         this.session = session
         tracker.enter(contactId) { hangUpAndWait() }
         _state.value = CallState(contactId, session.messageId, now, speakerphone = speakerphone, modelVad = session.vad !is isomeria.aichat.data.voice.EnergySpeechActivity)
-        host.start(contactId)
+        host.start(contactId, db.contactDao().get(contactId)?.name.orEmpty())
         session.job = scope.launch(Dispatchers.Default) { session.run() }
         null
     }

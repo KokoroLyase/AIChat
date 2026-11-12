@@ -129,6 +129,8 @@ fun ChatScreen(
     onOpenModel: (Long, String) -> Unit = { _, _ -> },
     /** 打开语音识别服务商的设置（0.7.0） */
     onOpenVoiceSettings: () -> Unit = {},
+    /** 语音通话（0.8.0）；参数是联系人 id */
+    onCall: (Long) -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -581,6 +583,7 @@ fun ChatScreen(
                             }
                         },
                         modifier = Modifier.height(panelHeight),
+                        onCall = { state.contact?.let { onCall(it.id) } },
                     )
                     InputPanel.NONE -> Unit
                 }

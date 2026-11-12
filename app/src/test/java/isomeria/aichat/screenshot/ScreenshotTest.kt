@@ -1111,4 +1111,42 @@ class ScreenshotTest {
     @Test fun voiceMenuDark() = voiceMenuShot("75-voice-menu", true, id = 14)
     @Test fun voiceMenuLarge() = voiceMenuShot("75-voice-menu-large", false, scale = 1.6f)
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun voiceMenuNarrow() = voiceMenuShot("75-voice-menu-narrow", true)
+    // ---------- 0.8.0 语音通话 ----------
+
+    private val callBase = isomeria.aichat.feature.call.CallUi(name = "小雨", avatarPath = null, avatarColor = isomeria.aichat.ui.theme.AvatarPalette[0], status = "03:21")
+    private val callListening = callBase.copy(phase = "在听，请说话", subtitle = "小雨" to "好呀，那就去西湖边的山，早上八点出发？")
+    private val callThinking = callBase.copy(
+        phase = "对方正在想… 6 秒",
+        subtitle = "我" to "周末天气好的话，我们去爬山吧",
+        notice = "有几句没有合成出来，只显示了文字",
+        hints = listOf("这台手机用音量判断你是否在说话，环境吵时，说完可以点「说完了」", "这个联系人开着思考，每轮可能要等较久，可以在联系人资料里关掉"),
+        muted = true,
+    )
+    private val callSpeaking = callBase.copy(phase = "对方正在说", subtitle = "小雨" to "好呀！", speakerphone = true, action = isomeria.aichat.feature.call.CallAction.INTERRUPT)
+    private val callHearing = callBase.copy(phase = "正在听你说…", subtitles = false, action = isomeria.aichat.feature.call.CallAction.FINISH)
+    private val callConnecting = callBase.copy(status = "正在接通…", active = false)
+    private val callEnded = callBase.copy(status = "通话已结束", phase = "很久没有人说话，通话已自动结束", active = false)
+
+    @Composable private fun Call(ui: isomeria.aichat.feature.call.CallUi) = isomeria.aichat.feature.call.CallContent(ui, isomeria.aichat.feature.call.CallActions())
+
+    @Test fun callListeningLight() = shot("82-call-listening", false) { Call(callListening) }
+    @Test fun callListeningDark() = shot("82-call-listening", true) { Call(callListening) }
+    @Test fun callThinkingLight() = shot("82-call-thinking", false) { Call(callThinking) }
+    @Test fun callThinkingDark() = shot("82-call-thinking", true) { Call(callThinking) }
+    @Test fun callThinkingLarge() = large("82-call-thinking-large", false) { Call(callThinking) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun callThinkingNarrow() = large("82-call-thinking-narrow", true) { Call(callThinking) }
+    @Test fun callSpeakingLight() = shot("82-call-speaking", false) { Call(callSpeaking) }
+    @Test fun callSpeakingLarge() = large("82-call-speaking-large", true) { Call(callSpeaking) }
+    @Test fun callHearingDark() = shot("82-call-hearing", true) { Call(callHearing) }
+    @Test fun callConnectingLight() = shot("82-call-connecting", false) { Call(callConnecting) }
+    @Test fun callEndedDark() = shot("82-call-ended", true) { Call(callEnded) }
+
+    /** 聊天页「+」面板：相册、拍照、语音通话 */
+    @Composable private fun MorePanelShot() = Column(Modifier.fillMaxSize(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom) {
+        isomeria.aichat.ui.components.MorePanel(imageEnabled = true, onAlbum = {}, onCamera = {}, modifier = Modifier.height(260.dp), onCall = {})
+    }
+    @Test fun morePanelLight() = shot("83-more-panel", false) { MorePanelShot() }
+    @Test fun morePanelDark() = shot("83-more-panel", true) { MorePanelShot() }
+    @Test fun morePanelLarge() = large("83-more-panel-large", false) { MorePanelShot() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun morePanelNarrow() = large("83-more-panel-narrow", true) { MorePanelShot() }
 }
