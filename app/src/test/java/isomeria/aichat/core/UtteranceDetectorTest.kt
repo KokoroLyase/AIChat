@@ -137,10 +137,10 @@ class UtteranceDetectorTest {
         repeat(50) { assertTrue(energy.probability(window(0.02)) < 0.1f) }
         // 明显比底噪大的声音算说话
         assertTrue(energy.probability(window(0.2)) > 0.9f)
-        // 环境变吵了（约 -27 分贝）：先当成说话，几秒内底噪跟上来，不再算说话
-        assertTrue(energy.probability(window(0.06)) > 0.5f)
-        repeat(250) { energy.probability(window(0.06)) }
-        assertTrue(energy.probability(window(0.06)) < 0.1f)
+        // 环境变吵了（约 -20 分贝，比底噪高 17 分贝）：先当成说话，几秒内底噪跟上来，不再算说话
+        assertTrue(energy.probability(window(0.15)) > 0.5f)
+        repeat(250) { energy.probability(window(0.15)) }
+        assertTrue(energy.probability(window(0.15)) < 0.1f)
         // 太小的声音一律不算
         assertEquals(0f, EnergySpeechActivity().probability(FloatArray(512)))
         // 用它切分：安静—说话—安静切出一段
