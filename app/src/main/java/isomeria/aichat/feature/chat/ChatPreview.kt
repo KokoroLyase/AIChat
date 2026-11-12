@@ -92,6 +92,16 @@ internal val voiceRows: List<ChatRow> = listOf(
     ChatRow.Item(voice(16, Role.USER, 9, "", status = MessageStatus.SENDING)),
 )
 
+/** 通话消息（0.8.0）：打完的写时长，正在打的写「通话中」，和前后的文字消息放在一起 */
+internal val callRows: List<ChatRow> = listOf(
+    ChatRow.TimeBar("21:30", "t0"),
+    ChatRow.Item(msg(21, Role.USER, "晚上有空吗")),
+    ChatRow.Item(msg(22, Role.ASSISTANT, "有呀，打给我吧")),
+    ChatRow.Item(Message(id = 23, contactId = 1, role = Role.USER, type = MessageType.CALL, status = MessageStatus.SUCCESS, voiceMillis = 201_000, createdAt = 23)),
+    ChatRow.TimeBar("22:05", "t1"),
+    ChatRow.Item(Message(id = 24, contactId = 1, role = Role.USER, type = MessageType.CALL, status = MessageStatus.SUCCESS, createdAt = 24)),
+)
+
 private val noActions = MessageActions({}, {}, {}, {}, {}, {}, {})
 
 /** 聊天页的静态外观：顶栏、消息、输入栏。Compose Preview 和截图测试共用。 */

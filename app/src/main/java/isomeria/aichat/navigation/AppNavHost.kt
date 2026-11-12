@@ -59,6 +59,9 @@ import kotlinx.serialization.Serializable
 /** 语音通话（0.8.0） */
 @Serializable data class CallRoute(val contactId: Long)
 
+/** 一次通话的详情（0.8.0）：[messageId] 是通话消息 */
+@Serializable data class CallDetailRoute(val messageId: Long)
+
 /** contactId 为 -1 时是新建 */
 @Serializable data class ContactEditRoute(val contactId: Long = NEW_CONTACT)
 
@@ -232,8 +235,13 @@ fun AppNavHost(
                 onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
                 onOpenVoiceSettings = { nav.navigate(VoiceProviderListRoute(isomeria.aichat.data.db.ProviderKind.ASR.name)) },
                 onCall = { nav.navigate(CallRoute(it)) { launchSingleTop = true } },
+                onOpenCall = { message ->
+                    // 还在打的通话回到通话页，打完的看详情
+                    if (message.callOngoing) nav.navigate(CallRoute(message.contactId)) { launchSingleTop = true } else nav.navigate(CallDetailRoute(message.id))
+                },
             )
         }
+        page<CallDetailRoute>(nav) { isomeria.aichat.feature.call.CallDetailScreen(onBack = nav::popBackStackSafely) }
         page<CallRoute>(nav) {
             isomeria.aichat.feature.call.CallScreen(
                 onClose = nav::popBackStackSafely,

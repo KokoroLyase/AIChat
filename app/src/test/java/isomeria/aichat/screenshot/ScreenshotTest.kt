@@ -212,7 +212,7 @@ class ScreenshotTest {
     @Test fun exportPlainCompletedLight() = backupDialogShot("43-export-completed-plain", false) { ExportSample(ExportUiState(result = ExportSummary(2, 1000, 2, false, encrypted = false))) }
     @Test fun exportLargeLight() = large("43-export-large", false) { ExportSample(ExportUiState(hasApiKey = true, includeKey = true, password = "123", confirm = "", errorRes = isomeria.aichat.R.string.export_password_mismatch)) }
     @Test fun exportLargeDark() = large("43-export-large", true) { ExportSample(ExportUiState()) }
-    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789, backgrounds = 860000, voice = 2400000, asrModels = 239549735))
+    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789, backgrounds = 860000, voice = 2400000, asrModels = 239549735, calls = 5600000))
     @Test fun storageLight() = shot("42-storage", false) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageDark() = shot("42-storage", true) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageLoading() = shot("42-storage-loading", false) { StorageContent(StorageState(), {}, {}, {}, {}, {}, {}) }
@@ -1149,4 +1149,33 @@ class ScreenshotTest {
     @Test fun morePanelDark() = shot("83-more-panel", true) { MorePanelShot() }
     @Test fun morePanelLarge() = large("83-more-panel-large", false) { MorePanelShot() }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun morePanelNarrow() = large("83-more-panel-narrow", true) { MorePanelShot() }
+    @Test fun callBubblesLight() = shot("84-chat-call", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.callRows) }
+    @Test fun callBubblesDark() = shot("84-chat-call", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.callRows) }
+    @Test fun callBubblesLarge() = large("84-chat-call-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.callRows) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun callBubblesNarrow() = shot("84-chat-call-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.callRows) }
+
+    /** 通话详情：识别失败、被打断、合成失败的几条；第二条正在放 */
+    private val callDetail = isomeria.aichat.feature.call.CallDetail(
+        call = isomeria.aichat.data.db.Message(id = 23, contactId = 1, role = isomeria.aichat.data.db.Role.USER, type = isomeria.aichat.data.db.MessageType.CALL, status = isomeria.aichat.data.db.MessageStatus.SUCCESS, voiceMillis = 201_000, createdAt = 0),
+        contact = isomeria.aichat.feature.chat.sampleContact,
+        turns = listOf(
+            callTurn(1, isomeria.aichat.data.db.Role.USER, "周末天气好的话，我们去爬山吧", 3_000),
+            callTurn(2, isomeria.aichat.data.db.Role.ASSISTANT, "好呀！", 1_000),
+            callTurn(3, isomeria.aichat.data.db.Role.ASSISTANT, "你想去哪座山？西湖边的几座都不高，早上去人少。", 4_000, isomeria.aichat.data.db.CallTurnStatus.INTERRUPTED),
+            callTurn(4, isomeria.aichat.data.db.Role.USER, "", 1_500, isomeria.aichat.data.db.CallTurnStatus.ASR_FAILED),
+            callTurn(5, isomeria.aichat.data.db.Role.ASSISTANT, "嗯？刚才没听清，再说一遍？", 0, isomeria.aichat.data.db.CallTurnStatus.TTS_FAILED),
+        ),
+    )
+    private fun callTurn(id: Long, role: isomeria.aichat.data.db.Role, text: String, millis: Long, status: isomeria.aichat.data.db.CallTurnStatus = isomeria.aichat.data.db.CallTurnStatus.OK) =
+        isomeria.aichat.data.db.CallTurn(id = id, messageId = 23, seq = id.toInt(), role = role, text = text, audioPath = if (millis > 0) "calls/$id.m4a" else null, audioMillis = millis, status = status, createdAt = id)
+    @Composable private fun CallDetailShot() = isomeria.aichat.feature.call.CallDetailContent(
+        detail = callDetail,
+        header = "昨天 21:31 开始，通话时长 03:21\n被来电或其他应用打断，通话已结束",
+        playingTurnId = 2, playingAll = true, position = 3_500, total = 10_400, playable = setOf(1L, 2L, 3L, 4L),
+        onBack = {}, onToggleTurn = {}, onPlayAll = {}, onStop = {}, onSeek = {},
+    )
+    @Test fun callDetailLight() = shot("85-call-detail", false) { CallDetailShot() }
+    @Test fun callDetailDark() = shot("85-call-detail", true) { CallDetailShot() }
+    @Test fun callDetailLarge() = large("85-call-detail-large", false) { CallDetailShot() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun callDetailNarrow() = large("85-call-detail-narrow", true) { CallDetailShot() }
 }

@@ -349,6 +349,10 @@ interface MessageDao {
     @Query("SELECT * FROM message WHERE id = :id")
     suspend fun get(id: Long): Message?
 
+    /** 通话详情页（0.8.0）看着这一条：通话中时长、挂断后的原因会变 */
+    @Query("SELECT * FROM message WHERE id = :id")
+    fun observe(id: Long): Flow<Message?>
+
     @Insert
     suspend fun insert(message: Message): Long
 

@@ -131,6 +131,8 @@ fun ChatScreen(
     onOpenVoiceSettings: () -> Unit = {},
     /** 语音通话（0.8.0）；参数是联系人 id */
     onCall: (Long) -> Unit = {},
+    /** 点通话消息（0.8.0）：通话中回到通话页，打完的看详情 */
+    onOpenCall: (isomeria.aichat.data.db.Message) -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val colors = WeTheme.colors
@@ -462,6 +464,7 @@ fun ChatScreen(
             onVoiceClick = viewModel::toggleVoice,
             onVoicePlay = viewModel::playVoice,
             onVoiceShowText = viewModel::setVoiceShowText,
+            onCallClick = onOpenCall,
         )
         Box(Modifier.weight(1f)) {
         background?.let { ChatBackground(it, Modifier.matchParentSize()) }

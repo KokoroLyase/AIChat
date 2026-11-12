@@ -666,7 +666,7 @@
     <string name="storage_database">数据库</string>
     <string name="storage_clear_cache">清理缓存</string>
     <string name="storage_orphans">清理孤立文件</string>
-    <string name="storage_notice">清理缓存只删可以重新生成的临时文件，不影响聊天图片、头像、聊天背景、语音消息、离线识别模型和数据库。孤立文件是没有任何联系人、消息或聊天在用的头像、图片、聊天背景和语音文件，清理前会先告诉你数量。聊天图片和语音只在删除对应消息时才会删除；离线识别模型在「我 → 语音消息 → 语音识别 → 离线识别」里删除。</string>
+    <string name="storage_notice">清理缓存只删可以重新生成的临时文件，不影响聊天图片、头像、聊天背景、语音消息、通话录音、离线识别模型和数据库。孤立文件是没有任何联系人、消息或聊天在用的头像、图片、聊天背景、语音和通话录音文件，清理前会先告诉你数量。聊天图片、语音和通话录音只在删除对应消息时才会删除；离线识别模型在「我 → 语音消息 → 语音识别 → 离线识别」里删除。</string>
     <string name="storage_busy">正在回复、更新或恢复，请稍后再清理。</string>
     <string name="storage_result">已清理 %1$d 个文件，释放约 %2$s。</string>
     <string name="storage_no_orphans">没有发现孤立文件。</string>
@@ -1115,4 +1115,16 @@
     <string name="notification_call">正在和%1$s语音通话</string>
     <string name="notification_call_hidden">正在语音通话</string>
     <string name="notification_call_text">点按回到通话</string>
+    <string name="call_detail_title">通话详情</string>
+    <string name="call_detail_summary">%1$s 开始，通话时长 %2$s</string>
+    <string name="call_detail_ongoing">%1$s 开始，正在通话</string>
+    <string name="call_detail_play_all">播放完整通话</string>
+    <string name="call_detail_stop">停止播放</string>
+    <string name="call_detail_progress">通话播放进度，可以拖到某一条</string>
+    <string name="call_detail_empty">这次通话里没有人说话</string>
+    <string name="call_end_interrupted">通话中应用被关闭，记录到最后一句</string>
+    <string name="call_turn_asr_failed">（没有识别出文字）</string>
+    <string name="call_turn_tts_failed">没有合成出声音</string>
+    <string name="call_turn_interrupted">被打断</string>
+    <string name="call_turn_tap_to_play">点按播放</string>
 </resources>
