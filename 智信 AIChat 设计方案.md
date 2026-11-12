@@ -299,8 +299,8 @@
 
 - 消息发送类型：跟随 / 文字 / 语音（分段选择，默认跟随），下面说明各自的意思、联系人可以单独设置、没设置语音合成或合成失败时回文字
 - 语音合成、语音识别：各一行，值是正在用的服务商名称（0.7.1 起或本机来源的名称）或「未设置」，进入各自的服务商列表；页面底部说明选用服务商时录音会发给语音识别服务商、联系人回复的文字会发给语音合成服务商，按服务商的规则收费，选用本机来源时文字和录音不离开手机
-- 服务商预置（0.7.2）：合成按火山引擎（豆包）、阿里云百炼（千问）、Xiaomi MiMo、MiniMax、Fish Audio、硅基流动的顺序，识别按火山引擎（豆包）、阿里云百炼（千问）、Xiaomi MiMo、硅基流动，最后是「自定义」；新建时默认第一个。百炼的地址是 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/…` 的模板，没换掉 `{WorkspaceId}` 时保存提示去控制台找业务空间 ID（聊天的百炼预置同样处理）。服务商页底部按格式补一句说明（火山的“模型”填资源 ID、百炼要用自己的业务空间地址、Fish Audio 在海外），说明这家支不支持语气和风格，以及这家的价格说明
-- 选音色（0.7.2）：服务商页「选择音色」一行（只在有音色列表的格式显示）和联系人编辑页的同名一行打开整页的选音色页：顶部搜索框（按名称、ID、说明、分组过滤；Fish Audio 点键盘上的搜索才到服务商查），按分组列出，每行名称、说明和 ID，当前音色打勾，右边「试听」（合成一句固定的话，用扬声器放，开始前停掉正在放的语音消息，放完删掉临时文件）；点一行选用并回到原页。来源：MiMo、火山 2.0、百炼、硅基流动预置音色内置在 App 里（`builtin-voices.json`）；MiniMax `POST /get_voice`（voice_type=all，自己的放前面）、硅基流动 `GET /audio/voice/list`（自己上传的，填 `uri`）、Fish Audio `GET /model`（`self=true` 自己的，加上按分数排的公开音色，搜索带 `title`）用页面上当前的地址和 Key（新填还没保存的也用）；联系人页用正在用的合成来源，选系统语音时列手机引擎的中文音色。缺 Key、地址不对、没选合成来源时页面说明原因；试听不计入用量统计
+- 服务商预置（0.7.2）：合成按火山引擎（豆包）、阿里云百炼（千问）、BigModel（智谱）、Xiaomi MiMo、MiniMax、Fish Audio、硅基流动、OpenRouter 的顺序，识别按火山引擎（豆包）、阿里云百炼（千问）、BigModel（智谱）、Xiaomi MiMo、Fish Audio、硅基流动、OpenRouter，最后是「自定义」；新建时默认第一个。百炼的地址是 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/…` 的模板，没换掉 `{WorkspaceId}` 时保存提示去控制台找业务空间 ID（聊天的百炼预置同样处理）。服务商页底部按格式补一句说明（火山的“模型”填资源 ID、百炼要用自己的业务空间地址、Fish Audio 和 OpenRouter 在海外、Fish 识别的模型名要写完整、智谱合成出 WAV 且带 AI 生成标识、智谱识别长录音分段、OpenRouter 的模型名要写完整且音色和风格随模型），说明这家支不支持语气和风格，以及这家的价格说明
+- 选音色（0.7.2）：服务商页「选择音色」一行（只在有音色列表的格式显示）和联系人编辑页的同名一行打开整页的选音色页：顶部搜索框（按名称、ID、说明、分组过滤；Fish Audio 点键盘上的搜索才到服务商查），按分组列出，每行名称、说明和 ID，当前音色打勾，右边「试听」（合成一句固定的话，用扬声器放，开始前停掉正在放的语音消息，放完删掉临时文件）；点一行选用并回到原页。来源：MiMo、火山 2.0、百炼、智谱系统音色、硅基流动预置音色，以及 OpenRouter 上 Gemini TTS（模型名以 `google/gemini` 开头且含 tts）和 OpenAI（`openai/` 开头）的音色内置在 App 里（`builtin-voices.json`），OpenRouter 别的模型没有列表，页面提示手填；智谱 `GET /voice/list?voiceType=PRIVATE`（自己复刻的，放在系统音色前面）、MiniMax `POST /get_voice`（voice_type=all，自己的放前面）、硅基流动 `GET /audio/voice/list`（自己上传的，填 `uri`）、Fish Audio `GET /model`（`self=true` 自己的，加上按分数排的公开音色，搜索带 `title`）用页面上当前的地址和 Key（新填还没保存的也用）；联系人页用正在用的合成来源，选系统语音时列手机引擎的中文音色。缺 Key、地址不对、没选合成来源时页面说明原因；试听不计入用量统计
 - 服务商列表：顶栏右边「添加」；0.7.1 起最上面是「本机」一组（合成是「系统语音（本机）」，识别是「离线识别（本机）」，正在用时写绿色「正在使用」，下面一行说明），然后是「服务商」一组：每行名称，正在用的下面写绿色「正在使用」，再下面是请求格式 · 模型和 Key 是否已保存。还没选任何来源时第一个添加的服务商自动选用（已选本机来源时不自动换），在服务商或本机来源的页面里用开关切换；删掉正在用的就变成未设置
 - 系统语音（本机，0.7.1）：「使用系统语音合成」开关；「语音引擎」一行显示系统默认引擎的名称，点开是系统的「文字转语音输出」设置（`com.android.settings.TTS_SETTINGS`，没有时提示）；能用时下面是「音色」（引擎默认或列出的音色名和语言，存 MMKV、不随备份）；底部说明不需要 Key、回复文字不离开手机、不计入用量、语气和风格不生效、联系人填的音色是这里列出的名称时用联系人的（否则用这里选的）。没有引擎、没有不联网的中文音色、连接失败时开关打不开（之前选用过的可以关掉），红字说明原因。每次回到这一页重新连接引擎
 - 离线识别（本机，0.7.1）：「使用离线识别」开关（模型没下好或手机不支持时打不开，正在用的可以关掉）；「识别模型」一组：SenseVoice Small（int8）、语言和大小（约 239.5 MB，按 1 MB = 1,000,000 字节，和存储空间页一致）、状态（未下载 / 已下载 x / y MB，可以继续下载 / 等待网络连接… / 正在下载 x / y MB（百分比） / 下载完成，正在校验… / 已下载，可以使用），失败时红字说明原因（等着重试时不显示）；下面一行按状态是「下载模型」「继续下载」或「暂停下载」，不在下载时另有红字「删除模型」/「删除已下载的部分」（要确认）。点下载先弹确认：大小、来源（魔搭社区）、存在私有目录不随备份、建议 Wi-Fi、回到桌面也接着下、可以暂停；按流量计费的网络下多一段提醒。底部说明录音不离开手机、不计入用量、识别占几百 MB 内存，以及模型、转换和下载来源、SHA-256 校验和引擎许可
@@ -327,7 +327,7 @@
 | --- | --- | --- |
 | DeepSeek | `https://api.deepseek.com` | `thinking.type` + `reasoning_effort` |
 | 阿里云百炼（千问） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `enable_thinking` |
-| 智谱 | `https://open.bigmodel.cn/api/paas/v4` | `thinking.type` |
+| BigModel（智谱，0.7.2 前叫“智谱”） | `https://open.bigmodel.cn/api/paas/v4` | `thinking.type` |
 | Kimi | `https://api.moonshot.cn/v1` | `thinking.type` |
 | Xiaomi MiMo | `https://api.xiaomimimo.com/v1` | `thinking.type`，不默认发强度 |
 | 硅基流动 | `https://api.siliconflow.cn/v1` | `enable_thinking` |
@@ -460,7 +460,13 @@
   - 百炼识别 `qwen-asr`：POST `{Base URL}/chat/completions`，和 MiMo 一样一条 user 消息放一段 `input_audio`，顶层 `asr_options.enable_itn: true`，语言自动时不发 `language`
   - MiniMax 合成 `minimax-tts`：POST `{Base URL}/t2a_v2`，`voice_setting.voice_id`、`audio_setting.format: "mp3"`、`output_format: "hex"`、`language_boost: "auto"`；`base_resp.status_code` 不为 0 是错误（1004 认证、1002 限流、1008 余额、2013 参数）
   - Fish Audio 合成 `fish-tts`：POST `{Base URL}/v1/tts`，请求头 `model` 填模型（s2.1-pro），`reference_id` 是音色，`format: "mp3"`，返回音频二进制
-  - 语气和风格要求只发给 MiMo、火山、百炼和硅基流动 CosyVoice2（模型名以 `FunAudioLLM/CosyVoice` 开头时写成「要求<|endofprompt|>文字」）；MiniMax、Fish Audio 和其他标准接口不发
+  - 智谱合成 `zhipu-tts`：POST `{Base URL}/audio/speech`，`model`（glm-tts）、`input`（最多 1024 字）、`voice`、`response_format: "wav"`（不能出 mp3）、`stream: false`，返回 24 kHz 的 WAV，和系统语音一样压成 AAC；没有风格字段；`watermark_enabled` 不发，按服务商默认带显式和隐式 AI 生成标识
+  - 智谱识别 `zhipu-asr`：POST `{Base URL}/audio/transcriptions`，multipart 的 `file`、`model`（glm-asr-2512），文字在 `text`，不返回时长。单次最长 30 秒：超过 25 秒的录音平均分成几段（60 秒分 3 段），每个切点在预定位置前后 2 秒内找最安静的 20 毫秒，每段最长 29 秒，重新包成 WAV 依次请求，后一段带 `prompt`（前面识别出的文字，最多 8000 字）；某段没文字就跳过，任何一段失败整条失败；中文直接接、两边都是英文字母或数字时加空格
+  - 智谱的错误：余额不足（1113）、限流（1302）、套餐用量（1308、1309）的 HTTP 状态码都是 429，按返回内容 `error.code` 分类（1000–1005、1220 认证，1113、1308、1309 余额，1302 限流，1210–1215、1261、1301 参数，1211、1221、1222 不存在，1200、1230、1234、1305 服务端），认不出时按状态码；聊天接口对所有服务商也先过一遍（`ZhipuErrors`），别家的错误内容不是这个形状，不受影响
+  - Fish Audio 识别 `fish-asr`：POST `{Base URL}/v1/asr`，multipart 的 `audio`，请求头 `model`（transcribe-1-pro；名字不认识时服务商会悄悄换成 2026-12-31 下线的 transcribe-1），`ignore_timestamps=true`、`tag_audio_events=false`、`diarize=false`，语言自动时不发 `language`；文字在 `text`（再去掉漏网的 `<|speaker:N|>`），时长（秒）在 `duration`
+  - OpenRouter 合成 `openrouter-tts`：POST `{Base URL}/audio/speech`，`model`（要写完整，默认 google/gemini-3.8-flash-tts）、`input`、`voice`（默认 Kore）、`response_format`（模型名以 `google/`、`heygen/` 开头要 `pcm`，其他 `mp3`）、有风格要求且模型支持时加 `instructions`；返回头是 `audio/pcm`、`audio/l16`，或者要的是 pcm 而内容认不出格式时，按返回头的 `rate`、`channels`（没写时 24 kHz 单声道）包成 WAV，再压成 AAC。不发 `HTTP-Referer`、`X-Title`
+  - OpenRouter 识别用标准接口（`openai-audio`，默认 openai/whisper-large-v3）；标准接口返回里有 `usage.seconds` 时按它记用量
+  - 语气和风格要求只发给 MiMo、火山、百炼、硅基流动 CosyVoice2（模型名以 `FunAudioLLM/CosyVoice` 开头时写成「要求<|endofprompt|>文字」）和 OpenRouter 上的 Gemini TTS、`openai/`、`fish-audio/` 模型；智谱、MiniMax、Fish Audio 和其他标准接口不发
 - 0.7.1 本机来源：系统语音合成出的 WAV 按文件头读格式（不一定是 16 kHz、44 字节头），压成 AAC 保存，压缩失败就留 WAV；离线识别把 16 位 PCM 换成 -1～1 的浮点数（多声道取第一个声道），识别不出文字和服务商返回空内容一样算失败；手机不支持或模型没下好按“没有可用的语音识别”处理。本机来源都不记用量
 
 ### 离线识别模型的下载（0.7.1）
