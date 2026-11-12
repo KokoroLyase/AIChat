@@ -321,15 +321,17 @@
 
 当前只支持用户自行配置 Key 的 OpenAI Chat Completions 兼容 API，不接入订阅、OAuth、Anthropic Messages、Google 原生协议或 OpenAI Responses；不引入 JS 运行时。不内置型号目录，不联网拉取 models.dev/pi.dev 等目录，不显示模型价格/窗口，不增加回复长度设置。
 
-**连接预置（固定顺序，2026-11-02 核对官方资料）**
+**连接预置（固定顺序，2026-11-02 核对官方资料；0.7.2 按用户 2026-11-12 定的顺序加了火山引擎和 MiniMax，2026-11-12 核对）**
 
 | 名称 | 默认 Base URL | 兼容方案 |
 | --- | --- | --- |
 | DeepSeek | `https://api.deepseek.com` | `thinking.type` + `reasoning_effort` |
+| 火山引擎（豆包）（0.7.2） | `https://ark.cn-beijing.volces.com/api/v3` | `thinking.type`（enabled / disabled）+ `reasoning_effort`；兼容方案 `VOLCENGINE`。Key 是火山方舟控制台的，和豆包语音的不通用；“模型”填模型 ID 或推理接入点 ID（`ep-…`），模型要先在控制台开通；文档没写取模型列表的接口，取不到时手动添加 |
 | 阿里云百炼（千问） | `https://dashscope.aliyuncs.com/compatible-mode/v1`（0.7.2 起 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`，要换成自己的业务空间 ID 才能保存） | `enable_thinking` |
 | BigModel（智谱，0.7.2 前叫“智谱”） | `https://open.bigmodel.cn/api/paas/v4` | `thinking.type` |
-| Kimi | `https://api.moonshot.cn/v1` | `thinking.type` |
+| 月之暗面（Kimi）（0.7.2 前叫“Kimi”） | `https://api.moonshot.cn/v1` | `thinking.type` |
 | Xiaomi MiMo | `https://api.xiaomimimo.com/v1` | `thinking.type`，不默认发强度 |
+| MiniMax（0.7.2） | `https://api.minimax.cn/v1` | `thinking.type`（**adaptive** / disabled，MiniMax 不认 enabled；M3.1-Flash 不能关思考）+ `reasoning_effort`（只对 M3.1-Flash 有效），每次都带 `reasoning_split: true`（不带时思考用 `<think>` 夹在正文里，官方没写默认值）；兼容方案 `MINIMAX`。温度被服务商忽略、固定为 1，按模型配成固定或不发送 |
 | 硅基流动 | `https://api.siliconflow.cn/v1` | `enable_thinking` |
 | OpenRouter | `https://openrouter.ai/api/v1` | `reasoning.enabled` + `reasoning.effort` |
 
@@ -340,7 +342,7 @@
 - 可以只保存名称、地址和 Key。仅在用户点击获取列表时调用该地址的 `/models`，不使用隐式聊天探测。读取响应正文也必须在 IO 线程执行。
 - 列表只是候选，缺失信息保持未知。明确非聊天用途不可选用，未知用途需用户确认；不按名称猜能力，不按工具支持过滤，不自动选第一个模型。
 - 图片、思考模式、温度、聊天用途的接口报告与用户设置分开存，用户设置优先。DeepSeek `effort.supported_levels` 保留全部原生值，但仅有强度信息不等于接口已报告能否关闭思考，仍需确认模式。准备使用的模型才需配置。
-- 思考模式区分不支持、开关、始终开启；强度取值与显示名称独立。仅有开关时显示关/开。兼容方案决定开关字段与强度字段，模型可分别覆盖两者和 `stream_options`，并恢复继承。
+- 思考模式区分不支持、开关、始终开启；强度取值与显示名称独立。仅有开关时显示关/开。兼容方案决定开关字段与强度字段，模型可分别覆盖两者和 `stream_options`，并恢复继承。0.7.2 起开关字段多一种写法「thinking.type (adaptive / disabled)」（MiniMax 用）；`reasoning_split` 只跟着兼容方案，模型不能单独改。
 - 温度有可调（范围）、固定值（按要求发送）、不支持（整个字段省略）三类；可分别定义开启思考时的规则。联系人保存的温度不随规则调整被重写，记忆也共用验证和编码。
 - 不支持的私有字段不发送；不自动换字段试错、重发、切模型或切服务商。
 - 列表失败、空列表或不支持列表均保留原配置与手动入口，不能因此认定聊天不可用或 Key 一定无效。列表成功也不代表聊天、图片、思考或参数已经实测。
