@@ -35,6 +35,8 @@ class ChatRepository @Inject constructor(
     private val replyScheduler: ReplyQueue,
     private val notifier: ReplyNotifications,
     private val previews: MessagePreviewer = MessagePreviewer.PLAIN,
+    /** 0.8.0：删掉或清空正在通话的聊天前先挂断 */
+    private val calls: isomeria.aichat.data.call.CallControl = isomeria.aichat.data.call.CallControl.NONE,
 ) : isomeria.aichat.data.voice.VoiceQueueSource {
     private val paging = ChatPaging(db)
     private val messageActions = ChatMessageActions(db)
@@ -198,6 +200,7 @@ class ChatRepository @Inject constructor(
 
     /** 删除聊天：只删聊天记录，不删联系人 */
     suspend fun deleteConversation(contactId: Long) {
+        calls.hangUpFor(contactId)
         replyScheduler.cancel(contactId)
         replyScheduler.cancelDelivery(contactId)
         val images = messageDao.imagePaths(contactId) + messageDao.voicePaths(contactId)
@@ -216,6 +219,7 @@ class ChatRepository @Inject constructor(
 
     /** 聊天信息页「清空聊天记录」：删掉消息、图片和语音，聊天仍留在列表里（置顶和草稿保留） */
     suspend fun clearHistory(contactId: Long) {
+        calls.hangUpFor(contactId)
         replyScheduler.cancel(contactId)
         replyScheduler.cancelDelivery(contactId)
         val images = messageDao.imagePaths(contactId) + messageDao.voicePaths(contactId)
@@ -232,6 +236,7 @@ class ChatRepository @Inject constructor(
 
     /** 设置里「清空所有聊天记录」：所有聊天都像「删除该聊天」一样清掉，联系人保留 */
     suspend fun clearAllHistory() {
+        calls.hangUpFor(null)
         val contacts = contactDao.listAll().map { it.id }
         contacts.forEach(replyScheduler::cancel)
         contacts.forEach(replyScheduler::cancelDelivery)

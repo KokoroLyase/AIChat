@@ -33,6 +33,8 @@ class ContactRepository @Inject constructor(
     private val pinyin: PinyinConverter,
     private val replyScheduler: ReplyControl,
     private val proactive: ProactiveControl = ProactiveControl.NONE,
+    /** 0.8.0：删掉正在通话的联系人前先挂断 */
+    private val calls: isomeria.aichat.data.call.CallControl = isomeria.aichat.data.call.CallControl.NONE,
 ) {
     fun observeContacts(): Flow<List<Contact>> = contactDao.observeAll()
 
@@ -76,6 +78,7 @@ class ContactRepository @Inject constructor(
 
     /** 删除联系人，同时删除聊天记录、记忆、头像、聊天图片、语音和聊天背景；用量并到「已删除的联系人」，总量不变 */
     suspend fun delete(id: Long) {
+        calls.hangUpFor(id)
         replyScheduler.cancel(id)
         replyScheduler.cancelDelivery(id)
         val contact = contactDao.get(id) ?: return

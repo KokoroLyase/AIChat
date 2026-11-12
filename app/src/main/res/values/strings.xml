@@ -738,6 +738,7 @@
     <string name="proactive_state_paused" tools:ignore="PluralsCandidate">已暂停：连续 %1$d 次没有回复，你发消息后恢复</string>
     <string name="proactive_state_busy">正在等回复或接收消息</string>
     <string name="proactive_state_viewing">你正在看这个聊天</string>
+    <string name="proactive_state_in_call">正在通话</string>
     <string name="proactive_state_no_key">无法运行：没有可用的 API Key</string>
     <string name="proactive_state_invalid">无法运行：模型配置无效</string>
     <string name="usage_detail_proactive">输入 %1$s · 输出 %2$s · 其中主动聊天 %3$s</string>
@@ -747,6 +748,8 @@
     <!-- 约定标记的关键词：App 按「[关键词 年-月-日 时:分 事由]」解析，必须和下面 prompt_reminder_hint 里教模型写的一致 -->
     <string name="prompt_reminder_keyword">提醒</string>
     <!-- 只发给开启主动聊天的联系人，写在系统提示词里；方括号里的格式是 App 解析约定时间用的 -->
+    <!-- 0.8.0 语音通话：只加在通话中的请求里，放在约定时间的写法之后 -->
+    <string name="prompt_call_hint">现在你们正在语音通话：对方说的话是语音识别转成的文字，可能有错字或断句不对，按意思理解；你的回复会被合成成语音读给对方听。请像打电话一样说话：口语、简短，一般一两句；不要用表情符号、括号里的动作或神态描写、列表和 Markdown。</string>
     <string name="prompt_reminder_hint" tools:ignore="TypographyDashes">约定时间：如果对方让你在某个时间叫他、提醒他或联系他，在回复的最后另起一行写 [提醒 年-月-日 时:分 事由]，例如 [提醒 2026-11-11 07:00 叫他起床]，时间用 24 小时制。这一行对方看不到，到时间后你会收到提示，再主动给对方发消息。没有这类约定时不要写。</string>
     <!-- 主动请求末尾只在这一次请求里的 user 指令，不存库。参数：现在的时间、距上一条消息多久 -->
     <string name="prompt_proactive_instruction">（这是 App 的提示，不是对方发来的消息，对方看不到。）现在是 %1$s，%2$s，对方没有发新消息。请结合你的人设、你们之前的聊天和现在的时间，决定要不要主动给对方发消息。要发的话，直接写出要发的内容，像平时聊天一样自然，不要提到这条提示；如果现在不合适，或者没有想说的，只输出 [SKIP]，不要输出别的。</string>

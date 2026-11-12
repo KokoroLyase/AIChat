@@ -36,6 +36,9 @@ enum class ProactiveBlock {
     /** 用户此刻正在看这个聊天 */
     VIEWING,
 
+    /** 正在和这个联系人通话（0.8.0）；约定提醒也等通话结束 */
+    IN_CALL,
+
     /** 服务商没有配置 API Key */
     NO_KEY,
 
@@ -50,6 +53,8 @@ data class ProactiveSituation(
     val unanswered: Int,
     val busy: Boolean,
     val viewing: Boolean,
+    /** 正在和这个联系人通话（0.8.0） */
+    val inCall: Boolean = false,
 )
 
 /** 回复里解析出的一个约定时间。 */
@@ -113,6 +118,7 @@ object ProactivePolicy {
         !situation.quotaLeft -> ProactiveBlock.QUOTA_EXHAUSTED
         !reminder && isPaused(situation.unanswered) -> ProactiveBlock.PAUSED
         situation.busy -> ProactiveBlock.BUSY
+        situation.inCall -> ProactiveBlock.IN_CALL
         !reminder && situation.viewing -> ProactiveBlock.VIEWING
         else -> null
     }

@@ -174,6 +174,44 @@ class CallDataTest {
         assertEquals(db.messageDao().recent(2, 50), history.recent(2, 50))
     }
 
+    /** 0.8.0：清空、删除聊天和联系人、清空所有聊天记录前，先挂断这个联系人（或任何人）正在进行的通话 */
+    @Test
+    fun destructiveActions_hangUpTheCallFirst() = runBlocking {
+        val hungUp = mutableListOf<Long?>()
+        val calls = object : isomeria.aichat.data.call.CallControl {
+            override fun inCall(contactId: Long) = false
+            override suspend fun hangUpFor(contactId: Long?) { hungUp += contactId }
+        }
+        val app = RuntimeEnvironment.getApplication()
+        val chatsWithCalls = ChatRepository(app, db, db.contactDao(), db.conversationDao(), db.messageDao(), files, FakeQueue(), FakeNotifications(), MessagePreviewer.PLAIN, calls)
+        val contactsWithCalls = ContactRepository(db, db.contactDao(), db.conversationDao(), db.messageDao(), db.memoryDao(), db.usageDao(), files, { it }, FakeQueue(), calls = calls)
+        chatsWithCalls.clearHistory(1)
+        chatsWithCalls.deleteConversation(1)
+        chatsWithCalls.clearAllHistory()
+        contactsWithCalls.delete(2)
+        assertEquals(listOf<Long?>(1L, 1L, null, 2L), hungUp)
+    }
+
+    /** 0.8.0：通话中 App 被关掉，下次启动按最后一条话补完（[isomeria.aichat.data.call.CallRecords]） */
+    @Test
+    fun interruptedCall_isFinishedOnNextStart() = runBlocking {
+        val records = isomeria.aichat.data.call.CallRecords(db, MessagePreviewer.PLAIN)
+        val id = records.start(1, 1_000)
+        assertEquals("[CALL]", db.conversationDao().get(1)!!.lastMessagePreview)
+        records.addTurn(id, Role.USER, "在吗", null, 1_500, CallTurnStatus.OK, 2_000)
+        records.addTurn(id, Role.ASSISTANT, "在呢", null, 0, CallTurnStatus.TTS_FAILED, 4_000)
+        assertEquals(listOf(1L), records.recoverInterrupted(active = null))
+        val call = db.messageDao().get(id)!!
+        assertEquals("最后一条话结束在 4_000（合成失败的没有音频），从 1_000 开始", 3_000L, call.voiceMillis)
+        assertEquals(isomeria.aichat.data.db.CallEndReason.INTERRUPTED, isomeria.aichat.data.db.CallEndReason.of(call.errorCode))
+        assertEquals("[CALL] 00:03", db.conversationDao().get(1)!!.lastMessagePreview)
+        assertTrue("补完过的不再补", records.recoverInterrupted(active = null).isEmpty())
+        // 一句话都没有的：时长按 1 毫秒
+        val empty = records.start(2, 5_000)
+        records.recoverInterrupted(active = null)
+        assertEquals(1L, db.messageDao().get(empty)!!.voiceMillis)
+    }
+
     private class FakeNotifications : ReplyNotifications {
         override fun notifyReply(contact: Contact, parts: List<String>, alert: Boolean) = Unit
         override fun cancelReply(contactId: Long) = Unit

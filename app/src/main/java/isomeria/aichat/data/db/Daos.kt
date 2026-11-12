@@ -211,6 +211,10 @@ interface MessageDao {
     @Query("SELECT DISTINCT contactId FROM message WHERE status = 'PENDING'")
     suspend fun contactsWithPending(): List<Long>
 
+    /** 发起通话时（0.8.0）：已经生成、还没到点的回复改成现在送达（同一时间的按 id 保持原来的顺序）；还在合成的语音回复不动 */
+    @Query("UPDATE message SET createdAt = :now WHERE contactId = :contactId AND status = 'PENDING' AND createdAt > :now AND NOT (type = 'VOICE' AND role = 'ASSISTANT' AND voicePath IS NULL)")
+    suspend fun advancePending(contactId: Long, now: Long)
+
     /** 还在等合成的语音回复（0.7.0）：已经存了文字、还没有语音文件的 PENDING，按时间正序 */
     @Query("SELECT * FROM message WHERE contactId = :contactId AND status = 'PENDING' AND type = 'VOICE' AND role = 'ASSISTANT' AND voicePath IS NULL ORDER BY createdAt, id")
     suspend fun awaitingSynthesis(contactId: Long): List<Message>

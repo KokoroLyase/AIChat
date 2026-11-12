@@ -185,6 +185,24 @@ class BackupCallTest {
     }
 
     @Test
+    fun restore_hangsUpACallFirst() = runBlocking {
+        seed()
+        val zip = export()
+        val hungUp = mutableListOf<Long?>()
+        val withCalls = BackupManager(context, db, files, cipher, settings, object : ReplyControl {
+            override fun cancel(contactId: Long) = Unit
+            override suspend fun isActive(contactId: Long) = false
+            override fun cancelDelivery(contactId: Long) = Unit
+            override suspend fun isDelivering(contactId: Long) = false
+        }, calls = object : isomeria.aichat.data.call.CallControl {
+            override fun inCall(contactId: Long) = false
+            override suspend fun hangUpFor(contactId: Long?) { hungUp += contactId }
+        })
+        withCalls.restore(withCalls.inspect(zip), RestoreMode.MERGE, null)
+        assertEquals(listOf<Long?>(null), hungUp)
+    }
+
+    @Test
     fun missingAudioInZip_keepsTextOnly_badNamesDropped() = runBlocking {
         seed()
         val zip = export()

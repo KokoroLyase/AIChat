@@ -125,6 +125,8 @@ class ProactiveEngine @Inject constructor(
     private val settings: ProactiveSettingsSource,
     private val random: Random,
     private val activeChat: ActiveChatTracker,
+    /** 0.8.0：正在通话的联系人跳过 */
+    private val callControl: isomeria.aichat.data.call.CallControl = isomeria.aichat.data.call.CallControl.NONE,
     private val queue: ReplyQueue,
     private val reminders: ProactiveReminders,
     private val labels: ProactiveLabels,
@@ -228,6 +230,7 @@ class ProactiveEngine @Inject constructor(
             unanswered = conversations.get(contact.id)?.proactiveUnanswered ?: 0,
             busy = messages.hasSending(contact.id) || messages.hasPending(contact.id),
             viewing = activeChat.isViewing(contact.id),
+            inCall = callControl.inCall(contact.id),
         )
         ProactivePolicy.blockFor(situation, reminder)?.let { return it }
         return when (val checked = snapshot(contact.id)) {

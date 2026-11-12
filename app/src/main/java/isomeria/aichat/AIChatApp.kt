@@ -27,6 +27,7 @@ class AIChatApp : Application(), Configuration.Provider {
     @Inject lateinit var proactiveControl: Provider<isomeria.aichat.data.reply.ProactiveControl>
     @Inject lateinit var proactiveEngine: Provider<isomeria.aichat.data.reply.ProactiveEngine>
     @Inject lateinit var contactDao: Provider<isomeria.aichat.data.db.ContactDao>
+    @Inject lateinit var callEngine: Provider<isomeria.aichat.data.call.CallEngine>
     @Inject @ApplicationScope lateinit var appScope: CoroutineScope
 
     override val workManagerConfiguration: Configuration
@@ -44,6 +45,8 @@ class AIChatApp : Application(), Configuration.Provider {
         // 已经生成、还没送达的回复：到期的直接送达，没到期的重新排队（不会丢，也不会重复）
         appScope.launch {
             chatRepository.get().markInterruptedRequests()
+            // 0.8.0：通话中 App 被关掉，按最后一条话补完那次通话
+            callEngine.get().recoverInterrupted()
             delivery.get().recover()
             // 主动聊天的后台任务和数据对齐：没有联系人开启时（新装、升级后都是这样）不注册，已有的也取消
             proactiveControl.get().sync()

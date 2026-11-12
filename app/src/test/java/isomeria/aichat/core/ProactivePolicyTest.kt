@@ -126,6 +126,14 @@ class ProactivePolicyTest {
         assertEquals(ProactiveBlock.BUSY, ProactivePolicy.blockFor(blocked.copy(busy = true), reminder = true))
     }
 
+    /** 0.8.0：正在和这个联系人通话时跳过，约定提醒也等通话结束 */
+    @Test
+    fun inCall_skips_evenForAReminder() {
+        assertEquals(ProactiveBlock.IN_CALL, ProactivePolicy.blockFor(clear.copy(inCall = true)))
+        assertEquals(ProactiveBlock.IN_CALL, ProactivePolicy.blockFor(clear.copy(inCall = true, viewing = true), reminder = true))
+        assertNull(ProactivePolicy.blockFor(clear.copy(inCall = false)))
+    }
+
     // ---------- 触发概率 ----------
 
     private val interval = ProactivePolicy.CHECK_INTERVAL_MILLIS

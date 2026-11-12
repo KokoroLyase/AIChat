@@ -310,6 +310,7 @@ private fun blockLabel(block: ProactiveBlock?): String = when (block) {
     ProactiveBlock.PAUSED -> stringResource(R.string.proactive_state_paused, ProactivePolicy.MAX_UNANSWERED)
     ProactiveBlock.BUSY -> stringResource(R.string.proactive_state_busy)
     ProactiveBlock.VIEWING -> stringResource(R.string.proactive_state_viewing)
+    ProactiveBlock.IN_CALL -> stringResource(R.string.proactive_state_in_call)
     ProactiveBlock.NO_KEY -> stringResource(R.string.proactive_state_no_key)
     ProactiveBlock.INVALID_CONFIG -> stringResource(R.string.proactive_state_invalid)
 }

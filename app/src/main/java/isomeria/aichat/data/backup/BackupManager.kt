@@ -151,6 +151,8 @@ class BackupManager @Inject constructor(
     private val settings: BackupSettingsAccess,
     private val replies: ReplyControl,
     private val proactive: isomeria.aichat.data.reply.ProactiveControl = isomeria.aichat.data.reply.ProactiveControl.NONE,
+    /** 0.8.0：恢复前先挂断正在进行的通话 */
+    private val calls: isomeria.aichat.data.call.CallControl = isomeria.aichat.data.call.CallControl.NONE,
 ) {
     private val json = BackupFormat.json
     private val migrations = BackupMigrations()
@@ -251,6 +253,7 @@ class BackupManager @Inject constructor(
                 val selected = BackupModule.normalize(modules.intersect(preview.modules))
                 require(selected.isNotEmpty())
                 val apiKeys = if (BackupModule.PROVIDERS in selected) importedApiKeys(preview, password) else emptyMap()
+                calls.hangUpFor(null)
                 writeSnapshot()
                 if (mode == RestoreMode.OVERWRITE && BackupModule.CONTACTS in selected) stopAllReplies()
                 val summary = apply(preview, mode, apiKeys, exactKey = false, rollback = snapshotFile, modules = selected)

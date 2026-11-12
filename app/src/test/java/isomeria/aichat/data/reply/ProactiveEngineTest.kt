@@ -129,6 +129,19 @@ class ProactiveEngineTest {
         assertTrue(after.filter { it.origin == MessageOrigin.PROACTIVE }.all { it.role == Role.ASSISTANT })
     }
 
+    /** 0.8.0：正在和这个联系人通话时跳过，不调用模型、不占次数 */
+    @Test
+    fun inCall_isSkipped() = runBlocking {
+        h.inCallContact = id
+        val attempt = force()!!
+        assertEquals(ProactiveOutcome.BLOCKED, attempt.outcome)
+        assertEquals(isomeria.aichat.core.ProactiveBlock.IN_CALL, attempt.block)
+        assertTrue(requests.isEmpty())
+        assertEquals(0, used())
+        h.inCallContact = null
+        assertEquals(ProactiveOutcome.SENT, force()!!.outcome)
+    }
+
     /** 0.8.0：更早的一次通话在主动请求的上下文里按每一条话展开 */
     @Test
     fun request_earlierCallIsExpandedIntoTurns() = runBlocking {

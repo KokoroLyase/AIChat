@@ -45,6 +45,8 @@ data class ContextLabels(
     val countRange: String = "%1\$d～%2\$d",
     /** 约定时间的写法（0.6.0）：只发给开启主动聊天的联系人 */
     val reminderHint: String = "",
+    /** 现在是语音通话（0.8.0）：只在通话中的请求里 */
+    val callHint: String = "",
 )
 
 /** 全局记忆里要发出去的一条：已启用、所在的类别和主题。 */
@@ -55,11 +57,15 @@ data class GlobalMemoryEntry(val category: String, val topic: String, val conten
  * 开启「使用回复偏好」时的回复要求。两项都空时，系统提示词和 0.4.2 完全一样。
  *
  * 0.6.0：联系人开启主动聊天时，再加一段「约定时间怎么写」（[reminderHint]）；没开启时系统提示词和 0.5.0 完全一样。
+ *
+ * 0.8.0：通话中的请求再加一段「现在是语音通话」（[callHint]），放在约定时间的写法之后；不在通话时和 0.7.2 完全一样。
  */
 data class PromptGlobals(
     val globalMemory: List<GlobalMemoryEntry> = emptyList(),
     val replyStyle: ReplyPreferences? = null,
     val reminderHint: Boolean = false,
+    /** 通话中的请求（0.8.0）：加一段“现在是语音通话”；不在通话时为 false，请求和 0.7.2 一样 */
+    val callHint: Boolean = false,
 ) {
     companion object {
         val NONE = PromptGlobals()
@@ -70,7 +76,8 @@ data class PromptGlobals(
  * 每次请求 = 系统提示词 + 记忆 + 预算内的聊天记录（由 [ContextWindow] 选出）。
  *
  * - 系统提示词里的 {名称} 换成联系人名称；模板里没改过的人设占位行去掉；人设、记忆、全局内容都为空时不发送
- * - 顺序：全局记忆 → 人设 → 长期记忆 → 回复偏好要求 → 约定时间的写法（开启主动聊天时） → 当前日期、星期、时间和自己的昵称
+ * - 顺序：全局记忆 → 人设 → 长期记忆 → 回复偏好要求 → 约定时间的写法（开启主动聊天时） → 现在是语音通话（通话中，0.8.0） →
+ *   当前日期、星期、时间和自己的昵称
  * - 历史回复里的思考内容不回传
  * - 只有最近 [MAX_IMAGES] 张图片带原图，更早的替换为「[图片]」；模型不支持图片时全部替换
  * - 连续同一角色的消息合并成一条（文字和图片作为同一条消息的不同部分）
@@ -151,7 +158,8 @@ class ContextBuilder(
         val global = globalMemoryBlock(globals.globalMemory)
         val style = globals.replyStyle?.let(::replyStyleBlock).orEmpty()
         val reminder = if (globals.reminderHint) labels.reminderHint else ""
-        if (prompt.isBlank() && memories.isEmpty() && global.isEmpty() && style.isEmpty() && reminder.isEmpty()) return null
+        val call = if (globals.callHint) labels.callHint else ""
+        if (prompt.isBlank() && memories.isEmpty() && global.isEmpty() && style.isEmpty() && reminder.isEmpty() && call.isEmpty()) return null
         val time = Instant.ofEpochMilli(now).atZone(zone)
         val extra = buildString {
             append(
@@ -166,7 +174,7 @@ class ContextBuilder(
             )
             if (nickname.isNotBlank()) append(labels.nicknameLine.format(nickname.trim()))
         }
-        return listOf(global, prompt, memoryBlock(memories), style, reminder, extra).filter { it.isNotEmpty() }.joinToString("\n\n")
+        return listOf(global, prompt, memoryBlock(memories), style, reminder, call, extra).filter { it.isNotEmpty() }.joinToString("\n\n")
     }
 
     /**

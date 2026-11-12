@@ -358,6 +358,10 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             settings = { proactiveSettings },
             random = random,
             activeChat = activeChat,
+            callControl = object : isomeria.aichat.data.call.CallControl {
+                override fun inCall(contactId: Long) = contactId == inCallContact
+                override suspend fun hangUpFor(contactId: Long?) = Unit
+            },
             queue = queue,
             reminders = reminders,
             labels = proactiveLabels,
@@ -366,6 +370,9 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             voice = voice,
         )
     }
+
+    /** 0.8.0：正在和谁通话 */
+    @Volatile var inCallContact: Long? = null
 
     /** 0.7.0 语音：主动聊天用的语音流水线，要在第一次用 [proactive] 之前设好 */
     var voice: VoicePipeline? = null
