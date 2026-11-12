@@ -169,6 +169,41 @@ val verifySherpaOnnx by tasks.registering {
 }
 tasks.named("preBuild") { dependsOn(verifySherpaOnnx) }
 
+// 0.8.0 语音通话：判断说话用的 Silero VAD 模型（MIT，Silero Team；k2-fsa 转换的 silero_vad.onnx，约 629 KB）随安装包，
+// 从 sherpa-onnx 官方 GitHub Release 下载（settings.gradle.kts），按写死的 SHA-256 核对后放进 assets；仓库里不提交模型文件
+val sileroVad = "com.k2fsa.sherpa.onnx.models:silero_vad:asr-models@onnx"
+val sileroVadSha256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
+val sileroVadModel: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+
+abstract class PrepareVadAsset : DefaultTask() {
+    @get:InputFiles abstract val model: ConfigurableFileCollection
+    @get:Input abstract val sha256: Property<String>
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val file = model.singleFile
+        val actual = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+        if (actual != sha256.get()) throw GradleException("Silero VAD 模型的 SHA-256 不对：$actual（应为 ${sha256.get()}）")
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        out.mkdirs()
+        file.copyTo(File(out, "silero_vad.onnx"))
+    }
+}
+
+val prepareVadAsset = tasks.register<PrepareVadAsset>("prepareVadAsset") {
+    model.from(sileroVadModel)
+    sha256.set(sileroVadSha256)
+    outputDir.set(layout.buildDirectory.dir("generated/vadAsset"))
+}
+androidComponents {
+    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(prepareVadAsset, PrepareVadAsset::outputDir) }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -209,6 +244,7 @@ dependencies {
     // 0.7.1 离线识别：sherpa-onnx（Apache-2.0），静态链接 onnxruntime（MIT），含 Kotlin 接口和各平台原生库
     implementation(sherpaOnnx)
     sherpaOnnxAar(sherpaOnnx)
+    sileroVadModel(sileroVad)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

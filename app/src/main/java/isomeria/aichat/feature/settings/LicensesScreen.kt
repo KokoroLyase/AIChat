@@ -35,6 +35,7 @@ private val libraries = listOf(
     Library("sherpa-onnx", "k2-fsa (Next-gen Kaldi)", "Apache License 2.0"),
     Library("ONNX Runtime", "Microsoft Corporation", "MIT License"),
     Library("SenseVoice Small (offline ASR model, downloaded on demand)", "Alibaba Group, Tongyi Lab (FunASR); sherpa-onnx conversion by k2-fsa", "FunASR Model Open Source License v1.1"),
+    Library("Silero VAD (voice activity detection model for calls, bundled)", "Silero Team; ONNX export by k2-fsa", "MIT License"),
 )
 
 @Composable

@@ -233,6 +233,8 @@ abstract class BindingsModule {
     @Binds abstract fun systemTts(impl: isomeria.aichat.data.voice.AndroidSystemTts): isomeria.aichat.data.voice.SystemTts
 
     @Binds abstract fun offlineAsr(impl: isomeria.aichat.data.voice.SherpaOfflineAsrEngine): isomeria.aichat.data.voice.OfflineAsrEngine
+    @Binds abstract fun callMicrophone(impl: isomeria.aichat.data.voice.AndroidCallMicrophone): isomeria.aichat.data.voice.CallMicrophone
+    @Binds abstract fun speechActivity(impl: isomeria.aichat.data.voice.AndroidSpeechActivityFactory): isomeria.aichat.data.voice.SpeechActivityFactory
 
     @Binds abstract fun modelDownloads(impl: isomeria.aichat.data.voice.OfflineModelDownloads): isomeria.aichat.data.voice.ModelDownloadControl
 
