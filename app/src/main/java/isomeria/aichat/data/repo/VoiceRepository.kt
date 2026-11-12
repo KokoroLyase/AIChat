@@ -179,7 +179,9 @@ class VoiceRepository @Inject constructor(
     suspend fun synthesize(contact: Contact, text: String): TtsAudio {
         if (selectedLocal(ProviderKind.TTS) == VoiceSource.SYSTEM_TTS) {
             // 联系人填的音色是这台手机上的系统音色时用它，否则用「系统语音」页选的（引擎里没有时用默认中文音色）
-            val voice = contact.ttsVoice?.takeIf { it.isNotBlank() } ?: localPrefs.systemTtsVoice
+            // （联系人可能填的是服务商的音色 ID，比如以前给 MiMo 填的，这时不能拿去当系统音色）
+            val listed = runCatching { systemTts.info().voices.map { it.name } }.getOrDefault(emptyList())
+            val voice = contact.ttsVoice?.takeIf { it.isNotBlank() && it in listed } ?: localPrefs.systemTtsVoice
             val wav = try {
                 systemTts.synthesize(text, voice.ifBlank { null })
             } catch (e: java.io.IOException) {

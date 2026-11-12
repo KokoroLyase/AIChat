@@ -234,9 +234,14 @@ class VoiceRepositoryTest {
         assertFalse("本机合成不记用量", audio.billable)
         assertTrue(WavFormat.isWav(audio.bytes))
         voices.synthesize(contact.copy(ttsVoice = "zh-voice-a"), "再见")
+        // 联系人填的是服务商的音色 ID（不在系统音色里）：用「系统语音」页选的，不是引擎默认
+        voices.synthesize(contact.copy(ttsVoice = "mimo_default"), "服务商音色")
         localPrefs.systemTtsVoice = ""
         voices.synthesize(contact, "空")
-        assertEquals(listOf("你好" to "zh-voice-b", "再见" to "zh-voice-a", "空" to null), systemTts.calls)
+        assertEquals(
+            listOf("你好" to "zh-voice-b", "再见" to "zh-voice-a", "服务商音色" to "zh-voice-b", "空" to null),
+            systemTts.calls,
+        )
         assertTrue("不调用服务商", api.tts.isEmpty())
         systemTts.fail = true
         try {
