@@ -219,6 +219,26 @@ class ContextWindowTest {
     }
 
     @Test
+    fun forRequest_longCore_keepsWholeLeadingLinesThatFit_thenRecent() {
+        val core = memory("一二三\n四五六\n七八九", core = true) // 每行 3，换行各 0.3，共 10
+        val c = memory("十")
+        // 预算 8：前两行（7）放得下，第三行放不下；剩下 1 正好放最新的近期记忆
+        assertEquals(listOf(core.copy(content = "一二三\n四五六"), c),MemoryPolicy.forRequest(listOf(core, c), budget = 8, estimator))
+        // 放得下时原样
+        assertEquals(listOf(core), MemoryPolicy.forRequest(listOf(core), budget = 10, estimator))
+        assertTrue(MemoryPolicy.forRequest(listOf(core), budget = 0, estimator).isEmpty())
+    }
+
+    @Test
+    fun coreMaxChars_about500_butShorterForSmallBudgets() {
+        assertEquals(MemoryPolicy.CORE_MAX_CHARS, MemoryPolicy.coreMaxChars(1000, estimator))
+        assertEquals(166, MemoryPolicy.coreMaxChars(250, estimator))
+        // DeepSeek 一个汉字约 0.6 token，同样的预算能写更多字
+        assertEquals(276, MemoryPolicy.coreMaxChars(250, TokenEstimator.forProtocol(isomeria.aichat.data.db.ProviderProtocol.DEEPSEEK)))
+        assertEquals(MemoryPolicy.CORE_MIN_CHARS, MemoryPolicy.coreMaxChars(0, estimator))
+    }
+
+    @Test
     fun budget_isQuarterOfContext_butCappedSoItDoesNotGrowWithContext() {
         assertEquals(1000, MemoryPolicy.memoryBudget(4000))
         assertEquals(MemoryPolicy.MEMORY_MAX_TOKENS, MemoryPolicy.memoryBudget(32_000))
@@ -232,8 +252,9 @@ class ContextWindowTest {
         val b = memory("一二三四五")
         val c = memory("一二三四五")
         assertEquals(listOf(core, b, c), MemoryPolicy.forRequest(listOf(core, a, b, c), budget = 16, estimator))
-        // 核心记忆放不下时不带，近期记忆照常按预算放
-        assertEquals(listOf(c), MemoryPolicy.forRequest(listOf(core, a, b, c), budget = 5, estimator))
+        // 核心记忆放不下时只带开头放得下的部分（不改保存的内容），剩下的预算再放近期记忆
+        assertEquals(listOf(core.copy(content = "核心核心核")), MemoryPolicy.forRequest(listOf(core, a, b, c), budget = 5, estimator))
+        assertEquals("核心核心核心", core.content)
         // 核心记忆不一定排在最前（按时间排序时），结果里仍在最前
         assertEquals(listOf(core, c), MemoryPolicy.forRequest(listOf(a, b, core, c), budget = 11, estimator))
     }

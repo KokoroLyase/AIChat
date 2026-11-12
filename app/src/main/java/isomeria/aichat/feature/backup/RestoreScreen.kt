@@ -102,6 +102,8 @@ data class RestoreUiState(
     val done: RestoreSummary? = null,
     /** 完成时用的恢复方式（提示文字不同） */
     val doneMode: RestoreMode = RestoreMode.MERGE,
+    /** 完成时恢复了联系人（0.7.2）；没恢复时不报联系人和消息数，只说所选内容已恢复 */
+    val doneContacts: Boolean = true,
     val error: RestoreError? = null,
     /** 用户选的要恢复的内容（0.7.2）；null 表示还没改过，就是文件里有的全部 */
     val modules: Set<BackupModule>? = null,
@@ -116,6 +118,10 @@ data class RestoreUiState(
         }
 
     fun toggledModule(module: BackupModule, on: Boolean) = copy(modules = selectedModules.toggled(module, on))
+
+    /** 要不要问 API Key 的密码：备份里有加密的 Key、整个文件没加密过，并且选了恢复模型配置（Key 只跟着它恢复） */
+    val asksKeyPassword: Boolean
+        get() = preview?.let { it.needsPassword && !it.decryptedTemporary } == true && BackupModule.PROVIDERS in selectedModules
 }
 
 @HiltViewModel
@@ -233,7 +239,7 @@ class RestoreViewModel @Inject constructor(
                 val summary = backup.restore(preview, current.mode, password, modules)
                 val cleaned = withContext(Dispatchers.IO) { releaseFile(source) }
                 _state.update { it.copy(restoring = false, done = summary.copy(cleanupPending = summary.cleanupPending || !cleaned),
-                    doneMode = current.mode, preview = null, password = "", locked = false) }
+                    doneMode = current.mode, doneContacts = BackupModule.CONTACTS in modules, preview = null, password = "", locked = false) }
             } catch (_: WrongPasswordException) {
                 _state.update { it.copy(restoring = false, wrongPassword = true,
                     preview = if (preview.decryptedTemporary) null else preview, locked = preview.decryptedTemporary) }
@@ -313,8 +319,8 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
                 FootnoteText(stringResource(R.string.restore_pick_hint), Modifier.padding(top = 16.dp))
             } else {
                 BackupInfo(preview)
-                // 加密文件解锁时已经输过密码，内层的 Key 用同一个密码，不再问第二次
-                if (preview.needsPassword && !preview.decryptedTemporary) {
+                // 加密文件解锁时已经输过密码，内层的 Key 用同一个密码，不再问第二次；没选模型配置时不恢复 Key，也不问
+                if (state.asksKeyPassword) {
                     GroupSpacer()
                     FormRow(stringResource(R.string.restore_password)) {
                         PasswordField(
@@ -395,6 +401,8 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
         WeDialog(
             title = stringResource(R.string.restore_done_title),
             message = (when {
+                !state.doneContacts && summary.apiKeyRestored -> stringResource(R.string.restore_done_selected_key)
+                !state.doneContacts -> stringResource(R.string.restore_done_selected)
                 state.doneMode == RestoreMode.OVERWRITE && summary.apiKeyRestored ->
                     stringResource(R.string.restore_done_overwrite_key, summary.contactsAdded, summary.messagesAdded)
                 state.doneMode == RestoreMode.OVERWRITE ->

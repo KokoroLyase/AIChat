@@ -6,6 +6,7 @@ import isomeria.aichat.data.db.ProviderProtocol
 import isomeria.aichat.data.llm.ChatMessage
 import isomeria.aichat.data.llm.ChatPart
 import kotlin.math.ceil
+import kotlin.math.floor
 
 /**
  * 估算 token 数，用来判断上下文是否超预算。不用分词库：各服务商的分词不一样，库还会增大 APK。
@@ -26,6 +27,9 @@ class TokenEstimator(private val wideCharTokens: Double) {
         }
         return ceil(total).toInt()
     }
+
+    /** [tokens] 个 token 大约能放多少个汉字（0.7.2：按预算换算核心记忆的字数要求） */
+    fun wideCharsWithin(tokens: Int): Int = floor(tokens.coerceAtLeast(0) / wideCharTokens).toInt()
 
     /** 一条消息占的 token；[withImage] 为 true 时这张图片带原图，否则按文字「[图片]」算 */
     fun message(message: Message, withImage: Boolean = false): Int = MESSAGE_OVERHEAD + when (message.type) {

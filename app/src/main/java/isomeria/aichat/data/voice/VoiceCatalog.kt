@@ -3,7 +3,6 @@ package isomeria.aichat.data.voice
 import isomeria.aichat.data.llm.LlmEndpoint
 import isomeria.aichat.data.llm.LlmError
 import isomeria.aichat.data.llm.LlmException
-import isomeria.aichat.data.llm.ZhipuErrors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -69,32 +68,43 @@ class VoiceCatalog @Inject constructor(client: OkHttpClient, private val json: J
 
     /**
      * 打开列表时的音色：内置的加上从服务商取的。Fish Audio 是自己的音色加上热门的公开音色。
-     * 内置列表在缺 Key 时照常返回；只能从服务商取的缺 Key 时抛 [VoiceCatalogNeedsKeyException]
+     * 内置列表在缺 Key 时照常返回；只能从服务商取的缺 Key 时抛 [VoiceCatalogNeedsKeyException]。
+     * 有内置列表时，另外取自己的音色失败（Key 不对、网络）也照常列出内置的，不让整页打不开。
+     * 同一组里重复的 ID 只留一个（列表按组和 ID 作键）
      */
-    suspend fun list(target: VoiceTarget): List<VoiceOption> = withContext(Dispatchers.IO) {
+    suspend fun list(target: VoiceTarget): List<VoiceOption> = withContext(Dispatchers.IO) { listAll(target).distinctBy { it.group to it.id } }
+
+    private suspend fun listAll(target: VoiceTarget): List<VoiceOption> {
         if (target.systemTts) {
-            return@withContext systemTts.info().voices.map { VoiceOption(it.name, it.name, it.locale) }
+            return systemTts.info().voices.map { VoiceOption(it.name, it.name, it.locale) }
         }
         val builtIn = BuiltInVoices.forTarget(target).orEmpty()
-        when {
+        return when {
             target.protocol == VoiceProtocol.MINIMAX_TTS -> miniMaxVoices(endpoint(target))
             target.protocol == VoiceProtocol.FISH_TTS -> fishMine(endpoint(target)) + fishSearch(endpoint(target), "")
             target.protocol == VoiceProtocol.ZHIPU_TTS -> {
-                val key = target.apiKey?.takeIf { it.isNotBlank() } ?: return@withContext builtIn
-                zhipuPrivate(LlmEndpoint(target.baseUrl, key)) + builtIn
+                val key = target.apiKey?.takeIf { it.isNotBlank() } ?: return builtIn
+                mineOrNothing { zhipuPrivate(LlmEndpoint(target.baseUrl, key)) } + builtIn
             }
             target.presetId == VoicePresets.SILICONFLOW.id && target.protocol == VoiceProtocol.OPENAI_AUDIO -> {
                 // 没有 Key 时只列预置音色
-                val key = target.apiKey?.takeIf { it.isNotBlank() } ?: return@withContext builtIn
-                siliconFlowCustom(LlmEndpoint(target.baseUrl, key)) + builtIn
+                val key = target.apiKey?.takeIf { it.isNotBlank() } ?: return builtIn
+                mineOrNothing { siliconFlowCustom(LlmEndpoint(target.baseUrl, key)) } + builtIn
             }
             else -> builtIn
         }
     }
 
+    /** 取自己的音色；失败时当作没有（内置列表照常显示），取消照常传出去 */
+    private suspend fun mineOrNothing(block: suspend () -> List<VoiceOption>): List<VoiceOption> = try {
+        block()
+    } catch (e: LlmException) {
+        emptyList()
+    }
+
     /** Fish Audio 按名称搜索公开音色（[query] 为空时是热门的） */
     suspend fun search(target: VoiceTarget, query: String): List<VoiceOption> = withContext(Dispatchers.IO) {
-        fishSearch(endpoint(target), query.trim())
+        fishSearch(endpoint(target), query.trim()).distinctBy { it.group to it.id }
     }
 
     private fun endpoint(target: VoiceTarget): LlmEndpoint {
@@ -105,11 +115,8 @@ class VoiceCatalog @Inject constructor(client: OkHttpClient, private val json: J
     private fun url(endpoint: LlmEndpoint, path: String) =
         (endpoint.baseUrl.trim().trimEnd('/') + "/" + path).toHttpUrlOrNull() ?: throw LlmException(LlmError.CONFIGURATION)
 
-    private suspend fun get(request: Request, errorOf: ((Int, String) -> LlmException)? = null): JsonObject = client.newCall(request).awaitResponse().use { response ->
-        if (!response.isSuccessful) {
-            if (errorOf != null) throw errorOf(response.code, runCatching { response.peekBody(16_384).string() }.getOrDefault(""))
-            throw LlmException.fromHttp(response.code)
-        }
+    private suspend fun get(request: Request): JsonObject = client.newCall(request).awaitResponse().use { response ->
+        if (!response.isSuccessful) throw LlmException.fromHttp(response.code)
         try {
             json.parseToJsonElement(response.body.string()).jsonObject
         } catch (e: java.io.IOException) {
@@ -156,7 +163,7 @@ class VoiceCatalog @Inject constructor(client: OkHttpClient, private val json: J
     /** 智谱：自己复刻的音色（系统音色内置）；名称、创建时间做说明 */
     private suspend fun zhipuPrivate(endpoint: LlmEndpoint): List<VoiceOption> {
         val url = url(endpoint, "voice/list").newBuilder().addQueryParameter("voiceType", "PRIVATE").build()
-        val root = get(Request.Builder().url(url).header("Authorization", endpoint.authorization()).get().build(), ZhipuErrors::of)
+        val root = get(Request.Builder().url(url).header("Authorization", endpoint.authorization()).get().build())
         return (root["voice_list"] as? JsonArray).orEmpty().mapNotNull { element ->
             val item = element as? JsonObject ?: return@mapNotNull null
             val id = item["voice"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return@mapNotNull null

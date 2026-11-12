@@ -126,13 +126,9 @@ class VoiceCatalogTest {
         assertEquals("Bearer sk-test", recorded.headers["Authorization"])
         assertEquals(BuiltInVoices.ZHIPU, catalog.list(target.copy(apiKey = null)))
         assertEquals(1, server.requestCount)
+        // 取自己的音色失败（比如余额不足）时照常列出系统音色，不让整页打不开
         server.enqueue(MockResponse.Builder().code(429).body("""{"error":{"code":"1113","message":"x"}}""").build())
-        try {
-            catalog.list(target)
-            fail("余额不足")
-        } catch (e: LlmException) {
-            assertEquals(LlmError.BALANCE, e.error)
-        }
+        assertEquals(BuiltInVoices.ZHIPU, catalog.list(target))
     }
 
     @Test
@@ -196,6 +192,8 @@ class VoiceCatalogTest {
         assertEquals("/v1/audio/voice/list", server.takeRequest().url.encodedPath)
         assertEquals(8, catalog.list(target.copy(apiKey = null)).size)
         assertEquals(1, server.requestCount)
+        server.enqueue(MockResponse.Builder().code(401).build())
+        assertEquals("Key 不对时只列预置音色", 8, catalog.list(target).size)
     }
 
     @Test

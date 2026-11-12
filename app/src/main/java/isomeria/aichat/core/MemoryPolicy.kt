@@ -13,7 +13,8 @@ import isomeria.aichat.data.db.Role
  *   这段没有值得记的内容时模型回答「无」，不生成记忆，只推进进度
  * - 记忆预算是上下文上限的 [MEMORY_SHARE]，但最多 [MEMORY_MAX_TOKENS]：不随上下文上限增长，免得记忆太长分散模型注意力
  * - 近期记忆超出 [recentBudget] 时，把最早的一半没被用户改过的交给模型，和核心记忆一起整理成新的核心记忆（[planFold]）
- * - 每次请求先带核心记忆，再从最新的近期记忆往前放，放不下就不带（不会删除）
+ * - 每次请求先带核心记忆，再从最新的近期记忆往前放，放不下就不带（不会删除）；核心记忆超出预算时只带前面放得下的几行
+ * - 核心记忆约 [CORE_MAX_CHARS] 字；上下文上限小时按预算缩短（[coreMaxChars]），免得整理出来的核心记忆放不进请求
  */
 object MemoryPolicy {
     const val TRIGGER_RATIO = 0.8
@@ -24,6 +25,12 @@ object MemoryPolicy {
 
     /** 近期记忆最多多少 token；超出时最早的整理进核心记忆 */
     const val RECENT_MAX_TOKENS = 800
+
+    /** 核心记忆最多约多少字（整理指令里的要求） */
+    const val CORE_MAX_CHARS = 500
+
+    /** 预算再小，整理指令也至少允许这么多字 */
+    const val CORE_MIN_CHARS = 50
 
     /** 一次整理最多处理多少 token 的近期记忆：升级前积累的大量记忆分几次整理完 */
     const val FOLD_MAX_TOKENS = 6000
@@ -43,11 +50,18 @@ object MemoryPolicy {
     fun memoryBudget(contextTokens: Int): Int = minOf((contextTokens * MEMORY_SHARE).toInt(), MEMORY_MAX_TOKENS)
 
     /**
-     * 这次请求带哪些记忆：核心记忆放得下就先放，再从最新的近期记忆往前放，放不下就不带（不会删除）。
-     * 结果是核心记忆在前，近期记忆按时间正序
+     * 整理指令要求的核心记忆字数：约 [CORE_MAX_CHARS] 字，但不超过预算的三分之二（另外三分之一留给近期记忆，
+     * 和 [recentBudget] 一致）。按这家服务商的汉字比例换算
+     */
+    fun coreMaxChars(budget: Int, estimator: TokenEstimator): Int =
+        estimator.wideCharsWithin(budget * 2 / 3).coerceIn(CORE_MIN_CHARS, CORE_MAX_CHARS)
+
+    /**
+     * 这次请求带哪些记忆：先放核心记忆（超出预算时只放前面放得下的几行，见 [fitCore]），
+     * 再从最新的近期记忆往前放，放不下就不带（不会删除）。结果是核心记忆在前，近期记忆按时间正序
      */
     fun forRequest(memories: List<Memory>, budget: Int, estimator: TokenEstimator): List<Memory> {
-        val core = memories.firstOrNull { it.core }?.takeIf { estimator.text(it.content) <= budget }
+        val core = memories.firstOrNull { it.core }?.let { fitCore(it, budget, estimator) }
         var used = core?.let { estimator.text(it.content) } ?: 0
         val kept = ArrayDeque<Memory>()
         for (memory in memories.asReversed()) {
@@ -57,6 +71,31 @@ object MemoryPolicy {
             kept.addFirst(memory)
         }
         return listOfNotNull(core) + kept
+    }
+
+    /**
+     * 放进 [budget] 的核心记忆：放得下就原样；放不下时从头按行取（核心记忆一行一件事），
+     * 第一行就放不下时取开头放得下的部分。只影响这次请求，不改保存的内容；什么都放不下时为 null
+     */
+    private fun fitCore(core: Memory, budget: Int, estimator: TokenEstimator): Memory? {
+        if (estimator.text(core.content) <= budget) return core
+        val kept = ArrayList<String>()
+        for (line in core.content.lines()) {
+            if (estimator.text((kept + line).joinToString("\n")) > budget) break
+            kept += line
+        }
+        var text = kept.joinToString("\n").trim()
+        if (text.isEmpty()) {
+            val first = core.content.trim()
+            var end = 0
+            while (end < first.length) {
+                val next = first.offsetByCodePoints(end, 1)
+                if (estimator.text(first.substring(0, next)) > budget) break
+                end = next
+            }
+            text = first.substring(0, end).trim()
+        }
+        return if (text.isEmpty()) null else core.copy(content = text)
     }
 
     /** 近期记忆能用多少：最多 [RECENT_MAX_TOKENS]；核心记忆很长时也至少留预算的三分之一，免得每次都要整理 */

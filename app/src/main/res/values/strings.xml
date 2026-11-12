@@ -199,7 +199,7 @@
     <!-- 总结记忆的提示词。参数：联系人名称、对方称呼 -->
     <string name="memory_summary_prompt">你在帮聊天角色「%1$s」整理长期记忆。下面是它和「%2$s」较早的一段聊天记录。只记以后聊天用得上的重要内容：对方的个人信息、喜好、重要经历、约定、明显的情绪变化，以及两人关系的进展；不写寒暄、闲聊和无关细节，不编造记录里没有的内容。用不超过 150 字的中文写成一段，只输出总结本身，不要标题和列表。如果这段聊天里没有值得长期记住的内容，只回答一个字：无</string>
     <!-- 整理核心记忆的提示词。参数：联系人名称 -->
-    <string name="memory_fold_prompt">你在帮聊天角色「%1$s」维护核心记忆：一段始终带在聊天里、记着重要事实的文字。下面是现有的核心记忆和几条较新的近期记忆。把近期记忆里重要的内容并入核心记忆，输出更新后的完整核心记忆：保留对方的个人信息、喜好、重要经历、仍然有效的约定和两人关系的现状；现有核心记忆里的内容，除非被新的内容推翻或已经过时，都要保留；去掉重复、次要和已经结束的事，不编造。用不超过 500 字的中文，可以分几行写，每行一件事；只输出核心记忆本身，不要标题。</string>
+    <string name="memory_fold_prompt">你在帮聊天角色「%1$s」维护核心记忆：一段始终带在聊天里、记着重要事实的文字。下面是现有的核心记忆和几条较新的近期记忆。把近期记忆里重要的内容并入核心记忆，输出更新后的完整核心记忆：保留对方的个人信息、喜好、重要经历、仍然有效的约定和两人关系的现状；现有核心记忆里的内容，除非被新的内容推翻或已经过时，都要保留；去掉重复、次要和已经结束的事，不编造。用不超过 %2$d 字的中文，可以分几行写，每行一件事，重要的写在前面；只输出核心记忆本身，不要标题。</string>
     <!-- 整理核心记忆时发给模型的内容。参数：现有的核心记忆、要整理的近期记忆 -->
     <string name="memory_fold_input">现有的核心记忆：\n%1$s\n\n较新的近期记忆（按时间排列）：\n%2$s</string>
     <string name="memory_fold_no_core">（还没有，请根据近期记忆写出第一版）</string>
@@ -329,6 +329,8 @@
     <string name="restore_done_message">新增 %1$d 位联系人、%2$d 条消息。</string>
     <string name="restore_done_message_key">新增 %1$d 位联系人、%2$d 条消息，API Key 已恢复。</string>
     <string name="restore_done_overwrite">已恢复 %1$d 位联系人、%2$d 条消息。</string>
+    <string name="restore_done_selected">所选内容已恢复。</string>
+    <string name="restore_done_selected_key">所选内容已恢复，API Key 也已恢复。</string>
     <string name="restore_done_overwrite_key">已恢复 %1$d 位联系人、%2$d 条消息，API Key 已恢复。</string>
     <string name="restore_wrong_password">密码不正确或文件已损坏，请重试。</string>
     <string name="restore_too_new">这个备份来自更新版本的智信（数据格式 v%1$d），请先升级 App 再恢复。</string>
@@ -409,7 +411,7 @@
     <string name="memory_edit_title">编辑记忆</string>
     <string name="memory_edit_hint">改过的近期记忆不会被整理进核心记忆。</string>
     <string name="memory_edit_core_title">编辑核心记忆</string>
-    <string name="memory_edit_core_hint">之后整理核心记忆时，模型会在保留这些内容的基础上加入新的事；被新的聊天推翻或已经过时的内容可能会被改掉。</string>
+    <string name="memory_edit_core_hint">之后整理核心记忆时，模型会在保留这些内容的基础上加入新的事；被新的聊天推翻或已经过时的内容可能会被改掉。太长、超出记忆预算时，每次只带前面放得下的几行。</string>
     <string name="memory_delete_core">删除核心记忆</string>
     <string name="memory_delete_core_confirm">确定删除核心记忆吗？之后会从近期记忆重新整理。</string>
     <string name="memory_delete">删除这条记忆</string>

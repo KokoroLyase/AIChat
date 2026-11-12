@@ -71,7 +71,7 @@ class MemoryEngineTest {
 
     /** 和 strings.xml 一样的中文写法（默认值不是中文） */
     private val labels = MemoryLabels(
-        "总结 %1\$s 和 %2\$s", "合并 %1\$s", "对方", "[图片]",
+        "总结 %1\$s 和 %2\$s", "合并 %1\$s 最多 %2\$d 字", "对方", "[图片]",
         nothingReply = "无",
         foldInput = "核心记忆：\n%1\$s\n\n近期记忆：\n%2\$s",
         foldNoCore = "（还没有）",
@@ -500,7 +500,7 @@ class MemoryEngineTest {
         engine.autoRun(1)
 
         val request = fake.requests.single()
-        assertEquals("合并 小雨", request.messages[0].plainText())
+        assertEquals("预算宽裕时按约 500 字要求", "合并 小雨 最多 500 字", request.messages[0].plainText())
         val input = request.messages[1].plainText()
         assertTrue(input, input.contains("（还没有）"))
         assertEquals("最早的两条没改过的", 2, input.lines().count { it.startsWith("- [") })
@@ -532,6 +532,16 @@ class MemoryEngineTest {
         assertEquals(50L, core.fromTime)
         assertEquals(210L, core.toTime)
         assertEquals(2, db.memoryDao().listByContact(1).size)
+    }
+
+    @Test
+    fun smallContext_foldAsksForShorterCore_soItFitsTheBudget() = runBlocking {
+        contact(budget = 1000) // 记忆预算 250：核心记忆最多约 166 字，不然整理出来也放不进请求
+        memoryRow("一".repeat(150), 200)
+        memoryRow("一".repeat(150), 300)
+        fake.reply = "整理后的核心记忆"
+        engine.autoRun(1)
+        assertEquals("合并 小雨 最多 166 字", fake.requests.single().messages[0].plainText())
     }
 
     @Test

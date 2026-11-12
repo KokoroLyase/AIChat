@@ -29,7 +29,7 @@ import javax.inject.Singleton
 data class MemoryLabels(
     /** 参数：联系人名称、对方称呼 */
     val summaryPrompt: String,
-    /** 整理核心记忆的指令。参数：联系人名称 */
+    /** 整理核心记忆的指令。参数：联系人名称、核心记忆最多多少字（[MemoryPolicy.coreMaxChars]） */
     val foldPrompt: String,
     /** 没有设置昵称时对方的称呼 */
     val defaultMyName: String,
@@ -187,7 +187,8 @@ class MemoryEngine @Inject constructor(
     ) {
         val generation = db.restoreGeneration.get()
         val all = memoryDao.listByContact(contact.id)
-        val rows = MemoryPolicy.planFold(all, MemoryPolicy.memoryBudget(contact.contextTokens), estimator)
+        val budget = MemoryPolicy.memoryBudget(contact.contextTokens)
+        val rows = MemoryPolicy.planFold(all, budget, estimator)
         if (rows.isEmpty()) return
         val core = all.firstOrNull { it.core }
         val recent = rows.joinToString("\n") { memory ->
@@ -195,7 +196,7 @@ class MemoryEngine @Inject constructor(
             labels.foldItem.format(date.year, date.monthValue, date.dayOfMonth, memory.content)
         }
         val input = labels.foldInput.format(core?.content ?: labels.foldNoCore, recent)
-        val result = complete(contact, labels.foldPrompt.format(contact.name), input)
+        val result = complete(contact, labels.foldPrompt.format(contact.name, MemoryPolicy.coreMaxChars(budget, estimator)), input)
         db.withTransaction {
             // 等待期间用户改过、删过其中的记忆或核心记忆时放弃这次整理
             val current = memoryDao.listByContact(contact.id)

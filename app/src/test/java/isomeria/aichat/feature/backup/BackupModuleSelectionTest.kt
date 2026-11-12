@@ -10,6 +10,9 @@ import isomeria.aichat.data.backup.BackupModule.MEMORIES
 import isomeria.aichat.data.backup.BackupModule.PROVIDERS
 import isomeria.aichat.data.backup.BackupModule.USAGE
 import isomeria.aichat.data.backup.BackupPreview
+import isomeria.aichat.data.backup.ProviderDto
+import isomeria.aichat.data.backup.SecretDto
+import isomeria.aichat.data.db.ProviderKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -34,10 +37,22 @@ class BackupModuleSelectionTest {
         assertFalse(ExportUiState(hasApiKey = false).keyAvailable)
     }
 
-    private fun preview(modules: List<String>?) = BackupPreview(
+    @Test
+    fun keyPassword_onlyAskedWhenProvidersAreRestored() {
+        val key = SecretDto(scheme = SecretDto.SCHEME_PASSWORD, data = "x")
+        val data = BackupData(providers = listOf(ProviderDto(id = 1, kind = ProviderKind.LLM, provider = "openai", baseUrl = "https://a.test", defaultModel = "m", apiKey = key)))
+        val state = RestoreUiState(preview = preview(null, data))
+        assertTrue(state.asksKeyPassword)
+        assertFalse("没选模型配置就不恢复 Key", state.toggledModule(PROVIDERS, false).asksKeyPassword)
+        assertFalse("整个文件解锁过时用同一个密码", RestoreUiState(preview = preview(null, data, decrypted = true)).asksKeyPassword)
+        assertFalse(RestoreUiState(preview = preview(null)).asksKeyPassword)
+    }
+
+    private fun preview(modules: List<String>?, data: BackupData = BackupData(), decrypted: Boolean = false) = BackupPreview(
         File("fixture.zip"),
         BackupManifest(appVersion = "0.7.2", appVersionCode = 702, formatVersion = 8, exportedAt = 1, modules = modules),
-        BackupData(),
+        data,
+        decryptedTemporary = decrypted,
     )
 
     @Test
