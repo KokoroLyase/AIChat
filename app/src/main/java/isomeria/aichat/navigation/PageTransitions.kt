@@ -1,6 +1,5 @@
 package isomeria.aichat.navigation
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
@@ -28,8 +27,9 @@ import kotlin.math.roundToInt
 
 /*
  * 页面切换动画。返回动画按微信实测（HyperOS 录屏逐帧测量）：
- * - 侧边返回手势拖动时页面不动，松手后才播放返回动画，和点返回箭头一样
- * - 上层页面向右整页滑出，减速三次曲线，约 250ms
+ * - 侧边返回手势（预测性返回，0.9.1 起）拖动时页面跟着手指走，松手后接着播完；中途放弃就滑回原位。
+ *   0.8.0 及更早是仿微信“拖动时页面不动、松手才播”，用户 2026-11-13 同意改成跟手
+ * - 点返回箭头时：上层页面向右整页滑出，减速三次曲线，约 250ms
  * - 下层页面从左侧 37.5% 处滑回，减速二次曲线，约 230ms
  * - 上层页面左边缘外侧有约 16dp 的阴影投在下层页面上，随页面离开从 0.35 淡到 0.05
  * 进入动画沿用：新页面从右侧推入，下层页面左移 1/4。
@@ -63,18 +63,17 @@ internal val popExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> Ex
 }
 
 /**
- * 二级页面外框：接管返回并画左边缘阴影。
+ * 二级页面外框：画左边缘阴影。
  *
- * 返回：先于页面内容注册 BackHandler，所以页面里的 BackHandler（收键盘、关面板、放弃编辑）仍然优先；
- * 它又比 NavHost 自带的预测性返回优先，侧边手势拖动时页面不跟手，松手后走普通返回动画。
+ * 返回（0.9.1）：不再拦截，交给 NavHost 自带的预测性返回，手势拖动时进出场动画按手指的进度走，
+ * 阴影跟着同一个 transition 一起变。页面里的 BackHandler（收键盘、关面板、放弃编辑）比 NavHost
+ * 的晚注册，仍然优先。
  */
 @Composable
 internal fun PageFrame(
     transition: Transition<EnterExitState>,
-    onBack: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    BackHandler(onBack = onBack)
     val shadowAlpha = transition.animateFloat(
         transitionSpec = {
             if (targetState == EnterExitState.PostExit) {
