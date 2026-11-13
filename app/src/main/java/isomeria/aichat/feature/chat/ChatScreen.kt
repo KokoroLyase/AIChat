@@ -314,6 +314,11 @@ fun ChatScreen(
                     if (event.hasText) R.string.voice_file_missing else R.string.voice_file_missing_no_text,
                     Toast.LENGTH_SHORT,
                 ).show()
+                is ChatEvent.Favorited -> Toast.makeText(
+                    context,
+                    if (event.imagesSkipped) R.string.favorite_images_skipped else R.string.favorite_added,
+                    Toast.LENGTH_SHORT,
+                ).show()
                 is ChatEvent.VoiceText -> {
                     // 识别结果放进输入框光标处，用户改完再发
                     val (text, cursor) = TextEditing.insert(input.text, input.selection.start, input.selection.end, event.text)
@@ -497,6 +502,7 @@ fun ChatScreen(
                 closePanels()
                 viewModel.startSelection(message)
             },
+            onFavorite = viewModel::favorite,
             onCopyCall = { message ->
                 scope.launch {
                     val text = viewModel.callText(message)
@@ -555,7 +561,7 @@ fun ChatScreen(
 
         val selectedNow = selection
         if (selectedNow != null) {
-            // 多选（0.9.0）：输入栏换成复制、删除
+            // 多选（0.9.0）：输入栏换成复制、收藏、删除（收藏时图片跳过，见 FavoriteRepository.add）
             val any = selectedNow.isNotEmpty()
             isomeria.aichat.ui.components.SelectionBar(
                 listOf(
@@ -564,6 +570,9 @@ fun ChatScreen(
                             val text = viewModel.takeSelectedText() ?: return@launch
                             clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("messages", text)))
                         }
+                    },
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.chat_menu_favorite), WeIcons.Star, any) {
+                        viewModel.favoriteSelected()
                     },
                     isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline, any, danger = true) {
                         deleteSelectedDialog = selectedNow.size

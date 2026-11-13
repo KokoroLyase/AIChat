@@ -52,13 +52,16 @@ class MultiSelectUiTest {
         val avatar = mutableListOf<Unit>()
         val started = mutableListOf<Long>()
         val copiedCalls = mutableListOf<Long>()
+        val favorited = mutableListOf<Long>()
     }
+
+    private val image = Message(id = 6, contactId = 1, role = Role.ASSISTANT, type = MessageType.IMAGE, imageWidth = 10, imageHeight = 10, status = MessageStatus.SUCCESS, createdAt = 60)
 
     private fun show(selection: Set<Long>?, calls: Calls) {
         compose.setContent {
             AIChatTheme(darkTheme = false) {
                 ChatMessageList(
-                    rows = listOf(transcribing, text, voice, call, sending).map { ChatRow.Item(it) },
+                    rows = listOf(image, transcribing, text, voice, call, sending).map { ChatRow.Item(it) },
                     contact = contact,
                     myName = "我",
                     myAvatarPath = null,
@@ -69,6 +72,7 @@ class MultiSelectUiTest {
                         onVoiceClick = { calls.voiceClicks += it.id },
                         onStartSelection = { calls.started += it.id },
                         onCopyCall = { calls.copiedCalls += it.id },
+                        onFavorite = { calls.favorited += it.id },
                     ),
                     selection = selection,
                     onToggleSelection = { calls.toggled += it.id },
@@ -125,5 +129,24 @@ class MultiSelectUiTest {
         compose.onNodeWithText("等待回复中").performTouchInput { longClick() }
         compose.onNodeWithText("复制").assertExists()
         compose.onNodeWithText("多选").assertDoesNotExist()
+    }
+
+    /** 0.9.0 收藏：文字、语音、打完的通话的长按菜单有“收藏”；图片和等待回复中的没有 */
+    @Test
+    fun menu_favoriteForTextVoiceCall_notImageOrWaiting() {
+        val calls = Calls()
+        show(null, calls)
+        compose.onNodeWithText("周末去爬山吗").performTouchInput { longClick() }
+        compose.onNodeWithText("收藏").performClick()
+        compose.onNodeWithContentDescription("语音转写", substring = true, useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("00:09", substring = true, useUnmergedTree = true).performTouchInput { longClick() }
+        compose.onNodeWithText("收藏").performClick()
+        assertEquals(listOf(1L, 3L), calls.favorited)
+        compose.onNodeWithText("等待回复中").performTouchInput { longClick() }
+        compose.onNodeWithText("收藏").assertDoesNotExist()
+        compose.onNodeWithText("复制").performClick()
+        compose.onNodeWithContentDescription("[图片]").performTouchInput { longClick() }
+        compose.onNodeWithText("删除").assertExists()
+        compose.onNodeWithText("收藏").assertDoesNotExist()
     }
 }

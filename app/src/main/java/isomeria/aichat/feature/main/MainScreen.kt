@@ -55,6 +55,7 @@ fun MainScreen(
     onOpenReplyPreferences: () -> Unit = {},
     onOpenProactive: () -> Unit = {},
     onOpenVoice: () -> Unit = {},
+    onOpenFavorites: () -> Unit = {},
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val unread by viewModel.totalUnread.collectAsStateWithLifecycle()
@@ -91,6 +92,7 @@ fun MainScreen(
                     onOpenReplyPreferences = onOpenReplyPreferences,
                     onOpenProactive = onOpenProactive,
                     onOpenVoice = onOpenVoice,
+                    onOpenFavorites = onOpenFavorites,
                 )
             }
         }

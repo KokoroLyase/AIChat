@@ -800,6 +800,10 @@ interface FavoriteDao {
     @Query("SELECT * FROM favorite_turn ORDER BY favoriteId, seq, id")
     suspend fun allTurns(): List<FavoriteTurn>
 
+    /** 收藏页（0.9.0）：通话收藏的每一句，预览前几句和搜索用 */
+    @Query("SELECT * FROM favorite_turn ORDER BY favoriteId, seq, id")
+    fun observeAllTurns(): Flow<List<FavoriteTurn>>
+
     /** 这条收藏和它的每一句用到的音频 */
     @Query(
         """

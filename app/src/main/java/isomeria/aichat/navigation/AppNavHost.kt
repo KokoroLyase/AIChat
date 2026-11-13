@@ -62,6 +62,10 @@ import kotlinx.serialization.Serializable
 /** 一次通话的详情（0.8.0）：[messageId] 是通话消息 */
 @Serializable data class CallDetailRoute(val messageId: Long)
 
+/** 收藏（0.9.0）和一条收藏的详情 */
+@Serializable data object FavoritesRoute
+@Serializable data class FavoriteDetailRoute(val favoriteId: Long)
+
 /** contactId 为 -1 时是新建 */
 @Serializable data class ContactEditRoute(val contactId: Long = NEW_CONTACT)
 
@@ -163,8 +167,13 @@ fun AppNavHost(
                 onOpenReplyPreferences = { nav.navigate(ReplyPreferencesRoute) },
                 onOpenProactive = { nav.navigate(ProactiveRoute) },
                 onOpenVoice = { nav.navigate(VoiceSettingsRoute) },
+                onOpenFavorites = { nav.navigate(FavoritesRoute) },
             )
         }
+        page<FavoritesRoute>(nav) {
+            isomeria.aichat.feature.favorites.FavoritesScreen(onBack = nav::popBackStackSafely, onOpen = { nav.navigate(FavoriteDetailRoute(it)) })
+        }
+        page<FavoriteDetailRoute>(nav) { isomeria.aichat.feature.favorites.FavoriteDetailScreen(onBack = nav::popBackStackSafely) }
         page<GlobalMemoryRoute>(nav) {
             GlobalMemoryScreen(onBack = nav::popBackStackSafely, onOpenCategory = { nav.navigate(GlobalMemoryCategoryRoute(it)) })
         }

@@ -52,6 +52,21 @@
     <string name="copy_call_header">语音通话 %1$s · %2$s</string>
     <string name="copy_call_time_pattern">yyyy年M月d日 HH:mm</string>
     <string name="copy_speaker_line">%1$s：%2$s</string>
+    <!-- 0.9.0 收藏 -->
+    <string name="me_favorites">收藏</string>
+    <string name="chat_menu_favorite">收藏</string>
+    <string name="favorite_added">已收藏</string>
+    <string name="favorite_images_skipped">图片不能收藏</string>
+    <string name="favorites_title">收藏</string>
+    <string name="favorites_search_hint">搜索收藏</string>
+    <string name="favorites_empty">还没有收藏\n长按聊天里的文字、语音或通话，选“收藏”</string>
+    <string name="favorites_no_result">没有找到相关的收藏</string>
+    <string name="favorite_delete_confirm">删除这条收藏？</string>
+    <string name="favorite_detail_title">收藏详情</string>
+    <string name="favorite_call_summary">语音通话 · %1$s</string>
+    <string name="favorite_from_me">我发给%1$s</string>
+    <string name="favorite_saved_at">收藏于 %1$s</string>
+    <string name="favorite_voice_missing">语音文件不在了，只留下文字</string>
     <string name="call_message_duration">通话时长 %1$s</string>
     <string name="call_message_ongoing">通话中</string>
     <string name="call_message_open">查看通话内容</string>

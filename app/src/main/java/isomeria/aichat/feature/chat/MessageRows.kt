@@ -139,6 +139,8 @@ data class MessageActions(
     val onStartSelection: (Message) -> Unit = {},
     /** 长按通话“复制”（0.9.0）：复制这次通话的完整内容 */
     val onCopyCall: (Message) -> Unit = {},
+    /** 长按“收藏”（0.9.0） */
+    val onFavorite: (Message) -> Unit = {},
 )
 
 /**
@@ -185,6 +187,10 @@ fun MessageRow(
         // 通话（0.9.0）：复制这次通话的完整内容；正在进行的不复制
         if (message.type == MessageType.CALL && !message.callOngoing) {
             add(MenuItem(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy) { actions.onCopyCall(message) })
+        }
+        // 收藏（0.9.0）：文字、语音（含没有转写的）、打完的通话；图片、等待回复中的不能
+        if (isomeria.aichat.data.repo.FavoriteRepository.canFavorite(message)) {
+            add(MenuItem(stringResource(R.string.chat_menu_favorite), WeIcons.Star) { actions.onFavorite(message) })
         }
         // 正在进行的通话（0.8.0）不能删
         if (!message.callOngoing) add(MenuItem(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline) { actions.onDelete(message) })

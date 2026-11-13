@@ -230,6 +230,9 @@ fun CallDetailContent(
     onToggleTurn: (Long) -> Unit,
     onTogglePlay: () -> Unit,
     onSeek: (Long) -> Unit,
+    /** 收藏的通话（0.9.0）也用这一页：标题和右上角换掉 */
+    title: String = stringResource(R.string.call_detail_title),
+    topBarActions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
 ) {
     val colors = WeTheme.colors
     val name = detail.contact?.name.orEmpty()
@@ -245,7 +248,7 @@ fun CallDetailContent(
         if (shown == null || shown.offset < 0 || shown.offset + shown.size > viewport) listState.animateScrollToItem(target, -viewport / 4)
     }
     Column(Modifier.fillMaxSize().background(colors.pageBackground)) {
-        WeTopBar(stringResource(R.string.call_detail_title), onBack = onBack, showLine = true)
+        WeTopBar(title, onBack = onBack, showLine = true, actions = topBarActions)
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
             item(key = "header") { CallDetailHeader(detail, info, name, player, playable.isNotEmpty(), onTogglePlay, onSeek) }
             item(key = "gap") { Spacer(Modifier.size(8.dp)) }

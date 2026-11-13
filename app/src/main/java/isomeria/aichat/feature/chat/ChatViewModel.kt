@@ -94,6 +94,8 @@ sealed interface ChatEvent {
     data object VoiceTextFailed : ChatEvent
     /** 语音文件不在了（例如恢复的备份里缺了这个文件）；[hasText] 时提示可以转文字 */
     data class VoiceFileMissing(val hasText: Boolean) : ChatEvent
+    /** 收藏好了（0.9.0）；[imagesSkipped] 是选中的里面有图片（图片不能收藏） */
+    data class Favorited(val imagesSkipped: Boolean) : ChatEvent
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -112,6 +114,7 @@ class ChatViewModel @Inject constructor(
     private val voices: isomeria.aichat.data.repo.VoiceRepository,
     private val playback: isomeria.aichat.data.voice.VoicePlayback,
     callEngine: isomeria.aichat.data.call.CallEngine,
+    private val favorites: isomeria.aichat.data.repo.FavoriteRepository,
 ) : ViewModel() {
     private val route = savedState.toRoute<ChatRoute>()
     val contactId: Long = route.contactId
@@ -339,6 +342,23 @@ class ChatViewModel @Inject constructor(
         val ids = selectionState.value?.takeIf { it.isNotEmpty() } ?: return null
         selectionState.value = null
         return chats.copyText(contactId, ids)
+    }
+
+    /** 长按“收藏”（0.9.0） */
+    fun favorite(message: Message) = favoriteIds(listOf(message.id))
+
+    /** 多选“收藏”（0.9.0）：每条单独一份，图片跳过；退出多选 */
+    fun favoriteSelected() {
+        val ids = selectionState.value?.takeIf { it.isNotEmpty() } ?: return
+        selectionState.value = null
+        favoriteIds(ids)
+    }
+
+    private fun favoriteIds(ids: Collection<Long>) {
+        appScope.launch {
+            val result = favorites.add(ids)
+            events.send(ChatEvent.Favorited(result.imagesSkipped))
+        }
     }
 
     /** 长按通话“复制”（0.9.0）：这次通话的完整内容 */

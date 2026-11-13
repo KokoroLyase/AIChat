@@ -230,23 +230,7 @@ class ChatRepository @Inject constructor(
         val calls = messages.filter { it.type == MessageType.CALL }.map { it.id }
         val turns = if (calls.isEmpty()) emptyMap() else db.callDao().turnsOf(calls).groupBy { it.messageId }
         val name = contactDao.get(contactId)?.name.orEmpty()
-        return isomeria.aichat.core.MessageCopy.text(messages, turns, copyLabels(name))
-    }
-
-    private fun copyLabels(contactName: String): isomeria.aichat.core.CopyLabels {
-        val time = java.time.format.DateTimeFormatter.ofPattern(context.getString(isomeria.aichat.R.string.copy_call_time_pattern))
-        return isomeria.aichat.core.CopyLabels(
-            me = context.getString(isomeria.aichat.R.string.copy_me),
-            contact = contactName,
-            image = context.getString(isomeria.aichat.R.string.copy_image),
-            voice = context.getString(isomeria.aichat.R.string.copy_voice),
-            asrFailed = context.getString(isomeria.aichat.R.string.call_turn_asr_failed),
-            callHeader = { call ->
-                val start = java.time.Instant.ofEpochMilli(call.createdAt).atZone(java.time.ZoneId.systemDefault())
-                context.getString(isomeria.aichat.R.string.copy_call_header, time.format(start), isomeria.aichat.core.CallDurations.format(call.voiceMillis))
-            },
-            speaker = { speaker, text -> context.getString(isomeria.aichat.R.string.copy_speaker_line, speaker, text) },
-        )
+        return isomeria.aichat.core.MessageCopy.text(messages, turns, copyLabels(context, name))
     }
 
     /** 删除聊天：只删聊天记录，不删联系人 */
@@ -417,6 +401,23 @@ class ChatRepository @Inject constructor(
  */
 fun isSelectable(message: Message): Boolean =
     message.status != MessageStatus.SENDING && message.status != MessageStatus.PENDING && !message.callOngoing
+
+/** 复制（0.9.0）用到的说法：聊天和收藏共用 */
+fun copyLabels(context: Context, contactName: String): isomeria.aichat.core.CopyLabels {
+    val time = java.time.format.DateTimeFormatter.ofPattern(context.getString(isomeria.aichat.R.string.copy_call_time_pattern))
+    return isomeria.aichat.core.CopyLabels(
+        me = context.getString(isomeria.aichat.R.string.copy_me),
+        contact = contactName,
+        image = context.getString(isomeria.aichat.R.string.copy_image),
+        voice = context.getString(isomeria.aichat.R.string.copy_voice),
+        asrFailed = context.getString(isomeria.aichat.R.string.call_turn_asr_failed),
+        callHeader = { call ->
+            val start = java.time.Instant.ofEpochMilli(call.createdAt).atZone(java.time.ZoneId.systemDefault())
+            context.getString(isomeria.aichat.R.string.copy_call_header, time.format(start), isomeria.aichat.core.CallDurations.format(call.voiceMillis))
+        },
+        speaker = { speaker, text -> context.getString(isomeria.aichat.R.string.copy_speaker_line, speaker, text) },
+    )
+}
 
 /** 按 id 查或删消息时每批的个数，免得超过 SQLite 的参数上限 */
 private const val ID_CHUNK = 500

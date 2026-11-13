@@ -102,7 +102,7 @@ class MeViewModel @Inject constructor(
 }
 
 /**
- * 我：顶部个人卡片（头像、昵称、版本号）；下面一组是「全局记忆」「回复偏好」（0.5.0）、「主动聊天」（0.6.0）和「语音消息」（0.7.0）四个入口，
+ * 我：顶部个人卡片（头像、昵称、版本号）；下面单独一组是「收藏」（0.9.0）；再下面一组是「全局记忆」「回复偏好」（0.5.0）、「主动聊天」（0.6.0）和「语音消息」（0.7.0）四个入口，
  * 再下面一组是「模型服务」「通用设置」「数据管理」「关于 APP」四个入口（0.4.2 起代替原来的一行「设置」）。
  * 每个入口点进去都是各自的二级页面，条目不铺在「我」页上。
  */
@@ -114,11 +114,12 @@ fun MeScreen(
     onOpenReplyPreferences: () -> Unit = {},
     onOpenProactive: () -> Unit = {},
     onOpenVoice: () -> Unit = {},
+    onOpenFavorites: () -> Unit = {},
     viewModel: MeViewModel = hiltViewModel(),
 ) {
     val nickname by viewModel.nickname.collectAsStateWithLifecycle()
     val avatar by viewModel.avatarPath.collectAsStateWithLifecycle()
-    MeContent(nickname, avatar, onOpenProfile, onOpenSettings, onOpenGlobalMemory, onOpenReplyPreferences, onOpenProactive, onOpenVoice)
+    MeContent(nickname, avatar, onOpenProfile, onOpenSettings, onOpenGlobalMemory, onOpenReplyPreferences, onOpenProactive, onOpenVoice, onOpenFavorites)
 }
 
 @Composable
@@ -131,6 +132,7 @@ fun MeContent(
     onOpenReplyPreferences: () -> Unit = {},
     onOpenProactive: () -> Unit = {},
     onOpenVoice: () -> Unit = {},
+    onOpenFavorites: () -> Unit = {},
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -163,6 +165,8 @@ fun MeContent(
             }
             Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.size(18.dp))
         }
+        GroupSpacer()
+        WeListRow(title = stringResource(R.string.me_favorites), onClick = onOpenFavorites)
         GroupSpacer()
         WeListRow(title = stringResource(R.string.me_global_memory), onClick = onOpenGlobalMemory, showDivider = true)
         WeListRow(title = stringResource(R.string.me_reply_preferences), onClick = onOpenReplyPreferences, showDivider = true)
