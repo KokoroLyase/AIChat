@@ -1062,8 +1062,8 @@ class ScreenshotTest {
     }
     /** 0.7.2：语音合成、识别来源可以单独选；第一组跟随全局，第二组单独选了系统语音和一个识别服务商 */
     private val voiceChoices = isomeria.aichat.feature.contactedit.ContactVoiceChoices(
-        tts = listOf(isomeria.aichat.data.db.ProviderConfig(id = 3, kind = isomeria.aichat.data.db.ProviderKind.TTS, provider = "chat-audio", name = "Xiaomi MiMo", baseUrl = "https://a.test", defaultModel = "m")),
-        asr = listOf(isomeria.aichat.data.db.ProviderConfig(id = 4, kind = isomeria.aichat.data.db.ProviderKind.ASR, provider = "volc-asr", name = "火山引擎（豆包）", baseUrl = "https://a.test", defaultModel = "m")),
+        tts = listOf(isomeria.aichat.data.db.ProviderConfig(id = 3, kind = isomeria.aichat.data.db.ProviderKind.TTS, compatibility = "", provider = "chat-audio", name = "Xiaomi MiMo", baseUrl = "https://a.test", defaultModel = "m")),
+        asr = listOf(isomeria.aichat.data.db.ProviderConfig(id = 4, kind = isomeria.aichat.data.db.ProviderKind.ASR, compatibility = "", provider = "volc-asr", name = "火山引擎（豆包）", baseUrl = "https://a.test", defaultModel = "m")),
         globalTts = "provider:3",
         globalAsr = "local:offline-asr",
     )
@@ -1116,16 +1116,17 @@ class ScreenshotTest {
     private val callBase = isomeria.aichat.feature.call.CallUi(name = "小雨", avatarPath = null, avatarColor = isomeria.aichat.ui.theme.AvatarPalette[0], status = "03:21")
     private val callListening = callBase.copy(phase = "在听，请说话", subtitle = "小雨" to "好呀，那就去西湖边的山，早上八点出发？")
     private val callThinking = callBase.copy(
+        stage = isomeria.aichat.data.call.CallPhase.THINKING,
         phase = "对方正在想… 6 秒",
         subtitle = "我" to "周末天气好的话，我们去爬山吧",
         notice = "有几句没有合成出来，只显示了文字",
         hints = listOf("这台手机用音量判断你是否在说话，环境吵时，说完可以点「说完了」", "这个联系人开着思考，每轮可能要等较久，可以在联系人资料里关掉"),
         muted = true,
     )
-    private val callSpeaking = callBase.copy(phase = "对方正在说", subtitle = "小雨" to "好呀！", speakerphone = true, action = isomeria.aichat.feature.call.CallAction.INTERRUPT)
-    private val callHearing = callBase.copy(phase = "正在听你说…", subtitles = false, action = isomeria.aichat.feature.call.CallAction.FINISH)
-    private val callConnecting = callBase.copy(status = "正在接通…", active = false)
-    private val callEnded = callBase.copy(status = "通话已结束", phase = "很久没有人说话，通话已自动结束", active = false)
+    private val callSpeaking = callBase.copy(stage = isomeria.aichat.data.call.CallPhase.SPEAKING, phase = "对方正在说", subtitle = "小雨" to "好呀！", speakerphone = true, action = isomeria.aichat.feature.call.CallAction.INTERRUPT)
+    private val callHearing = callBase.copy(stage = isomeria.aichat.data.call.CallPhase.HEARING, phase = "正在听你说…", subtitles = false, action = isomeria.aichat.feature.call.CallAction.FINISH)
+    private val callConnecting = callBase.copy(status = "正在接通…", active = false, stage = null)
+    private val callEnded = callBase.copy(status = "通话已结束", phase = "很久没有人说话，通话已自动结束", active = false, stage = isomeria.aichat.data.call.CallPhase.ENDED)
 
     @Composable private fun Call(ui: isomeria.aichat.feature.call.CallUi) = isomeria.aichat.feature.call.CallContent(ui, isomeria.aichat.feature.call.CallActions())
 
@@ -1168,19 +1169,28 @@ class ScreenshotTest {
     )
     private fun callTurn(id: Long, role: isomeria.aichat.data.db.Role, text: String, millis: Long, status: isomeria.aichat.data.db.CallTurnStatus = isomeria.aichat.data.db.CallTurnStatus.OK) =
         isomeria.aichat.data.db.CallTurn(id = id, messageId = 23, seq = id.toInt(), role = role, text = text, audioPath = if (millis > 0) "calls/$id.m4a" else null, audioMillis = millis, status = status, createdAt = id)
-    @Composable private fun CallDetailShot() = isomeria.aichat.feature.call.CallDetailContent(
-        detail = callDetail,
-        header = "昨天 21:31 开始，通话时长 03:21\n被来电或其他应用打断，通话已结束",
-        playingTurnId = 2, playingAll = true, position = 3_500, total = 10_400, playable = setOf(1L, 2L, 3L, 4L),
-        onBack = {}, onToggleTurn = {}, onPlayAll = {}, onStop = {}, onSeek = {},
-    )
+    private val callInfo = isomeria.aichat.feature.call.CallInfo("昨天 21:31", "03:21", "被来电或其他应用打断，通话已结束")
+    @Composable private fun CallDetailShot(player: isomeria.aichat.feature.call.CallPlayerUi = isomeria.aichat.feature.call.CallPlayerUi(turnId = 2, all = true, position = 3_500, total = 10_400)) =
+        isomeria.aichat.feature.call.CallDetailContent(
+            detail = callDetail, info = callInfo, player = player, playable = setOf(1L, 2L, 3L, 4L),
+            onBack = {}, onToggleTurn = {}, onTogglePlay = {}, onSeek = {},
+        )
+    /** 暂停在第三条；没放完整通话（单独放着第一条） */
+    @Test fun callDetailPausedLight() = shot("85-call-detail-paused", false) {
+        CallDetailShot(isomeria.aichat.feature.call.CallPlayerUi(turnId = 3, all = true, paused = true, position = 6_100, total = 10_400))
+    }
+    @Test fun callDetailSingleDark() = shot("85-call-detail-single", true) {
+        CallDetailShot(isomeria.aichat.feature.call.CallPlayerUi(turnId = 1, all = false, total = 10_400))
+    }
     @Test fun callDetailLight() = shot("85-call-detail", false) { CallDetailShot() }
     @Test fun callDetailDark() = shot("85-call-detail", true) { CallDetailShot() }
     @Test fun callDetailLarge() = large("85-call-detail-large", false) { CallDetailShot() }
-    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun callDetailNarrow() = large("85-call-detail-narrow", true) { CallDetailShot() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun callDetailNarrow() = large("85-call-detail-narrow", true) {
+        CallDetailShot(isomeria.aichat.feature.call.CallPlayerUi(turnId = 3, all = true, paused = true, position = 6_100, total = 10_400))
+    }
     /** 通话中聊天页的输入栏换成「回到通话」 */
     @Composable private fun InCallBarShot() = Column(Modifier.fillMaxSize(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom) {
-        isomeria.aichat.feature.chat.InCallBar {}
+        isomeria.aichat.feature.chat.InCallBar(startedAt = 0, now = { 201_000 }) {}
     }
     @Test fun inCallBarLight() = shot("86-chat-in-call", false) { InCallBarShot() }
     @Test fun inCallBarDark() = shot("86-chat-in-call", true) { InCallBarShot() }

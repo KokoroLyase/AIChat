@@ -268,7 +268,9 @@ class AndroidVoicePlayer @Inject constructor(@ApplicationContext context: Contex
     private var communication = false
     private var onEnd: ((Boolean) -> Unit)? = null
 
-    override fun play(file: File, route: AudioRoute, onEnd: (completed: Boolean) -> Unit) {
+    override fun play(file: File, route: AudioRoute, onEnd: (completed: Boolean) -> Unit) = play(file, route, 0, onEnd)
+
+    override fun play(file: File, route: AudioRoute, startMillis: Long, onEnd: (completed: Boolean) -> Unit) {
         stop()
         val attributes = android.media.AudioAttributes.Builder()
             .setUsage(if (route == AudioRoute.EARPIECE) android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION else android.media.AudioAttributes.USAGE_MEDIA)
@@ -300,6 +302,7 @@ class AndroidVoicePlayer @Inject constructor(@ApplicationContext context: Contex
             media.setOnCompletionListener { end(true) }
             media.setOnErrorListener { _, _, _ -> end(false); true }
             media.prepare()
+            if (startMillis > 0) media.seekTo(startMillis.coerceAtMost(Int.MAX_VALUE.toLong()), android.media.MediaPlayer.SEEK_CLOSEST)
             media.start()
             player = media
         } catch (e: Exception) {
@@ -307,6 +310,8 @@ class AndroidVoicePlayer @Inject constructor(@ApplicationContext context: Contex
             end(false)
         }
     }
+
+    override fun positionMillis(): Long? = player?.let { runCatching { it.currentPosition.toLong() }.getOrNull() }
 
     override fun stop() {
         onEnd = null

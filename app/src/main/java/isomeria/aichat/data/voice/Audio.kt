@@ -47,6 +47,12 @@ enum class AudioRoute { SPEAKER, EARPIECE }
 interface VoicePlayer {
     fun play(file: File, route: AudioRoute, onEnd: (completed: Boolean) -> Unit)
 
+    /** 从这段的第 [startMillis] 毫秒开始放（0.8.0 通话详情页的暂停后继续、拖进度条）；不支持跳转的实现从头放 */
+    fun play(file: File, route: AudioRoute, startMillis: Long, onEnd: (completed: Boolean) -> Unit) = play(file, route, onEnd)
+
+    /** 正在放的这一段放到了第几毫秒；没在放或不知道时为 null */
+    fun positionMillis(): Long? = null
+
     fun stop()
 }
 

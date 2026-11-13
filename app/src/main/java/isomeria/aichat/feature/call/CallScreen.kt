@@ -8,8 +8,33 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,10 +63,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -86,6 +115,8 @@ data class CallUi(
     val action: CallAction? = null,
     /** 已经接通（按钮可用） */
     val active: Boolean = true,
+    /** 现在在做什么，决定头像和状态下面的动效；还没接通时为 null */
+    val stage: CallPhase? = CallPhase.LISTENING,
 )
 
 enum class CallAction { FINISH, INTERRUPT }
@@ -246,7 +277,7 @@ private fun callUi(
 ): CallUi {
     val running = prepare == CallPrepare.Running && call != null
     if (!running || call == null) {
-        return CallUi(name, avatarPath, avatarColor, status = stringResource(R.string.call_status_connecting), subtitles = subtitles, active = false)
+        return CallUi(name, avatarPath, avatarColor, status = stringResource(R.string.call_status_connecting), subtitles = subtitles, active = false, stage = null)
     }
     val ended = call.phase == CallPhase.ENDED
     val status = if (ended) stringResource(R.string.call_status_ended) else CallDurations.format(now - call.startedAt)
@@ -293,6 +324,7 @@ private fun callUi(
             else -> null
         },
         active = !ended,
+        stage = call.phase,
     )
 }
 
@@ -342,66 +374,109 @@ fun CallContent(ui: CallUi, actions: CallActions) {
                 style = typography.small,
                 color = colors.callTextSecondary,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colors.callButton.copy(alpha = 0.12f))
                     .clickable(role = Role.Button) { actions.onSubtitles(!ui.subtitles) }
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.size(32.dp))
-            Avatar(ui.avatarPath, ui.name, ui.avatarColor, 96.dp)
             Spacer(Modifier.size(16.dp))
+            CallAvatar(ui)
+            Spacer(Modifier.size(12.dp))
             Text(ui.name, style = typography.contactName, color = colors.callText, textAlign = TextAlign.Center)
             Spacer(Modifier.size(8.dp))
             Text(ui.status, style = typography.listTitle, color = colors.callTextSecondary, textAlign = TextAlign.Center)
-            if (ui.phase.isNotEmpty()) {
-                Spacer(Modifier.size(4.dp))
-                Text(ui.phase, style = typography.small, color = colors.callTextSecondary, textAlign = TextAlign.Center)
+            // 现在在做什么：换状态时淡入淡出；用户在说时下面跳动的音量条
+            AnimatedContent(
+                targetState = ui.phase,
+                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) using SizeTransform(clip = false) },
+                label = "callPhase",
+            ) { phase ->
+                if (phase.isNotEmpty()) {
+                    Text(
+                        phase,
+                        style = typography.small,
+                        color = if (ui.stage == CallPhase.HEARING) colors.brand else colors.callTextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
-            ui.subtitle?.let { (speaker, text) ->
-                Spacer(Modifier.size(28.dp))
-                Text(speaker, style = typography.small, color = colors.callTextSecondary, textAlign = TextAlign.Center)
-                Spacer(Modifier.size(4.dp))
-                Text(text, style = typography.message, color = colors.callText, textAlign = TextAlign.Center)
+            Box(Modifier.height(28.dp), contentAlignment = Alignment.Center) {
+                androidx.compose.animation.AnimatedVisibility(ui.stage == CallPhase.HEARING, enter = fadeIn(), exit = fadeOut()) { LevelBars(colors.brand) }
+                androidx.compose.animation.AnimatedVisibility(ui.stage == CallPhase.THINKING || ui.stage == CallPhase.RECOGNIZING, enter = fadeIn(), exit = fadeOut()) {
+                    WaitingDots(colors.callTextSecondary)
+                }
             }
-            ui.notice?.let { notice ->
-                Spacer(Modifier.size(20.dp))
-                Text(
-                    notice,
-                    style = typography.small,
-                    color = colors.callText,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(colors.callButton)
-                        .clickable(role = Role.Button, onClick = actions.onDismissNotice)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
+            // 字幕：一句换下一句时从下面淡入
+            AnimatedContent(
+                targetState = ui.subtitle,
+                transitionSpec = {
+                    (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 4 }) togetherWith fadeOut(tween(140)) using SizeTransform(clip = false)
+                },
+                contentAlignment = Alignment.Center,
+                label = "callSubtitle",
+            ) { subtitle ->
+                if (subtitle != null) {
+                    val (speaker, text) = subtitle
+                    Column(
+                        Modifier
+                            .padding(top = 8.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colors.callButton.copy(alpha = 0.10f))
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(speaker, style = typography.listTime, color = colors.callTextSecondary, textAlign = TextAlign.Center)
+                        Spacer(Modifier.size(6.dp))
+                        Text(text, style = typography.message, color = colors.callText, textAlign = TextAlign.Center)
+                    }
+                } else {
+                    Spacer(Modifier.fillMaxWidth())
+                }
+            }
+            AnimatedVisibility(
+                ui.notice != null,
+                enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
+            ) {
+                // 消失时还要显示原来的字
+                var last by remember { androidx.compose.runtime.mutableStateOf(ui.notice.orEmpty()) }
+                if (ui.notice != null) last = ui.notice
+                val dismiss = stringResource(R.string.call_notice_dismiss)
+                Row(
+                    Modifier
+                        .padding(top = 16.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(colors.callNotice)
+                        .clickable(role = Role.Button, onClickLabel = dismiss, onClick = actions.onDismissNotice)
+                        .padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(last, style = typography.small, color = colors.callText, modifier = Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.size(6.dp))
+                    Icon(WeIcons.Close, contentDescription = null, tint = colors.callTextSecondary, modifier = Modifier.size(16.dp))
+                }
             }
             for (hint in ui.hints) {
                 Spacer(Modifier.size(12.dp))
-                Text(hint, style = typography.small, color = colors.callTextSecondary, textAlign = TextAlign.Center)
+                Text(hint, style = typography.listTime, color = colors.callTextSecondary, textAlign = TextAlign.Center)
             }
             Spacer(Modifier.size(24.dp))
         }
-        // 「说完了」「打断」
-        Box(Modifier.heightIn(min = 56.dp).padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
-            ui.action?.let { action ->
-                val label = stringResource(if (action == CallAction.FINISH) R.string.call_action_finish else R.string.call_action_interrupt)
-                Text(
-                    label,
-                    style = typography.button,
-                    color = colors.callText,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(colors.callButton)
-                        .clickable(role = Role.Button) { actions.onAction(action) }
-                        .padding(horizontal = 28.dp, vertical = 12.dp),
-                )
+        // 「说完了」「打断」：出现时放大淡入
+        Box(Modifier.heightIn(min = 60.dp).padding(bottom = 12.dp), contentAlignment = Alignment.Center) {
+            AnimatedContent(
+                targetState = ui.action,
+                transitionSpec = { (fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.85f)) togetherWith (fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.85f)) },
+                label = "callAction",
+            ) { action ->
+                if (action != null) ActionPill(action) { actions.onAction(action) } else Spacer(Modifier.size(1.dp))
             }
         }
         Row(
@@ -436,7 +511,124 @@ fun CallContent(ui: CallUi, actions: CallActions) {
     }
 }
 
-/** 圆形按钮和下面的文字；[on] 时亮起（静音、免提开着），[danger] 是红色的挂断 */
+/**
+ * 头像和它周围的动效：对方在说时一圈圈向外扩散；接通中、对方在想时轻轻呼吸；通话结束后变暗。
+ * 系统关掉动画时（开发者选项、省电）Compose 的动画直接停在终点，不会一直闪。
+ */
+@Composable
+private fun CallAvatar(ui: CallUi) {
+    val colors = WeTheme.colors
+    val size = 96.dp
+    val corner = WeTheme.dimens.avatarCorner
+    val transition = rememberInfiniteTransition(label = "callAvatar")
+    val ripple by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1_800, easing = LinearEasing)), label = "ripple")
+    val breath by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1_400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breath")
+    val speaking = ui.stage == CallPhase.SPEAKING
+    val breathing = ui.stage == null || ui.stage == CallPhase.THINKING
+    val ringAlpha by animateFloatAsState(if (speaking) 1f else 0f, tween(300), label = "ringAlpha")
+    val dim by animateFloatAsState(if (ui.stage == CallPhase.ENDED) 0.45f else 1f, tween(400), label = "avatarDim")
+    val ringColor = colors.callText
+    Box(
+        Modifier
+            .size(size + 72.dp)
+            .drawBehind {
+                if (ringAlpha <= 0f) return@drawBehind
+                val base = size.toPx()
+                val radius = corner.toPx()
+                for (offset in listOf(0f, 0.5f)) {
+                    val p = (ripple + offset) % 1f
+                    val grow = base * (1f + 0.7f * p)
+                    drawRoundRect(
+                        color = ringColor.copy(alpha = 0.32f * (1f - p) * ringAlpha),
+                        topLeft = androidx.compose.ui.geometry.Offset((this.size.width - grow) / 2, (this.size.height - grow) / 2),
+                        size = androidx.compose.ui.geometry.Size(grow, grow),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius * (1f + 0.7f * p)),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
+                    )
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        val scale = if (breathing) 1f + 0.035f * breath else 1f
+        Avatar(
+            ui.avatarPath,
+            ui.name,
+            ui.avatarColor,
+            size,
+            modifier = Modifier.graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = dim
+            },
+        )
+    }
+}
+
+/** 用户在说：五根高低起伏的绿色竖条 */
+@Composable
+private fun LevelBars(color: Color) {
+    val transition = rememberInfiniteTransition(label = "levelBars")
+    val t by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1_000, easing = LinearEasing)), label = "levelPhase")
+    Canvas(Modifier.size(width = 44.dp, height = 20.dp).clearAndSetSemantics {}) {
+        val bar = 4.dp.toPx()
+        val gap = (size.width - bar * 5) / 4
+        for (i in 0 until 5) {
+            val wave = (kotlin.math.sin((t + i * 0.18f) * 2 * kotlin.math.PI) + 1) / 2
+            val h = size.height * (0.3f + 0.7f * wave.toFloat())
+            drawRoundRect(
+                color = color,
+                topLeft = androidx.compose.ui.geometry.Offset(i * (bar + gap), (size.height - h) / 2),
+                size = androidx.compose.ui.geometry.Size(bar, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(bar / 2),
+            )
+        }
+    }
+}
+
+/** 正在识别、对方在想：三个依次亮起的点 */
+@Composable
+private fun WaitingDots(color: Color) {
+    val transition = rememberInfiniteTransition(label = "waitingDots")
+    val t by transition.animateFloat(0f, 3f, infiniteRepeatable(tween(1_200, easing = LinearEasing)), label = "dotsPhase")
+    Canvas(Modifier.size(width = 36.dp, height = 12.dp).clearAndSetSemantics {}) {
+        val r = 3.dp.toPx()
+        val gap = (size.width - r * 6) / 2
+        for (i in 0 until 3) {
+            val distance = kotlin.math.abs(((t - i) % 3 + 3) % 3 - 0.5f)
+            val alpha = (1f - distance.coerceAtMost(1.5f) / 1.5f) * 0.75f + 0.25f
+            drawCircle(color.copy(alpha = alpha), radius = r, center = androidx.compose.ui.geometry.Offset(r + i * (2 * r + gap), size.height / 2))
+        }
+    }
+}
+
+/** 「说完了」（绿色，用户在说时）/「打断」（白色描边，对方在说时） */
+@Composable
+private fun ActionPill(action: CallAction, onClick: () -> Unit) {
+    val colors = WeTheme.colors
+    val finish = action == CallAction.FINISH
+    val label = stringResource(if (finish) R.string.call_action_finish else R.string.call_action_interrupt)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, label = "actionPress")
+    Text(
+        label,
+        style = WeTheme.typography.button,
+        color = if (finish) Color.White else colors.callText,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(24.dp))
+            .background(if (finish) colors.brand else colors.callButton)
+            .then(if (finish) Modifier else Modifier.border(1.dp, colors.callTextSecondary.copy(alpha = 0.5f), RoundedCornerShape(24.dp)))
+            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 32.dp, vertical = 12.dp),
+    )
+}
+
+/** 圆形按钮和下面的文字；[on] 时亮起（静音、免提开着），[danger] 是红色的挂断。按下时缩一下，开关时颜色渐变 */
 @Composable
 private fun CallButton(
     icon: ImageVector,
@@ -449,10 +641,32 @@ private fun CallButton(
 ) {
     val colors = WeTheme.colors
     val state = if (danger) "" else stringResource(if (on) R.string.call_state_on else R.string.call_state_off)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.9f else 1f, label = "callButtonPress")
+    val background by animateColorAsState(
+        when {
+            danger -> if (pressed) colors.callHangUpPressed else colors.callHangUp
+            on -> colors.callButtonOn
+            else -> colors.callButton
+        },
+        tween(180),
+        label = "callButtonColor",
+    )
+    val tint by animateColorAsState(
+        when {
+            danger -> colors.callText
+            on -> colors.callButtonOnIcon
+            enabled -> colors.callText
+            else -> colors.callTextSecondary
+        },
+        tween(180),
+        label = "callButtonTint",
+    )
     Column(
         modifier
             .clip(RoundedCornerShape(8.dp))
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics {
                 contentDescription = label
                 if (state.isNotEmpty()) stateDescription = state
@@ -460,23 +674,18 @@ private fun CallButton(
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        val background = when {
-            danger -> colors.callHangUp
-            on -> colors.callButtonOn
-            else -> colors.callButton
-        }
-        Box(Modifier.size(64.dp).clip(CircleShape).background(background), contentAlignment = Alignment.Center) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = when {
-                    danger -> colors.callText
-                    on -> colors.callButtonOnIcon
-                    enabled -> colors.callText
-                    else -> colors.callTextSecondary
-                },
-                modifier = Modifier.size(30.dp),
-            )
+        Box(
+            Modifier
+                .size(64.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(CircleShape)
+                .background(background),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(30.dp))
         }
         Spacer(Modifier.size(8.dp))
         Text(label, style = WeTheme.typography.small, color = colors.callTextSecondary, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 120.dp))

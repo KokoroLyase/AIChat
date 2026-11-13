@@ -1061,6 +1061,7 @@
     <string name="contact_voice_call">语音通话</string>
     <string name="chat_voice_call">语音通话</string>
     <string name="chat_in_call">正在通话，点按回到通话</string>
+    <string name="chat_in_call_duration">正在通话 %1$s · 点按回到通话</string>
     <string name="call_status_connecting">正在接通…</string>
     <string name="call_status_ended">通话已结束</string>
     <string name="call_phase_listening">在听，请说话</string>
@@ -1076,6 +1077,7 @@
     <string name="call_end_idle">很久没有人说话，通话已自动结束</string>
     <string name="call_end_microphone">麦克风出错，通话已结束</string>
     <string name="call_subtitle_me">我</string>
+    <string name="call_notice_dismiss">关闭提示</string>
     <string name="call_subtitles_show">显示字幕</string>
     <string name="call_subtitles_hide">收起字幕</string>
     <string name="call_action_mute">静音</string>
@@ -1118,11 +1120,12 @@
     <string name="notification_call_hidden">正在语音通话</string>
     <string name="notification_call_text">点按回到通话</string>
     <string name="call_detail_title">通话详情</string>
-    <string name="call_detail_summary">%1$s 开始，通话时长 %2$s</string>
-    <string name="call_detail_ongoing">%1$s 开始，正在通话</string>
+    <string name="call_detail_summary">%1$s · 通话时长 %2$s</string>
+    <string name="call_detail_ongoing">%1$s · 正在通话</string>
     <string name="call_detail_play_all">播放完整通话</string>
-    <string name="call_detail_stop">停止播放</string>
-    <string name="call_detail_progress">通话播放进度，可以拖到某一条</string>
+    <string name="call_detail_pause">暂停</string>
+    <string name="call_detail_progress">通话播放进度，可以拖动</string>
+    <string name="call_detail_progress_state">%1$s，共 %2$s</string>
     <string name="call_detail_empty">这次通话里没有人说话</string>
     <string name="call_end_interrupted">通话中应用被关闭，记录到最后一句</string>
     <string name="call_turn_asr_failed">（没有识别出文字）</string>

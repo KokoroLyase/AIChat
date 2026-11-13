@@ -204,6 +204,32 @@ object WeIcons {
         }
     }
 
+    /** 播放：实心三角（0.8.0 通话详情页） */
+    val Play: ImageVector by lazy {
+        solidIcon("Play") {
+            moveTo(8.2f, 5.6f)
+            lineTo(18.4f, 12f)
+            lineTo(8.2f, 18.4f)
+            close()
+        }
+    }
+
+    /** 暂停：两道实心竖条 */
+    val Pause: ImageVector by lazy {
+        solidIcon("Pause") {
+            moveTo(7.2f, 5.8f)
+            lineTo(10f, 5.8f)
+            lineTo(10f, 18.2f)
+            lineTo(7.2f, 18.2f)
+            close()
+            moveTo(14f, 5.8f)
+            lineTo(16.8f, 5.8f)
+            lineTo(16.8f, 18.2f)
+            lineTo(14f, 18.2f)
+            close()
+        }
+    }
+
     /** 麦克风：上面的胶囊、下面的托和支架 */
     private fun PathBuilder.mic() {
         moveTo(9f, 6f)
@@ -225,6 +251,19 @@ object WeIcons {
                 fill = null,
                 stroke = SolidColor(Color.Black),
                 strokeLineWidth = strokeWidth,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+                pathBuilder = block,
+            )
+        }.build()
+
+    /** 实心图标：填满并描一圈圆角边，角不那么尖 */
+    private fun solidIcon(name: String, block: PathBuilder.() -> Unit): ImageVector =
+        ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
+            path(
+                fill = SolidColor(Color.Black),
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 1.4f,
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Round,
                 pathBuilder = block,

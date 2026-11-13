@@ -101,6 +101,9 @@ data class WeColors(
     val callButtonOnIcon: Color = Color(0xFF191919),
     /** 挂断 */
     val callHangUp: Color = Color(0xFFFA5151),
+    val callHangUpPressed: Color = Color(0xFFD94848),
+    /** 通话页的失败提示：偏暖的深色底，白字读得清 */
+    val callNotice: Color = Color(0xFF4A3B24),
 )
 
 val LightWeColors = WeColors(

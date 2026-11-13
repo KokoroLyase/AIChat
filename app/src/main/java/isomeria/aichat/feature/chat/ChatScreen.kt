@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
@@ -56,6 +57,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -143,6 +146,7 @@ fun ChatScreen(
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val inCall by viewModel.inCall.collectAsStateWithLifecycle()
+    val callStartedAt by viewModel.callStartedAt.collectAsStateWithLifecycle()
     val pageEntry by viewModel.entry.collectAsStateWithLifecycle()
     val pagedRows = viewModel.rows.collectAsLazyPagingItems()
     val newMessageCount by viewModel.newMessageCount.collectAsStateWithLifecycle()
@@ -520,7 +524,7 @@ fun ChatScreen(
 
         if (contact != null && inCall) {
             // 0.8.0：正在和这个联系人通话，不从这里发消息
-            InCallBar { onCall(contact.id) }
+            InCallBar(callStartedAt) { onCall(contact.id) }
         } else if (contact != null) {
             ChatInputBar(
                 value = input,
@@ -833,14 +837,35 @@ private fun ChatBottomArea(reserve: Dp?, content: @Composable () -> Unit) {
  */
 internal fun opensCallPage(message: isomeria.aichat.data.db.Message, inCall: Boolean): Boolean = message.callOngoing && inCall
 
-/** 正在和这个联系人通话时代替输入栏（0.8.0）：点一下回到通话页 */
+/**
+ * 正在和这个联系人通话时代替输入栏（0.8.0）：浅绿色底，左边一个呼吸的绿点，写着通话已经打了多久；点一下回到通话页。
+ * [startedAt] 是通话开始的时间（截图测试里传 [now] 固定时长）。
+ */
 @Composable
-internal fun InCallBar(onClick: () -> Unit) {
+internal fun InCallBar(startedAt: Long?, now: (() -> Long)? = null, onClick: () -> Unit) {
     val colors = WeTheme.colors
+    var current by remember { mutableLongStateOf(now?.invoke() ?: System.currentTimeMillis()) }
+    if (now == null) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                current = System.currentTimeMillis()
+                delay(1_000 - current % 1_000)
+            }
+        }
+    }
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "inCallDot")
+    val pulse by transition.animateFloat(
+        0.35f, 1f,
+        androidx.compose.animation.core.infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse),
+        label = "inCallPulse",
+    )
+    val tint = colors.brand.copy(alpha = if (colors.isDark) 0.16f else 0.10f).compositeOver(colors.barBackground)
+    val text = startedAt?.let { stringResource(R.string.chat_in_call_duration, isomeria.aichat.core.CallDurations.format((current - it).coerceAtLeast(0))) }
+        ?: stringResource(R.string.chat_in_call)
     Box(
         Modifier
             .fillMaxWidth()
-            .background(colors.barBackground)
+            .background(tint)
             .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
             .navigationBarsPadding()
             .heightIn(min = 56.dp)
@@ -848,9 +873,16 @@ internal fun InCallBar(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .graphicsLayer { alpha = pulse }
+                    .background(colors.brand, androidx.compose.foundation.shape.CircleShape),
+            )
+            Spacer(Modifier.width(10.dp))
             Icon(isomeria.aichat.ui.components.WeIcons.Phone, null, tint = colors.brandText, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.chat_in_call), style = WeTheme.typography.listTitle, color = colors.brandText)
+            Text(text, style = WeTheme.typography.listTitle, color = colors.brandText, modifier = Modifier.weight(1f, fill = false))
         }
     }
 }

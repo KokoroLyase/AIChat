@@ -130,10 +130,9 @@ fun VoiceBubble(
     }
 }
 
-/** 声波图标：一个点和两道弧，[visible] 是亮着几格（1～3） */
+/** 声波图标：一个点和两道弧，[visible] 是亮着几格（1～3）；0.8.0 起通话详情页也用 */
 @Composable
-private fun SoundWaves(color: Color, visible: Int, pointingRight: Boolean) {
-    val size = 20.dp
+internal fun SoundWaves(color: Color, visible: Int, pointingRight: Boolean, size: Dp = 20.dp) {
     Canvas(Modifier.size(size)) {
         scale(scaleX = if (pointingRight) 1f else -1f, scaleY = 1f) {
             val stroke = 2.dp.toPx()

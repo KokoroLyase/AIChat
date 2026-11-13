@@ -123,6 +123,11 @@ class ChatViewModel @Inject constructor(
         .map { it != null && it.contactId == contactId && it.phase != isomeria.aichat.data.call.CallPhase.ENDED }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    /** 正在和这个联系人通话时，通话开始的时间（输入栏位置显示已经打了多久）；不在通话时为 null */
+    val callStartedAt: StateFlow<Long?> = callEngine.state
+        .map { state -> state?.takeIf { it.contactId == contactId && it.phase != isomeria.aichat.data.call.CallPhase.ENDED }?.startedAt }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     /** 从搜索结果进来时要定位并高亮的消息；0 表示没有 */
     val focusMessageId: Long = route.focusMessageId
 
