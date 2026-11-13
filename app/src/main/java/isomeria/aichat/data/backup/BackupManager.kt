@@ -16,6 +16,8 @@ import isomeria.aichat.data.db.CallEndReason
 import isomeria.aichat.data.db.CallTurn
 import isomeria.aichat.data.db.Contact
 import isomeria.aichat.data.db.Conversation
+import isomeria.aichat.data.db.Favorite
+import isomeria.aichat.data.db.FavoriteTurn
 import isomeria.aichat.data.db.GlobalMemoryCategory
 import isomeria.aichat.data.db.GlobalMemoryItem
 import isomeria.aichat.data.db.GlobalMemoryTopic
@@ -92,6 +94,8 @@ data class BackupPreview(
     val voiceCount: Int get() = data.messages.count { it.type == MessageType.VOICE }
     /** 通话（0.8.0）；0.7.2 及更早的备份没有 */
     val callCount: Int get() = data.messages.count { it.type == MessageType.CALL }
+    /** 收藏（0.9.0）；0.8.0 及更早的备份没有 */
+    val favoriteCount: Int get() = data.favorites.size
 
     /** 备份里的全局记忆；0.4.2 及更早的备份没有 */
     val globalMemory: GlobalMemoryCount get() = GlobalMemoryCount(data.globalCategories.size, data.globalItems.size)
@@ -280,6 +284,8 @@ class BackupManager @Inject constructor(
         val globalTopics: List<GlobalMemoryTopic>,
         val globalItems: List<GlobalMemoryItem>,
         val callTurns: Map<Long, List<CallTurn>> = emptyMap(),
+        val favorites: List<Favorite> = emptyList(),
+        val favoriteTurns: Map<Long, List<FavoriteTurn>> = emptyMap(),
     )
 
     private sealed interface KeyExport {
@@ -304,6 +310,8 @@ class BackupManager @Inject constructor(
                 globalDao.topics(),
                 globalDao.items(),
                 db.callDao().listAll().groupBy { it.messageId },
+                db.favoriteDao().listAll(),
+                db.favoriteDao().allTurns().groupBy { it.favoriteId },
             )
         }
         val (contacts, rawConversations, rawMessages, configs, models) = tables
@@ -360,8 +368,12 @@ class BackupManager @Inject constructor(
             globalCategories = tables.globalCategories.map { it.toDto() },
             globalTopics = tables.globalTopics.map { it.toDto() },
             globalItems = tables.globalItems.map { it.toDto() },
+            favorites = tables.favorites.map { favorite ->
+                favorite.toDto(media.add(favorite.audioPath, BackupFormat.FAVORITES_DIR))
+                    .copy(call = tables.favoriteTurns[favorite.id].orEmpty().map { it.toDto(media.add(it.audioPath, BackupFormat.FAVORITES_DIR)) })
+            },
         ).restrictTo(modules)
-        // 只打包选中内容用到的头像、图片、语音和通话音频
+        // 只打包选中内容用到的头像、图片、语音、通话和收藏的音频
         val usedMedia = data.mediaNames()
         val mediaEntries = media.entries.filterKeys { it in usedMedia }
         val keyExported = keyIncluded && data.providers.any { it.apiKey != null }
@@ -502,6 +514,10 @@ class BackupManager @Inject constructor(
         val topics = data.globalTopics.filter { it.categoryId in categoryIds }.distinctBy { it.id }
             .map { it.copy(name = it.name.take(GlobalMemoryCategory.NAME_MAX_LENGTH)) }
         val topicIds = topics.mapTo(HashSet()) { it.id }
+        val messages = data.messages.filter { it.contactId in ids }.distinctBy { it.id }
+        // 引用（0.9.0）只指向同一个联系人、备份里还在的消息；对不上的只留快照
+        val messageContacts = messages.associate { it.id to it.contactId }
+        fun favoriteAudio(name: String?) = name?.takeIf { it.startsWith(BackupFormat.FAVORITES_DIR) && BackupFormat.mediaNamePattern.matches(it) }
         return data.copy(
             globalCategories = categories,
             globalTopics = topics,
@@ -523,9 +539,12 @@ class BackupManager @Inject constructor(
             contacts = contacts,
             conversations = data.conversations.filter { it.contactId in ids }.distinctBy { it.contactId }
                 .map { it.copy(background = it.background?.takeIf { name -> name.startsWith(BackupFormat.BACKGROUNDS_DIR) && BackupFormat.mediaNamePattern.matches(name) }) },
-            messages = data.messages.filter { it.contactId in ids }.distinctBy { it.id }
+            messages = messages
                 .map {
                     it.copy(
+                        quoteId = it.quoteId?.takeIf { quoted -> quoted != it.id && messageContacts[quoted] == it.contactId },
+                        quoteRole = it.quoteRole.takeIf { _ -> it.quoteText != null },
+                        quoteType = it.quoteType.takeIf { _ -> it.quoteText != null },
                         image = it.image?.takeIf(BackupFormat.mediaNamePattern::matches),
                         voice = it.voice?.takeIf { name -> name.startsWith(BackupFormat.VOICE_DIR) && BackupFormat.mediaNamePattern.matches(name) },
                         // 通话（0.8.0）恢复后都是打完的：总时长至少 1 毫秒（0 是“通话中”，会让这条删不掉、点开又去打电话）
@@ -540,6 +559,17 @@ class BackupManager @Inject constructor(
                     )
                 },
             settings = data.settings.copy(avatar = data.settings.avatar?.takeIf(BackupFormat.mediaNamePattern::matches)),
+            // 收藏（0.9.0）：只有文字、语音、通话；音频只认 favorites/ 下合规的名字；只有通话带每一句
+            favorites = data.favorites.filter { it.type != MessageType.IMAGE }.distinctBy { it.id }
+                .map { favorite ->
+                    favorite.copy(
+                        audio = if (favorite.type == MessageType.VOICE) favoriteAudio(favorite.audio) else null,
+                        audioMillis = favorite.audioMillis.coerceAtLeast(0),
+                        call = if (favorite.type != MessageType.CALL) emptyList() else favorite.call.map { turn ->
+                            turn.copy(audio = favoriteAudio(turn.audio), audioMillis = turn.audioMillis.coerceAtLeast(0))
+                        },
+                    )
+                },
         )
     }
 
@@ -622,6 +652,8 @@ class BackupManager @Inject constructor(
         data.conversations.mapNotNullTo(names) { it.background }
         data.messages.mapNotNullTo(names) { it.voice }
         data.messages.forEach { message -> message.call.mapNotNullTo(names) { it.audio } }
+        data.favorites.mapNotNullTo(names) { it.audio }
+        data.favorites.forEach { favorite -> favorite.call.mapNotNullTo(names) { it.audio } }
         val result = HashMap<String, String>()
         for (name in names) {
             val entry = zip.getEntry(name) ?: continue
@@ -630,10 +662,11 @@ class BackupManager @Inject constructor(
                 name.startsWith(BackupFormat.BACKGROUNDS_DIR) -> MediaKind.BACKGROUND
                 name.startsWith(BackupFormat.VOICE_DIR) -> MediaKind.VOICE
                 name.startsWith(BackupFormat.CALLS_DIR) -> MediaKind.CALL
+                name.startsWith(BackupFormat.FAVORITES_DIR) -> MediaKind.FAVORITE
                 else -> MediaKind.IMAGE
             }
-            // 语音和通话的音频保留原来的扩展名（m4a、mp3、wav），播放时按它识别格式
-            val extension = if (kind == MediaKind.VOICE || kind == MediaKind.CALL) name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "m4a" } else "jpg"
+            // 语音、通话和收藏的音频保留原来的扩展名（m4a、mp3、wav），播放时按它识别格式
+            val extension = if (kind == MediaKind.VOICE || kind == MediaKind.CALL || kind == MediaKind.FAVORITE) name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "m4a" } else "jpg"
             val target = files.newMediaFile(kind, extension)
             created += target
             zip.getInputStream(entry).use { input ->
@@ -698,6 +731,13 @@ class BackupManager @Inject constructor(
             db.proactiveDao().deleteAllReminders()
             conversationDao.deleteAll()
             contactDao.deleteAll()
+        }
+        if (BackupModule.FAVORITES in modules) {
+            // 收藏（0.9.0）：id 不变；来源联系人和原消息按 id 加时间认，不用改写。旧文件在恢复后的清理里删掉
+            db.favoriteDao().deleteAllTurns()
+            db.favoriteDao().deleteAll()
+            db.favoriteDao().insertAll(data.favorites.map { it.toEntity(it.contactId, it.messageId, it.audio?.let(paths::get)) })
+            db.favoriteDao().insertTurns(data.favorites.flatMap { it.turns(it.id, paths) })
         }
         if (BackupModule.GLOBAL_MEMORY in modules) {
             globalDao.deleteAllItems()
@@ -890,6 +930,18 @@ class BackupManager @Inject constructor(
         val newIds = messageDao.insertAll(newMessages)
         // 通话的每一条话（0.8.0）跟着换了 id 的通话消息
         db.callDao().insertAll(added.zip(newIds).flatMap { (pair, id) -> pair.first.callTurns(id, paths) })
+        // 备份里的消息 id → 本机的 id：新加的换成新 id；本机已有的同一条沿用原 id
+        val messageIds = HashMap<Long, Long>()
+        val addedIds = added.mapTo(HashSet()) { it.first.id }
+        for (message in data.messages) {
+            if (message.id !in addedIds && message.contactId in same) messageIds[message.id] = message.id
+        }
+        added.zip(newIds).forEach { (pair, id) -> messageIds[pair.first.id] = id }
+        // 引用（0.9.0）：原消息也在这次恢复里或本机已有时指向本机的 id，对不上的置空（快照保留）
+        added.zip(newIds).forEach { (pair, id) ->
+            val quoted = pair.first.quoteId ?: return@forEach
+            messageDao.setQuoteId(id, messageIds[quoted])
+        }
         // 已有的联系人多了消息：重新算聊天列表里的最后一条
         val sameTargets = same.mapNotNullTo(HashSet()) { idMap[it] }
         newMessages.mapTo(HashSet()) { it.contactId }.filter { it in sameTargets }.forEach { refreshLastMessage(it) }
@@ -915,7 +967,26 @@ class BackupManager @Inject constructor(
             },
         )
         mergeGlobalMemory(data)
+        mergeFavorites(data, idMap, messageIds, paths)
         return RestoreSummary(contactsAdded, newMessages.size, keyRestored, contactsNeedModel = needModel) to ProviderIds(providerIds)
+    }
+
+    /**
+     * 合并收藏（0.9.0）：同一条（收藏时间、类型、原消息时间、文字都相同）不重复加入；本机没有的换新 id 加入。
+     * 来源联系人和原消息这次也恢复了时换成本机的 id，否则保留备份里的（和时间一起才认得出，对不上就只显示快照）
+     */
+    private suspend fun mergeFavorites(data: BackupData, contactIds: Map<Long, Long>, messageIds: Map<Long, Long>, paths: Map<String, String>) {
+        val existing = db.favoriteDao().listAll().mapTo(HashSet()) { listOf(it.createdAt, it.type, it.messageCreatedAt, it.content) }
+        for (favorite in data.favorites) {
+            if (!existing.add(listOf(favorite.createdAt, favorite.type, favorite.messageCreatedAt, favorite.content))) continue
+            val entity = favorite.toEntity(
+                contactIds[favorite.contactId] ?: favorite.contactId,
+                favorite.messageId?.let { messageIds[it] ?: it },
+                favorite.audio?.let(paths::get),
+            ).copy(id = 0)
+            val id = db.favoriteDao().insert(entity)
+            db.favoriteDao().insertTurns(favorite.turns(id, paths))
+        }
     }
 
     /**
@@ -1007,14 +1078,9 @@ class BackupManager @Inject constructor(
         if (next != current) settings.write(next)
     }
 
+    /** 和「存储空间」的孤立文件检查用同一份引用清单（0.9.0 起含收藏的音频） */
     private suspend fun deleteUnreferencedMedia() {
-        val referenced = HashSet<String>()
-        contactDao.listAll().mapNotNullTo(referenced) { it.avatarPath }
-        referenced += messageDao.allImagePaths()
-        referenced += conversationDao.backgroundPaths()
-        referenced += messageDao.allVoicePaths()
-        settings.read().avatarPath?.let(referenced::add)
-        files.deleteUnreferenced(referenced)
+        files.deleteUnreferenced(isomeria.aichat.data.repo.mediaReferencesOf(db, settings.read().avatarPath))
     }
 
     // ---------- 数据库实体 ↔ 导出格式 ----------
@@ -1128,6 +1194,8 @@ class BackupManager @Inject constructor(
         status = status, errorCode = errorCode, model = model, promptTokens = promptTokens,
         completionTokens = completionTokens, replyGroup = replyGroup, createdAt = createdAt, origin = origin,
         voice = voice, voiceMillis = voiceMillis, voicePlayed = voicePlayed, voiceShowText = voiceShowText,
+        quoteId = quoteId, quoteRole = quoteRole, quoteType = quoteType, quoteText = quoteText,
+        translation = translation, translationShown = translationShown,
     )
 
     /**
@@ -1149,6 +1217,8 @@ class BackupManager @Inject constructor(
             errorCode = if (sending) FailReason.INTERRUPTED.code else errorCode,
             model = model, promptTokens = promptTokens, completionTokens = completionTokens,
             replyGroup = replyGroup, createdAt = createdAt, origin = origin,
+            quoteId = quoteId, quoteRole = quoteRole, quoteType = quoteType, quoteText = quoteText,
+            translation = translation, translationShown = translationShown && translation != null,
         )
     }
 
@@ -1169,6 +1239,35 @@ class BackupManager @Inject constructor(
                     status = turn.status, createdAt = turn.createdAt,
                 )
             }
+        }
+
+    private fun Favorite.toDto(audio: String?) = FavoriteDto(
+        id = id, type = type, role = role, contactId = contactId, contactCreatedAt = contactCreatedAt, contactName = contactName,
+        contactAvatarColor = contactAvatarColor, content = content, audio = audio, audioMillis = audioMillis,
+        messageId = messageId, messageCreatedAt = messageCreatedAt, createdAt = createdAt,
+    )
+
+    /** 语音收藏的音频在备份里缺失时时长为 0（只剩转写文字）；通话收藏的时长是整次通话的，本来就没有自己的音频 */
+    private fun FavoriteDto.toEntity(contactId: Long, messageId: Long?, audioPath: String?) = Favorite(
+        id = id, type = type, role = role, contactId = contactId, contactCreatedAt = contactCreatedAt, contactName = contactName,
+        contactAvatarColor = contactAvatarColor, content = content, audioPath = audioPath,
+        audioMillis = if (type == MessageType.VOICE && audioPath == null) 0 else audioMillis,
+        messageId = messageId, messageCreatedAt = messageCreatedAt, createdAt = createdAt,
+    )
+
+    private fun FavoriteTurn.toDto(audio: String?) = CallTurnDto(
+        seq = seq, role = role, text = text, audio = audio, audioMillis = audioMillis, status = status, createdAt = createdAt,
+    )
+
+    /** 收藏的通话（0.9.0）的每一句，挂到恢复后的收藏 [favoriteId] 上；音频在备份里缺失时只留文字 */
+    private fun FavoriteDto.turns(favoriteId: Long, paths: Map<String, String>): List<FavoriteTurn> =
+        call.map { turn ->
+            val audioPath = turn.audio?.let(paths::get)
+            FavoriteTurn(
+                favoriteId = favoriteId, seq = turn.seq, role = turn.role, text = turn.text,
+                audioPath = audioPath, audioMillis = if (audioPath == null) 0 else turn.audioMillis,
+                status = turn.status, createdAt = turn.createdAt,
+            )
         }
 
     private fun ProviderConfig.toDto(models: List<ProviderModel>, apiKey: SecretDto?) = ProviderDto(

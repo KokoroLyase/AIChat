@@ -506,6 +506,15 @@ private fun BackupInfo(preview: BackupPreview) {
             showDivider = true,
         )
     }
+    // 收藏（0.9.0）；0.8.0 及更早的备份没有
+    if (preview.favoriteCount > 0) {
+        WeListRow(
+            title = stringResource(R.string.restore_info_favorites),
+            value = stringResource(R.string.restore_count_favorites, preview.favoriteCount),
+            showArrow = false,
+            showDivider = true,
+        )
+    }
     WeListRow(
         title = stringResource(R.string.restore_info_key),
         value = stringResource(if (manifest.includesApiKey) R.string.restore_key_included else R.string.restore_key_none),

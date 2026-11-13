@@ -46,7 +46,7 @@ data class OrphanPreview(val files: List<OrphanFile>) {
     val count get() = files.size
     val bytes get() = files.sumOf { it.bytes }
 }
-data class StorageUsage(val images: Long, val avatars: Long, val logs: Long, val cache: Long, val database: Long, val backgrounds: Long = 0, val voice: Long = 0, val asrModels: Long = 0, val calls: Long = 0)
+data class StorageUsage(val images: Long, val avatars: Long, val logs: Long, val cache: Long, val database: Long, val backgrounds: Long = 0, val voice: Long = 0, val asrModels: Long = 0, val calls: Long = 0, val favorites: Long = 0)
 data class CleanupResult(val count: Int, val bytes: Long)
 
 internal fun mediaReferences(avatars: List<String>, images: List<String>, ownAvatar: String?, backgrounds: List<String> = emptyList(), voices: List<String> = emptyList()): Set<String> =

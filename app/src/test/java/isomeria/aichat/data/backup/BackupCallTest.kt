@@ -112,7 +112,7 @@ class BackupCallTest {
             assertEquals(listOf("m4a", "m4a", "mp3"), names.map { it.substringAfterLast('.') }.sorted())
         }
         val preview = backup.inspect(zip)
-        assertEquals(9, preview.manifest.formatVersion)
+        assertEquals(10, preview.manifest.formatVersion)
         assertEquals(1, preview.callCount)
         val call = preview.data.messages.single { it.type == MessageType.CALL }
         assertEquals(9_000L, call.voiceMillis)

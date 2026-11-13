@@ -316,6 +316,8 @@
     <string name="restore_count_voice">%1$d 条</string>
     <string name="restore_info_calls">语音通话</string>
     <string name="restore_count_calls">%1$d 次</string>
+    <string name="restore_info_favorites">收藏</string>
+    <string name="restore_count_favorites">%1$d 条</string>
     <string name="restore_info_key">API Key</string>
     <string name="restore_key_included">已包含（加密）</string>
     <string name="restore_key_none">未包含</string>
@@ -361,6 +363,7 @@
     <string name="backup_module_proactive">主动聊天设置</string>
     <string name="backup_module_voice">语音消息设置</string>
     <string name="backup_module_profile">个人资料和外观</string>
+    <string name="backup_module_favorites">收藏</string>
     <string name="restore_failed">恢复失败，本机数据已撤销到恢复前的状态。</string>
 
     <!-- 大语言模型设置 -->
@@ -661,6 +664,7 @@
     <string name="storage_backgrounds">聊天背景</string>
     <string name="storage_voice">语音消息</string>
     <string name="storage_calls">通话录音</string>
+    <string name="storage_favorites">收藏</string>
     <string name="storage_asr_models">离线识别模型</string>
     <string name="storage_cache">缓存</string>
     <string name="storage_database">数据库</string>

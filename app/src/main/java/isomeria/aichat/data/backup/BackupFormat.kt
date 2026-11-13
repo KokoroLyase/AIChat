@@ -29,11 +29,14 @@ import kotlinx.serialization.json.Json
  *                   v8 起记忆带「是否核心记忆」，联系人带单独设置的回复偏好和语音来源；可以只导出一部分（[BackupModule]），manifest 记下导出了哪些，
  *                   没导出服务商时用 providerRefs 记下联系人和语音来源用到的服务商（只有格式和地址，没有 Key）
  *                   v9 起消息多了通话类型（CALL），通话消息带着它的每一条话（[MessageDto.call]），跟着聊天记录导出
+ *                   v10 起消息带引用（被引用消息的 id 和快照）和译文，跟着聊天记录导出；多了收藏（[BackupData.favorites]，
+ *                   [BackupModule.FAVORITES]，不依赖联系人）
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
  *   background/…    聊天背景（v4 起）
  *   voice/…         语音消息（v7 起）
  *   calls/…         通话里每一条话的音频（v9 起）
+ *   favorites/…     收藏的语音和通话的音频（v10 起，收藏时复制的一份）
  *
  * data.json 里的头像和图片写成 zip 内的相对路径（如 images/xxx.jpg），恢复时换成本机路径。
  * 格式和数据库表分开定义：以后改表不影响已经导出的文件，改格式时 [BackupFormat.VERSION] +1，
@@ -42,7 +45,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 9
+    const val VERSION = 10
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -54,9 +57,10 @@ object BackupFormat {
     const val BACKGROUNDS_DIR = "background/"
     const val VOICE_DIR = "voice/"
     const val CALLS_DIR = "calls/"
+    const val FAVORITES_DIR = "favorites/"
 
     /** zip 内文件名只允许这些字符（不能以点开头），防止「../」之类的路径 */
-    val mediaNamePattern = Regex("""^(avatars|images|background|voice|calls)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
+    val mediaNamePattern = Regex("""^(avatars|images|background|voice|calls|favorites)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
 
     val json = Json {
         ignoreUnknownKeys = true
@@ -95,18 +99,27 @@ enum class BackupModule(val requiresContacts: Boolean = false) {
 
     /** 昵称、头像、主题、字号、通知和自动检查更新 */
     PROFILE,
+
+    /** 收藏（0.9.0，v10 起）：独立的快照和复制的音频，不依赖联系人 */
+    FAVORITES,
     ;
 
     companion object {
         val ALL: Set<BackupModule> = entries.toSet()
 
+        /**
+         * manifest 没写导出了哪些内容的旧文件（v7 及更早）里有的内容：后来才有的几项不算，
+         * 免得覆盖恢复时把本机的收藏当成“备份里选了但没有”清掉
+         */
+        val LEGACY: Set<BackupModule> = ALL - FAVORITES
+
         /** 去掉依赖联系人、但没选联系人的几项 */
         fun normalize(modules: Set<BackupModule>): Set<BackupModule> =
             if (CONTACTS in modules) modules else modules.filterNotTo(LinkedHashSet()) { it.requiresContacts }
 
-        /** manifest 里的名字；没有时（v7 及更早）是全部内容，不认识的名字忽略 */
+        /** manifest 里的名字；没有时（v7 及更早）是 [LEGACY]，不认识的名字忽略 */
         fun parse(names: List<String>?): Set<BackupModule> =
-            names?.mapNotNullTo(LinkedHashSet()) { name -> entries.firstOrNull { it.name == name } }?.let(::normalize) ?: ALL
+            names?.mapNotNullTo(LinkedHashSet()) { name -> entries.firstOrNull { it.name == name } }?.let(::normalize) ?: LEGACY
     }
 }
 
@@ -140,6 +153,31 @@ data class BackupData(
     val globalItems: List<GlobalItemDto> = emptyList(),
     /** 没导出模型配置时，联系人和语音来源用到的服务商（v8 起）：恢复时按格式和地址找本机的同一个 */
     val providerRefs: List<ProviderRefDto> = emptyList(),
+    /** 收藏（v10 起） */
+    val favorites: List<FavoriteDto> = emptyList(),
+)
+
+/**
+ * 一条收藏（v10 起）：收藏时的快照，和原消息、联系人互不影响。
+ * [contactId] 和 [contactCreatedAt] 一起才认出来源联系人（只比 id 会认错）；[messageId] 同样要和 [messageCreatedAt] 一起用。
+ * 音频是 zip 内相对路径，如 favorites/xxx.m4a；通话的每一句在 [call] 里，音频也在 favorites/ 下
+ */
+@Serializable
+data class FavoriteDto(
+    val id: Long,
+    val type: MessageType,
+    val role: Role,
+    val contactId: Long,
+    val contactCreatedAt: Long,
+    val contactName: String = "",
+    val contactAvatarColor: Int = 0,
+    val content: String = "",
+    val audio: String? = null,
+    val audioMillis: Long = 0,
+    val messageId: Long? = null,
+    val messageCreatedAt: Long,
+    val createdAt: Long,
+    val call: List<CallTurnDto> = emptyList(),
 )
 
 /** 只用来认出「同一个服务商」的引用：没有名称、模型和 Key */
@@ -235,9 +273,17 @@ data class MessageDto(
     val voiceShowText: Boolean = false,
     /** 通话消息（v9 起）的每一条话，按顺序；别的消息为空 */
     val call: List<CallTurnDto> = emptyList(),
+    /** 引用（v10 起）：被引用消息在备份里的 id 和快照（说话方、类型、文字） */
+    val quoteId: Long? = null,
+    val quoteRole: Role? = null,
+    val quoteType: MessageType? = null,
+    val quoteText: String? = null,
+    /** 译文和是否显示（v10 起） */
+    val translation: String? = null,
+    val translationShown: Boolean = false,
 )
 
-/** 通话里的一条话（v9 起）。音频是 zip 内相对路径，如 calls/xxx.m4a */
+/** 通话里的一条话（v9 起）。音频是 zip 内相对路径，如 calls/xxx.m4a；收藏里的通话（v10 起）是 favorites/xxx.m4a */
 @Serializable
 data class CallTurnDto(
     val seq: Int,

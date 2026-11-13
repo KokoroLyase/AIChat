@@ -4,6 +4,35 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
+ * v9 → v10（0.9.0）：消息加引用（被引用消息的 id 和快照）和译文，旧消息都没有引用和译文；
+ * 新建收藏的两张表（favorite、favorite_turn），删除收藏时级联删除它的每一句。旧数据都不变。
+ */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE message ADD COLUMN quoteId INTEGER")
+        db.execSQL("ALTER TABLE message ADD COLUMN quoteRole TEXT")
+        db.execSQL("ALTER TABLE message ADD COLUMN quoteType TEXT")
+        db.execSQL("ALTER TABLE message ADD COLUMN quoteText TEXT")
+        db.execSQL("ALTER TABLE message ADD COLUMN translation TEXT")
+        db.execSQL("ALTER TABLE message ADD COLUMN translationShown INTEGER NOT NULL DEFAULT 0")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `favorite` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` TEXT NOT NULL, `role` TEXT NOT NULL, " +
+                "`contactId` INTEGER NOT NULL, `contactCreatedAt` INTEGER NOT NULL, `contactName` TEXT NOT NULL, `contactAvatarColor` INTEGER NOT NULL, " +
+                "`content` TEXT NOT NULL, `audioPath` TEXT, `audioMillis` INTEGER NOT NULL, `messageId` INTEGER, `messageCreatedAt` INTEGER NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL)",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_favorite_createdAt` ON `favorite` (`createdAt`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `favorite_turn` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `favoriteId` INTEGER NOT NULL, " +
+                "`seq` INTEGER NOT NULL, `role` TEXT NOT NULL, `text` TEXT NOT NULL, `audioPath` TEXT, `audioMillis` INTEGER NOT NULL, " +
+                "`status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                "FOREIGN KEY(`favoriteId`) REFERENCES `favorite`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_favorite_turn_favoriteId_seq` ON `favorite_turn` (`favoriteId`, `seq`)")
+    }
+}
+
+/**
  * v8 → v9（0.8.0）：语音通话。消息类型多了 CALL（类型存名字，不改 message 表）；新建 call_turn 表放通话里的每一条话，
  * 删除通话消息时级联删除。只新建表，旧消息、旧联系人都不变。
  */

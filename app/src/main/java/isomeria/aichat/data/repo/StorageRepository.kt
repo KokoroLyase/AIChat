@@ -33,6 +33,8 @@ class StorageRepository @Inject constructor(
             voice = size(File(context.filesDir, FileStorage.VOICE_DIR)),
             // 0.8.0：通话里每一条话的音频
             calls = size(File(context.filesDir, FileStorage.CALLS_DIR)),
+            // 0.9.0：收藏的语音和通话音频（复制的一份）
+            favorites = size(File(context.filesDir, FileStorage.FAVORITES_DIR)),
             // 0.7.1：离线识别模型（含没下完的部分）；不是可再生缓存，也不参与孤立文件清理，在「离线识别」页单独删除
             asrModels = size(File(context.filesDir, isomeria.aichat.data.voice.OfflineAsrModel.ROOT)),
         )
@@ -77,10 +79,10 @@ class StorageRepository @Inject constructor(
 }
 
 /** Coil keeps an empty journal after clear(); count its entries, not maintenance metadata. */
-/** 孤立文件检查时算作“在用”的媒体文件：联系人头像、消息图片、自己的头像、聊天背景、语音和通话音频 */
+/** 孤立文件检查时算作“在用”的媒体文件：联系人头像、消息图片、自己的头像、聊天背景、语音和通话音频、收藏的音频（0.9.0） */
 internal suspend fun mediaReferencesOf(db: AppDatabase, ownAvatar: String?): Set<String> = mediaReferences(
     db.contactDao().avatarPaths(), db.messageDao().allImagePaths(), ownAvatar,
-    db.conversationDao().backgroundPaths(), db.messageDao().allVoicePaths(),
+    db.conversationDao().backgroundPaths(), db.messageDao().allVoicePaths() + db.favoriteDao().allAudioPaths(),
 )
 
 internal fun cacheContentBytes(root: File, imageDirectory: File?, imageBytes: Long): Long {

@@ -22,7 +22,7 @@ import kotlin.math.roundToInt
 
 data class StoredImage(val path: String, val width: Int, val height: Int)
 
-enum class MediaKind { AVATAR, IMAGE, BACKGROUND, VOICE, CALL }
+enum class MediaKind { AVATAR, IMAGE, BACKGROUND, VOICE, CALL, FAVORITE }
 
 /** 聊天背景文件；没设置或文件已丢失时返回 null，界面回退到默认背景。 */
 fun chatBackgroundFile(path: String?): File? = path?.let(::File)?.takeIf { it.isFile }
@@ -43,6 +43,8 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
     private val voiceDir get() = File(context.filesDir, VOICE_DIR).apply { mkdirs() }
     /** 语音通话（0.8.0）：通话里每一条话的音频 */
     private val callsDir get() = File(context.filesDir, CALLS_DIR).apply { mkdirs() }
+    /** 收藏（0.9.0）：收藏语音和通话时复制一份音频到这里，删掉原消息也还能播放 */
+    private val favoritesDir get() = File(context.filesDir, FAVORITES_DIR).apply { mkdirs() }
     /** 录音转文字（麦克风按钮）的临时录音，识别完就删；不是语音消息 */
     val voiceTempDir: File get() = File(context.cacheDir, VOICE_TEMP_DIR).apply { mkdirs() }
 
@@ -63,6 +65,25 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         val file = File(callsDir, "${UUID.randomUUID()}.${extension.lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "bin" }}")
         StorageOperations.pin(file)
         return file
+    }
+
+    /**
+     * 收藏时把音频复制一份到 files/favorites（0.9.0），文件名随机。原文件不在或不在应用私有目录里时返回 null。
+     * 和 [newVoiceFile] 一样先固定，写库后调用 [commitAvatar] 解除，失败时调用 [delete]
+     */
+    fun copyToFavorites(source: String?): String? {
+        val from = source?.let(::File)?.takeIf { it.isFile && isPrivate(it) } ?: return null
+        val extension = from.extension.lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "bin" }
+        val file = File(favoritesDir, "${UUID.randomUUID()}.$extension")
+        StorageOperations.pin(file)
+        try {
+            from.copyTo(file)
+        } catch (e: Throwable) {
+            file.delete()
+            StorageOperations.unpin(file)
+            throw e
+        }
+        return file.absolutePath
     }
 
     /** 恢复数据前自动备份当前数据的位置（应用私有目录） */
@@ -134,14 +155,15 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
             MediaKind.BACKGROUND -> backgroundsDir
             MediaKind.VOICE -> voiceDir
             MediaKind.CALL -> callsDir
+            MediaKind.FAVORITE -> favoritesDir
         }
         return File(dir, "${UUID.randomUUID()}.$extension")
     }
 
-    /** 删除头像、图片、聊天背景、语音和通话（0.8.0）目录里已经没有任何记录引用的文件（恢复数据后清理） */
+    /** 删除头像、图片、聊天背景、语音、通话（0.8.0）和收藏（0.9.0）目录里已经没有任何记录引用的文件（恢复数据后清理） */
     fun unreferenced(referenced: Set<String>): List<File> {
         val keep = referenced.mapNotNull { runCatching { File(it).canonicalPath }.getOrNull() }.toSet() + StorageOperations.pinnedPaths()
-        return listOf(avatarsDir, imagesDir, backgroundsDir, voiceDir, callsDir).flatMap { dir ->
+        return listOf(avatarsDir, imagesDir, backgroundsDir, voiceDir, callsDir, favoritesDir).flatMap { dir ->
             check(dir.isDirectory && !java.nio.file.Files.isSymbolicLink(dir.toPath()))
             (dir.listFiles() ?: throw java.io.IOException("MediaDirectoryUnavailable"))
                 .filter { it.isFile && !java.nio.file.Files.isSymbolicLink(it.toPath()) && isPrivate(it) && it.canonicalPath !in keep }
@@ -254,6 +276,7 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         const val BACKGROUND_DIR = "background"
         const val VOICE_DIR = "voice"
         const val CALLS_DIR = "calls"
+        const val FAVORITES_DIR = "favorites"
         const val VOICE_TEMP_DIR = "voice-temp"
         private const val MAX_IMAGE_SIDE = 2048
         private const val MAX_CROP_SOURCE_SIDE = 2048

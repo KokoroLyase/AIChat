@@ -86,8 +86,10 @@ enum class Capability { YES, NO, UNKNOWN }
  *
  * 语音合成 TTS、语音识别 ASR（0.7.0）不按 token 计，借用同一张表但含义不同，统计时单独列出、不并进 token 合计：
  * ASR 的 promptTokens 是识别的音频秒数；TTS 的 promptTokens 是合成的字数、completionTokens 是合成出的音频秒数。
+ *
+ * TRANSLATE（0.9.0）：长按消息「翻译」，用这个联系人的聊天模型，按 token 计，单独列出；不占主动聊天的每日上限。
  */
-enum class UsagePurpose { CHAT, MEMORY, PROACTIVE, TTS, ASR }
+enum class UsagePurpose { CHAT, MEMORY, PROACTIVE, TTS, ASR, TRANSLATE }
 
 /**
  * 消息来源（0.6.0）：普通消息（用户发的、对用户消息的回复），或联系人主动发来的。
@@ -254,6 +256,18 @@ data class Message(
     @ColumnInfo(defaultValue = "0") val voicePlayed: Boolean = false,
     /** 是否在语音条下面显示转写文字（「转文字」/「取消转文字」） */
     @ColumnInfo(defaultValue = "0") val voiceShowText: Boolean = false,
+    /**
+     * 引用（0.9.0）：这条消息回复的是哪一条，以及那一条当时的快照（谁说的、类型、文字）。
+     * 原消息删掉后照常显示快照；[quoteId] 只用来跳过去，找不到时提示已删除。没有引用时都为 null
+     */
+    val quoteId: Long? = null,
+    val quoteRole: Role? = null,
+    val quoteType: MessageType? = null,
+    val quoteText: String? = null,
+    /** 翻译（0.9.0）：长按「翻译」得到的译文，存下来不用再请求；不进上下文和记忆 */
+    val translation: String? = null,
+    /** 是否在气泡下面显示译文（「隐藏翻译」时为 false，译文保留） */
+    @ColumnInfo(defaultValue = "0") val translationShown: Boolean = false,
 ) {
     /** 等着合成的语音回复：已经存了文字，还没有语音文件 */
     val awaitingSynthesis: Boolean get() = type == MessageType.VOICE && role == Role.ASSISTANT && voicePath == null
@@ -285,6 +299,59 @@ data class Message(
 data class CallTurn(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val messageId: Long,
+    val seq: Int,
+    val role: Role,
+    val text: String = "",
+    val audioPath: String? = null,
+    val audioMillis: Long = 0,
+    val status: CallTurnStatus = CallTurnStatus.OK,
+    val createdAt: Long,
+)
+
+/**
+ * 收藏（0.9.0）：长按或多选收藏的一条文字、语音或通话消息。存的是快照，和原消息、联系人都不再关联：
+ * 删掉原消息、清空聊天、删除联系人都不影响收藏。
+ *
+ * - [contactId] 和 [contactCreatedAt] 一起认出来源联系人：两个都对得上才算同一个（id 会被新联系人重用），
+ *   对不上时用存下的 [contactName] 和 [contactAvatarColor] 显示
+ * - [audioPath]：语音消息的音频复制一份到 files/favorites/，删除收藏时删掉；通话的每一句在 [FavoriteTurn]
+ * - [audioMillis]：语音的时长，或通话的总时长
+ * - [messageId]、[messageCreatedAt]：原消息（用来判断“已收藏”；原消息删掉后不再有用）
+ */
+@Entity(tableName = "favorite", indices = [Index(value = ["createdAt"])])
+data class Favorite(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val type: MessageType,
+    val role: Role,
+    val contactId: Long,
+    val contactCreatedAt: Long,
+    val contactName: String,
+    val contactAvatarColor: Int,
+    val content: String = "",
+    val audioPath: String? = null,
+    val audioMillis: Long = 0,
+    val messageId: Long? = null,
+    val messageCreatedAt: Long,
+    /** 收藏的时间 */
+    val createdAt: Long,
+)
+
+/** 收藏的通话里的一句（0.9.0），和 [CallTurn] 一样；音频复制在 files/favorites/。删除收藏时级联删除（调用方另外显式删一遍） */
+@Entity(
+    tableName = "favorite_turn",
+    foreignKeys = [
+        ForeignKey(
+            entity = Favorite::class,
+            parentColumns = ["id"],
+            childColumns = ["favoriteId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["favoriteId", "seq"])],
+)
+data class FavoriteTurn(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val favoriteId: Long,
     val seq: Int,
     val role: Role,
     val text: String = "",

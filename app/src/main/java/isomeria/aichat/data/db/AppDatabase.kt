@@ -26,8 +26,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProactiveState::class,
         ProactiveReminder::class,
         CallTurn::class,
+        Favorite::class,
+        FavoriteTurn::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 @TypeConverters(DbConverters::class)
@@ -44,6 +46,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun globalMemoryDao(): GlobalMemoryDao
     abstract fun proactiveDao(): ProactiveDao
     abstract fun callDao(): CallDao
+    abstract fun favoriteDao(): FavoriteDao
 
     companion object {
         const val NAME = "aichat.db"

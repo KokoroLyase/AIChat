@@ -221,7 +221,7 @@ class BackupManagerTest {
         db.contactDao().update(db.contactDao().get(2)!!.copy(memoryModel = "local", memoryThinkingOption = "native", thinkingOption = "on"))
         val before = dump()
         val zip = export(password = "pw123456")
-        assertEquals(9, backup.inspect(zip).manifest.formatVersion)
+        assertEquals(10, backup.inspect(zip).manifest.formatVersion)
         scramble()
         backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(before, dump())
@@ -541,7 +541,9 @@ class BackupManagerTest {
             BackupFormat.MANIFEST to """{"app":"isomeria.aichat","appVersion":"0.7.1","appVersionCode":701,"formatVersion":7,"exportedAt":1}""",
             BackupFormat.DATA to """{}""",
         )
-        assertEquals(BackupModule.ALL, backup.inspect(old).modules)
+        // 0.9.0：没写导出了哪些内容的旧文件不算有收藏（后来才有），覆盖恢复不会清掉本机的收藏
+        assertEquals(BackupModule.ALL - BackupModule.FAVORITES, backup.inspect(old).modules)
+        assertEquals(BackupModule.LEGACY, backup.inspect(old).modules)
     }
 
     @Test
@@ -1102,7 +1104,7 @@ class BackupManagerTest {
         assertTrue(preview.decryptedTemporary)
         assertTrue(preview.file.canonicalPath.startsWith(files.restoreCacheDir.canonicalPath + File.separator))
         assertTrue(preview.file.isFile)
-        assertEquals(9, preview.manifest.formatVersion)
+        assertEquals(10, preview.manifest.formatVersion)
         val result = backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray())
         assertEquals(expected, dump())
         assertFalse(result.cleanupPending)

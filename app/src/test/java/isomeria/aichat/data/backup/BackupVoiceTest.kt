@@ -123,7 +123,7 @@ class BackupVoiceTest {
             assertFalse("语音服务商的 Key 默认也不导出", raw.contains("sk-tts") || raw.contains("sk-asr"))
         }
         val data = backup.inspect(zip).data
-        assertEquals(9, backup.inspect(zip).manifest.formatVersion)
+        assertEquals(10, backup.inspect(zip).manifest.formatVersion)
         assertEquals("恢复前的摘要：语音消息条数（合成中的那条按文字导出）", 2, backup.inspect(zip).voiceCount)
         val messages = data.messages.sortedBy { it.createdAt }
         assertEquals(listOf(MessageType.VOICE, MessageType.VOICE, MessageType.TEXT), messages.map { it.type })
@@ -307,7 +307,7 @@ class BackupVoiceTest {
             ZipFile(zip).use { z ->
                 assertTrue("模型文件不进备份", z.entries().toList().none { it.name.contains("asr-models") || it.name.endsWith(".onnx") })
             }
-            assertEquals(9, backup.inspect(zip).manifest.formatVersion)
+            assertEquals(10, backup.inspect(zip).manifest.formatVersion)
             assertEquals(VoiceSettingsDto(ReplyType.VOICE, "local:system-tts", "local:offline-asr"), backup.inspect(zip).data.settings.voice)
             settings.v = settings.v.copy(voice = VoiceSettings())
             backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)

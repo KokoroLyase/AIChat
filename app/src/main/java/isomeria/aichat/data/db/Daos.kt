@@ -425,6 +425,10 @@ interface MessageDao {
     @Query("SELECT id, contactId, createdAt FROM message")
     suspend fun allKeys(): List<MessageKey>
 
+    /** 合并恢复后把引用（0.9.0）改成本机的消息 id；对不上时为 null */
+    @Query("UPDATE message SET quoteId = :quoteId WHERE id = :id")
+    suspend fun setQuoteId(id: Long, quoteId: Long?)
+
     @Query("DELETE FROM message")
     suspend fun deleteAll()
 
@@ -760,3 +764,63 @@ fun escapeLike(query: String): String = buildString(query.length) {
 }
 
 private const val LIKE_ESCAPE = '\\'
+
+/** 收藏（0.9.0）。删除时调用方另外删 favorite_turn 和文件，不依赖外键开关 */
+@Dao
+interface FavoriteDao {
+    @Insert
+    suspend fun insert(favorite: Favorite): Long
+
+    @Insert
+    suspend fun insertAll(favorites: List<Favorite>): List<Long>
+
+    @Insert
+    suspend fun insertTurns(turns: List<FavoriteTurn>)
+
+    @Query("SELECT * FROM favorite WHERE id = :id")
+    suspend fun get(id: Long): Favorite?
+
+    @Query("SELECT * FROM favorite ORDER BY createdAt DESC, id DESC")
+    suspend fun listAll(): List<Favorite>
+
+    @Query("SELECT * FROM favorite ORDER BY createdAt DESC, id DESC")
+    fun observeAll(): Flow<List<Favorite>>
+
+    @Query("SELECT * FROM favorite_turn WHERE favoriteId = :favoriteId ORDER BY seq, id")
+    suspend fun turns(favoriteId: Long): List<FavoriteTurn>
+
+    @Query("SELECT * FROM favorite_turn ORDER BY favoriteId, seq, id")
+    suspend fun allTurns(): List<FavoriteTurn>
+
+    /** 这条收藏和它的每一句用到的音频 */
+    @Query(
+        """
+        SELECT audioPath FROM favorite WHERE id = :id AND audioPath IS NOT NULL
+        UNION ALL
+        SELECT audioPath FROM favorite_turn WHERE favoriteId = :id AND audioPath IS NOT NULL
+        """,
+    )
+    suspend fun audioPathsOf(id: Long): List<String>
+
+    /** 所有收藏的音频：孤立文件检查和恢复后的清理按它算引用 */
+    @Query(
+        """
+        SELECT audioPath FROM favorite WHERE audioPath IS NOT NULL
+        UNION ALL
+        SELECT audioPath FROM favorite_turn WHERE audioPath IS NOT NULL
+        """,
+    )
+    suspend fun allAudioPaths(): List<String>
+
+    @Query("DELETE FROM favorite_turn WHERE favoriteId = :favoriteId")
+    suspend fun deleteTurns(favoriteId: Long)
+
+    @Query("DELETE FROM favorite WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM favorite_turn")
+    suspend fun deleteAllTurns()
+
+    @Query("DELETE FROM favorite")
+    suspend fun deleteAll()
+}

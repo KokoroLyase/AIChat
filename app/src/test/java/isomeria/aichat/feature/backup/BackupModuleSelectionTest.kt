@@ -64,6 +64,7 @@ class BackupModuleSelectionTest {
         // 文件里没有聊天记录：选上也不算
         assertEquals(setOf(CONTACTS, GLOBAL_MEMORY), noContacts.toggledModule(CHATS, true).selectedModules)
         assertTrue(RestoreUiState().selectedModules.isEmpty())
-        assertEquals(BackupModule.ALL, RestoreUiState(preview = preview(null)).selectedModules)
+        // 没写导出了哪些内容的旧文件（v7 及更早）：后来才有的收藏（0.9.0）不算
+        assertEquals(BackupModule.ALL - BackupModule.FAVORITES, RestoreUiState(preview = preview(null)).selectedModules)
     }
 }

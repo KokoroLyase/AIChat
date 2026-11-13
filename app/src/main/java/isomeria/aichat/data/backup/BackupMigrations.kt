@@ -56,7 +56,13 @@ class BackupMigrations(
             6 to { data -> v6ToV7(data) },
             7 to { data -> v7ToV8(data) },
             8 to { data -> v8ToV9(data) },
+            9 to { data -> v9ToV10(data) },
         )
+
+        /**
+         * v9 → v10（0.9.0）：消息多了引用和译文，旧消息都没有（默认值）；多了收藏，旧文件里没有。data.json 不用改
+         */
+        private fun v9ToV10(data: JsonObject): JsonObject = data
 
         /**
          * v8 → v9（0.8.0）：消息多了通话类型和它的每一条话（[MessageDto.call]），旧文件里没有通话。data.json 不用改

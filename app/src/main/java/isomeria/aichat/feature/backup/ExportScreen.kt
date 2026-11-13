@@ -298,7 +298,7 @@ internal fun ModuleSwitches(
     after: @Composable (BackupModule) -> Unit = {},
 ) {
     val groups = listOf(
-        listOf(BackupModule.CONTACTS, BackupModule.CHATS, BackupModule.MEMORIES, BackupModule.USAGE),
+        listOf(BackupModule.CONTACTS, BackupModule.CHATS, BackupModule.MEMORIES, BackupModule.USAGE, BackupModule.FAVORITES),
         listOf(
             BackupModule.GLOBAL_MEMORY, BackupModule.PROVIDERS, BackupModule.REPLY_PREFERENCES,
             BackupModule.PROACTIVE, BackupModule.VOICE_SETTINGS, BackupModule.PROFILE,
@@ -332,4 +332,5 @@ internal fun moduleTitle(module: BackupModule): Int = when (module) {
     BackupModule.PROACTIVE -> R.string.backup_module_proactive
     BackupModule.VOICE_SETTINGS -> R.string.backup_module_voice
     BackupModule.PROFILE -> R.string.backup_module_profile
+    BackupModule.FAVORITES -> R.string.backup_module_favorites
 }

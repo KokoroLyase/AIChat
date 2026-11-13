@@ -72,7 +72,7 @@ class MigrationTest {
     private fun JsonObject.sql(key: String) = this[key]!!.jsonPrimitive.content
 
     private fun open(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
         .allowMainThreadQueries()
         .build()
         .also { room = it }
@@ -460,6 +460,81 @@ class MigrationTest {
         db.callDao().deleteOrphans()
         assertTrue(db.callDao().listAll().isEmpty())
         assertEquals(listOf("/v/a.m4a"), db.messageDao().voicePaths(8))
+    }
+
+    /**
+     * 0.9.0：旧消息、通话和每一句都不变，没有引用和译文；收藏的两张表能写入，删除收藏时它的每一句跟着删；
+     * 收藏的音频单独列出（孤立文件检查用）；删掉原消息和联系人不影响收藏
+     */
+    @Test
+    fun v9ToV10_oldRowsKept_noQuoteOrTranslation_favoritesCanBeWritten() = runBlocking {
+        createV1(version = 9) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility,voice) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com','encrypted','m',1,'deepseek','DEEPSEEK','')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,thinkingOption,memoryModel,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency,replyType,ttsVoice,ttsStyle,replyPreferences,ttsSource,asrSource) VALUES(8,'甲',1,1,'m','OFF',0.4,'人设',6000,1,1,10,20,'high',NULL,'off',1,1,0,'MEDIUM',NULL,NULL,'',NULL,NULL,NULL)")
+            execSQL("INSERT INTO message(id,contactId,role,type,content,imagePath,imageWidth,imageHeight,reasoning,reasoningMillis,status,errorCode,model,promptTokens,completionTokens,replyGroup,createdAt,origin,voicePath,voiceMillis,voicePlayed,voiceShowText) VALUES(1,8,'USER','TEXT','周末去爬山吧',NULL,0,0,NULL,0,'SUCCESS',0,NULL,0,0,NULL,100,'NORMAL',NULL,0,0,0),(2,8,'USER','CALL','',NULL,0,0,NULL,0,'SUCCESS',0,NULL,0,0,NULL,200,'NORMAL',NULL,3000,0,0)")
+            execSQL("INSERT INTO call_turn(id,messageId,seq,role,text,audioPath,audioMillis,status,createdAt) VALUES(5,2,0,'USER','在吗','/c/u.m4a',900,'OK',210)")
+        }
+        val db = open()
+        val old = db.messageDao().get(1)!!
+        assertEquals("周末去爬山吧", old.content)
+        assertNull(old.quoteId)
+        assertNull(old.quoteRole)
+        assertNull(old.quoteType)
+        assertNull(old.quoteText)
+        assertNull(old.translation)
+        assertFalse(old.translationShown)
+        assertEquals(listOf("在吗"), db.callDao().turns(2).map { it.text })
+        assertEquals(3000L, db.messageDao().get(2)!!.voiceMillis)
+        assertTrue(db.favoriteDao().listAll().isEmpty())
+
+        // 新列能写能读
+        val reply = db.messageDao().insert(
+            Message(
+                contactId = 8, role = Role.USER, type = MessageType.TEXT, content = "好", status = MessageStatus.SUCCESS, createdAt = 300,
+                quoteId = 1, quoteRole = Role.USER, quoteType = MessageType.TEXT, quoteText = "周末去爬山吧", translation = "OK", translationShown = true,
+            ),
+        )
+        db.messageDao().get(reply)!!.let {
+            assertEquals(1L, it.quoteId)
+            assertEquals(Role.USER, it.quoteRole)
+            assertEquals(MessageType.TEXT, it.quoteType)
+            assertEquals("周末去爬山吧", it.quoteText)
+            assertEquals("OK", it.translation)
+            assertTrue(it.translationShown)
+        }
+
+        val favorite = db.favoriteDao().insert(
+            Favorite(
+                type = MessageType.CALL, role = Role.USER, contactId = 8, contactCreatedAt = 10, contactName = "甲", contactAvatarColor = 1,
+                audioMillis = 3000, messageId = 2, messageCreatedAt = 200, createdAt = 400,
+            ),
+        )
+        db.favoriteDao().insertTurns(
+            listOf(
+                FavoriteTurn(favoriteId = favorite, seq = 0, role = Role.USER, text = "在吗", audioPath = "/f/u.m4a", audioMillis = 900, createdAt = 210),
+                FavoriteTurn(favoriteId = favorite, seq = 1, role = Role.ASSISTANT, text = "在呢", status = CallTurnStatus.TTS_FAILED, createdAt = 1300),
+            ),
+        )
+        val voice = db.favoriteDao().insert(
+            Favorite(
+                type = MessageType.VOICE, role = Role.ASSISTANT, contactId = 8, contactCreatedAt = 10, contactName = "甲", contactAvatarColor = 1,
+                content = "转写", audioPath = "/f/v.m4a", audioMillis = 1500, messageId = null, messageCreatedAt = 150, createdAt = 500,
+            ),
+        )
+        assertEquals(listOf(voice, favorite), db.favoriteDao().listAll().map { it.id })
+        assertEquals(listOf("在吗", "在呢"), db.favoriteDao().turns(favorite).map { it.text })
+        assertEquals(setOf("/f/u.m4a", "/f/v.m4a"), db.favoriteDao().allAudioPaths().toSet())
+        assertEquals(listOf("/f/u.m4a"), db.favoriteDao().audioPathsOf(favorite))
+        // 收藏不受原消息和联系人影响
+        db.messageDao().delete(2)
+        db.callDao().deleteOrphans()
+        db.contactDao().delete(8)
+        assertEquals(2, db.favoriteDao().listAll().size)
+        assertEquals(2, db.favoriteDao().turns(favorite).size)
+        db.favoriteDao().deleteTurns(favorite)
+        db.favoriteDao().delete(favorite)
+        assertEquals(listOf(voice), db.favoriteDao().listAll().map { it.id })
+        assertTrue(db.favoriteDao().allTurns().isEmpty())
     }
 
     /** 清空或删除聊天时连续未回复次数清零；用户发言用的清零和主动发送的计数互不影响别的字段 */

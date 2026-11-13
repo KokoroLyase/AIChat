@@ -17,6 +17,7 @@ import isomeria.aichat.data.db.MIGRATION_5_6
 import isomeria.aichat.data.db.MIGRATION_6_7
 import isomeria.aichat.data.db.MIGRATION_7_8
 import isomeria.aichat.data.db.MIGRATION_8_9
+import isomeria.aichat.data.db.MIGRATION_9_10
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -285,6 +286,30 @@ class DatabaseTest {
             db.query("SELECT COUNT(*) FROM call_turn").use { c -> assertTrue(c.moveToFirst()); assertEquals(2, c.getInt(0)) }
             db.execSQL("DELETE FROM message WHERE id=2")
             db.query("SELECT COUNT(*) FROM call_turn").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+        }
+    }
+
+    /** 0.9.0：消息加引用和译文的列（旧消息都为空），新建收藏的两张表；删除收藏时它的每一句跟着删（真机 SQLite 的外键级联） */
+    @Test
+    fun migrate9To10_quoteAndTranslationColumns_favoriteTables() {
+        helper.createDatabase("migration-v9-test", 9).use { db ->
+            db.execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility,voice) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK','')")
+            db.execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency,replyType,ttsVoice,ttsStyle,replyPreferences,ttsSource,asrSource) VALUES(7,'甲',0,1,'m','OFF',1.3,'人设',4000,1,1,1,1,'off',1,1,0,'MEDIUM',NULL,NULL,'',NULL,NULL,NULL)")
+            db.execSQL("INSERT INTO message(id,contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,createdAt,origin,voiceMillis,voicePlayed,voiceShowText) VALUES(1,7,'USER','TEXT','你好',0,0,0,'SUCCESS',0,0,0,10,'NORMAL',0,0,0)")
+        }
+        helper.runMigrationsAndValidate("migration-v9-test", 10, true, MIGRATION_9_10).use { db ->
+            db.query("SELECT content, quoteId, quoteRole, quoteType, quoteText, translation, translationShown FROM message WHERE id=1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("你好", c.getString(0))
+                for (column in 1..5) assertTrue(c.isNull(column))
+                assertEquals(0, c.getInt(6))
+            }
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL("INSERT INTO favorite(id,type,role,contactId,contactCreatedAt,contactName,contactAvatarColor,content,audioPath,audioMillis,messageId,messageCreatedAt,createdAt) VALUES(1,'CALL','USER',7,1,'甲',0,'',NULL,3000,NULL,20,30)")
+            db.execSQL("INSERT INTO favorite_turn(favoriteId,seq,role,text,audioPath,audioMillis,status,createdAt) VALUES(1,0,'USER','在吗','/f/a.m4a',900,'OK',21)")
+            db.query("SELECT COUNT(*) FROM favorite_turn").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
+            db.execSQL("DELETE FROM favorite WHERE id=1")
+            db.query("SELECT COUNT(*) FROM favorite_turn").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
         }
     }
 

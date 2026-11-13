@@ -2,6 +2,7 @@ package isomeria.aichat.data.backup
 
 import isomeria.aichat.data.backup.BackupModule.CHATS
 import isomeria.aichat.data.backup.BackupModule.CONTACTS
+import isomeria.aichat.data.backup.BackupModule.FAVORITES
 import isomeria.aichat.data.backup.BackupModule.GLOBAL_MEMORY
 import isomeria.aichat.data.backup.BackupModule.MEMORIES
 import isomeria.aichat.data.backup.BackupModule.PROACTIVE
@@ -45,6 +46,7 @@ fun BackupData.restrictTo(modules: Set<BackupModule>): BackupData {
         globalCategories = if (GLOBAL_MEMORY in selected) globalCategories else emptyList(),
         globalTopics = if (GLOBAL_MEMORY in selected) globalTopics else emptyList(),
         globalItems = if (GLOBAL_MEMORY in selected) globalItems else emptyList(),
+        favorites = if (FAVORITES in selected) favorites else emptyList(),
         settings = SettingsDto(
             themeMode = settings.themeMode.takeIf { profile },
             fontSize = settings.fontSize.takeIf { profile },
@@ -60,7 +62,7 @@ fun BackupData.restrictTo(modules: Set<BackupModule>): BackupData {
     )
 }
 
-/** 数据里用到的 zip 内文件（头像、图片、聊天背景、语音、通话的音频） */
+/** 数据里用到的 zip 内文件（头像、图片、聊天背景、语音、通话的音频、收藏的音频） */
 fun BackupData.mediaNames(): Set<String> = buildSet {
     contacts.mapNotNullTo(this) { it.avatar }
     messages.mapNotNullTo(this) { it.image }
@@ -68,6 +70,8 @@ fun BackupData.mediaNames(): Set<String> = buildSet {
     messages.forEach { message -> message.call.mapNotNullTo(this) { it.audio } }
     conversations.mapNotNullTo(this) { it.background }
     settings.avatar?.let(::add)
+    favorites.mapNotNullTo(this) { it.audio }
+    favorites.forEach { favorite -> favorite.call.mapNotNullTo(this) { it.audio } }
 }
 
 fun ProviderDto.toRef() = ProviderRefDto(id = id, kind = kind, provider = provider, baseUrl = baseUrl)
