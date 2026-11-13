@@ -52,6 +52,11 @@
     <string name="copy_call_header">语音通话 %1$s · %2$s</string>
     <string name="copy_call_time_pattern">yyyy年M月d日 HH:mm</string>
     <string name="copy_speaker_line">%1$s：%2$s</string>
+    <!-- 引用（0.9.0） -->
+    <string name="chat_menu_quote">引用</string>
+    <string name="quote_jump">查看原消息</string>
+    <string name="quote_cancel">取消引用</string>
+    <string name="quote_missing">原消息已删除</string>
     <!-- 0.9.0 收藏 -->
     <string name="me_favorites">收藏</string>
     <string name="chat_menu_favorite">收藏</string>

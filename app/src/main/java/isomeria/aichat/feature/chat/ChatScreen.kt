@@ -177,6 +177,7 @@ fun ChatScreen(
     val playingId by viewModel.playingId.collectAsStateWithLifecycle()
     // 多选（0.9.0）
     val selection by viewModel.selection.collectAsStateWithLifecycle()
+    val quote by viewModel.quote.collectAsStateWithLifecycle()
     var deleteSelectedDialog by remember { mutableStateOf<Int?>(null) }
     var showAsrSetup by remember { mutableStateOf(false) }
     var voiceIntroName by remember { mutableStateOf<String?>(null) }
@@ -218,6 +219,8 @@ fun ChatScreen(
     var pendingLatest by remember { mutableStateOf<Long?>(null) }
     var targetMissing by remember { mutableStateOf(false) }
     var highlightId by remember { mutableStateOf<Long?>(null) }
+    // 跳到引用的原消息（0.9.0）：列表从它附近重新载入后滚过去
+    var pendingJump by remember { mutableStateOf<Long?>(null) }
     val highlight = remember { Animatable(0f) }
     val focusIme = WindowInsets.ime
     val focusDensity = LocalDensity.current
@@ -248,12 +251,7 @@ fun ChatScreen(
         }
         // 从搜索页带着键盘进来时，键盘收完可视区才变高；先算居中的话目标会被带到屏幕下半部分
         withTimeoutOrNull(FOCUS_IME_WAIT_MILLIS) { snapshotFlow { focusIme.getBottom(focusDensity) }.first { it == 0 } }
-        listState.scrollToItem(index)
-        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
-        if (item != null) {
-            val viewport = listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset
-            listState.scrollBy((item.offset - (viewport - item.size) / 2).toFloat())
-        }
+        centerOn(listState, index)
         focusDone = true
         atBottom = pagedRows.loadState.prepend.endOfPaginationReached && listState.firstVisibleItemIndex <= 2
         if (atBottom) viewModel.markLatestSeen()
@@ -289,6 +287,16 @@ fun ChatScreen(
         pendingLatest = null
         viewModel.markLatestSeen()
     }
+    LaunchedEffect(pendingJump, pagedRows.itemSnapshotList) {
+        val target = pendingJump ?: return@LaunchedEffect
+        val index = pagedRows.itemSnapshotList.items.indexOfFirst { it is ChatRow.Item && it.message.id == target }
+        if (index < 0) return@LaunchedEffect
+        pendingJump = null
+        centerOn(listState, index)
+        focusDone = true
+        atBottom = pagedRows.loadState.prepend.endOfPaginationReached && listState.firstVisibleItemIndex <= 2
+        highlightId = target
+    }
     LaunchedEffect(targetMissing) {
         if (targetMissing) Toast.makeText(context, R.string.chat_target_missing, Toast.LENGTH_SHORT).show()
     }
@@ -306,6 +314,8 @@ fun ChatScreen(
                 ChatEvent.ImageImportFailed ->
                     Toast.makeText(context, R.string.chat_image_import_failed, Toast.LENGTH_SHORT).show()
                 is ChatEvent.ScrollToLatest -> pendingLatest = event.messageId
+                is ChatEvent.ScrollToMessage -> pendingJump = event.messageId
+                ChatEvent.QuoteMissing -> Toast.makeText(context, R.string.quote_missing, Toast.LENGTH_SHORT).show()
                 ChatEvent.VoiceTooShort -> Toast.makeText(context, R.string.voice_too_short, Toast.LENGTH_SHORT).show()
                 ChatEvent.MicUnavailable -> Toast.makeText(context, R.string.voice_mic_unavailable, Toast.LENGTH_SHORT).show()
                 ChatEvent.VoiceTextFailed -> Toast.makeText(context, R.string.voice_transcribe_failed, Toast.LENGTH_SHORT).show()
@@ -503,6 +513,29 @@ fun ChatScreen(
                 viewModel.startSelection(message)
             },
             onFavorite = viewModel::favorite,
+            onQuote = if (inCall) null else { message ->
+                viewModel.startQuote(message)
+                // 文字模式下弹出键盘接着打字；按住说话模式保持不变
+                if (!voiceMode) {
+                    panel = InputPanel.NONE
+                    focusRequester.requestFocus()
+                    keyboard?.show()
+                }
+            },
+            onOpenQuote = { message ->
+                val target = message.quoteId
+                val index = if (target == null) -1 else pagedRows.itemSnapshotList.items.indexOfFirst { it is ChatRow.Item && it.message.id == target }
+                when {
+                    target == null -> Toast.makeText(context, R.string.quote_missing, Toast.LENGTH_SHORT).show()
+                    // 已经在列表里：直接滚过去
+                    index >= 0 -> scope.launch {
+                        centerOn(listState, index)
+                        atBottom = pagedRows.loadState.prepend.endOfPaginationReached && listState.firstVisibleItemIndex <= 2
+                        highlightId = target
+                    }
+                    else -> viewModel.jumpToQuote(target)
+                }
+            },
             onCopyCall = { message ->
                 scope.launch {
                     val text = viewModel.callText(message)
@@ -583,6 +616,13 @@ fun ChatScreen(
             // 0.8.0：正在和这个联系人通话，不从这里发消息
             InCallBar(callStartedAt) { onCall(contact.id) }
         } else if (contact != null) {
+            quote?.let { quoted ->
+                val name = if (quoted.role == isomeria.aichat.data.db.Role.USER) state.myName.ifBlank { stringResource(R.string.default_nickname) } else contact.name
+                isomeria.aichat.ui.components.QuoteBar(
+                    label = isomeria.aichat.ui.components.quoteLabel(name, quoted.type, quoted.content),
+                    onClose = viewModel::cancelQuote,
+                )
+            }
             ChatInputBar(
                 value = input,
                 onValueChange = { input = it },
@@ -993,4 +1033,12 @@ internal fun android.content.Context.findActivity(): android.app.Activity? {
         current = current.baseContext
     }
     return null
+}
+
+/** 滚到第 [index] 行并放在可视区中间（搜索定位、跳到引用的原消息） */
+private suspend fun centerOn(listState: LazyListState, index: Int) {
+    listState.scrollToItem(index)
+    val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+    val viewport = listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset
+    listState.scrollBy((item.offset - (viewport - item.size) / 2).toFloat())
 }

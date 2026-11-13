@@ -41,6 +41,10 @@ class ChatRepository @Inject constructor(
     private val paging = ChatPaging(db)
     private val messageActions = ChatMessageActions(db)
     suspend fun chatEntry(contactId: Long, focusId: Long): ChatEntry = paging.entry(contactId, focusId)
+
+    /** 点引用块跳到原消息（0.9.0）：原消息还在这个聊天里时返回它的位置，删了时为 null */
+    suspend fun quoteEntry(contactId: Long, quoteId: Long): ChatEntry? =
+        paging.entry(contactId, quoteId).takeIf { it.targetId == quoteId }
     fun pagedMessages(contactId: Long) = AbsoluteRefreshPagingSource(messageDao.pagingByContact(contactId))
     fun timeline(contactId: Long): Flow<ChatTimeline> = paging.timeline(contactId)
     suspend fun latestVisible(contactId: Long): Message? = messageDao.latestVisible(contactId)
@@ -55,7 +59,8 @@ class ChatRepository @Inject constructor(
 
     fun observeMessages(contactId: Long): Flow<List<Message>> = messageDao.observeByContact(contactId)
 
-    suspend fun sendText(contactId: Long, text: String) {
+    /** [quote]（0.9.0）是引用的那条消息，存一份快照；为 null 时不引用 */
+    suspend fun sendText(contactId: Long, text: String, quote: Message? = null) {
         val content = text.trim()
         if (content.isEmpty()) return
         insertUserMessages(
@@ -68,7 +73,7 @@ class ChatRepository @Inject constructor(
                     content = content,
                     status = MessageStatus.SENDING,
                     createdAt = System.currentTimeMillis(),
-                ),
+                ).quoting(quote),
             ),
         )
         conversationDao.setDraft(contactId, "")
@@ -79,7 +84,7 @@ class ChatRepository @Inject constructor(
      * 发送一条语音（0.7.0）。录音文件 [file] 已经在 files/voice 里并固定着；先显示语音条（等待识别，content 为空），
      * 回复任务先识别出文字、识别成功后才进入等待回复，识别失败时这条标为失败、不请求模型，点击可重试
      */
-    suspend fun sendVoice(contactId: Long, file: java.io.File, millis: Long) = StorageOperations.gate.activity {
+    suspend fun sendVoice(contactId: Long, file: java.io.File, millis: Long, quote: Message? = null) = StorageOperations.gate.activity {
         try {
             insertUserMessages(
                 contactId,
@@ -93,7 +98,7 @@ class ChatRepository @Inject constructor(
                         voicePlayed = true,
                         status = MessageStatus.SENDING,
                         createdAt = System.currentTimeMillis(),
-                    ),
+                    ).quoting(quote),
                 ),
             )
         } catch (e: Throwable) {
@@ -395,6 +400,17 @@ class ChatRepository @Inject constructor(
 
     private fun previewOf(message: Message): String = previews.preview(message)
 }
+
+/**
+ * 能不能引用（0.9.0）：发送成功的文字、有转写的语音（双方的都行）；图片、通话、等待中和失败的不能。
+ * 通话中整个输入栏换成通话条，菜单里也不给“引用”（由聊天页决定）
+ */
+fun canQuote(message: Message): Boolean = message.status == MessageStatus.SUCCESS &&
+    (message.type == MessageType.TEXT || (message.type == MessageType.VOICE && message.content.isNotBlank()))
+
+/** 带上引用的快照：被引用消息的 id、说话方、类型、文字；[quote] 为 null 时原样返回 */
+fun Message.quoting(quote: Message?): Message =
+    if (quote == null) this else copy(quoteId = quote.id, quoteRole = quote.role, quoteType = quote.type, quoteText = quote.content)
 
 /**
  * 多选（0.9.0）能不能选这条：等待回复中的消息（含还在识别的语音）、待投递的回复、正在进行的通话不能选

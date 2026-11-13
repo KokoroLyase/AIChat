@@ -96,6 +96,10 @@ sealed interface ChatEvent {
     data class VoiceFileMissing(val hasText: Boolean) : ChatEvent
     /** 收藏好了（0.9.0）；[imagesSkipped] 是选中的里面有图片（图片不能收藏） */
     data class Favorited(val imagesSkipped: Boolean) : ChatEvent
+    /** 引用的原消息已经删了（0.9.0） */
+    data object QuoteMissing : ChatEvent
+    /** 跳到引用的原消息（0.9.0）：列表已经从它附近重新载入，滚过去并高亮 */
+    data class ScrollToMessage(val messageId: Long) : ChatEvent
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -143,6 +147,8 @@ class ChatViewModel @Inject constructor(
     val entry: StateFlow<ChatEntry?> = flow { emit(entryDeferred.await()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val pageVersion = MutableStateFlow(0L)
+    /** 重新载入列表时从哪里开始：回到最新时为 0，跳到引用的原消息（0.9.0）时是它附近 */
+    @Volatile private var reloadKey = 0
     private val timeline = chats.timeline(contactId).stateIn(viewModelScope, SharingStarted.Eagerly, ChatTimeline())
     private val seenLatest = MutableStateFlow<Message?>(null)
     init { viewModelScope.launch { seenLatest.value = chats.latestVisible(contactId) } }
@@ -155,7 +161,7 @@ class ChatViewModel @Inject constructor(
         flow {
             val start = entryDeferred.await()
             emitAll(Pager(PagingConfig(pageSize = PAGE_SIZE, initialLoadSize = PAGE_SIZE, prefetchDistance = PAGE_SIZE, maxSize = 200, enablePlaceholders = false),
-                initialKey = if (version == 0L) pagingStartKey(start.offset) else 0,
+                initialKey = if (version == 0L) pagingStartKey(start.offset) else reloadKey,
             ) { chats.pagedMessages(contactId) }.flow)
         }
     }.cachedIn(viewModelScope)
@@ -171,6 +177,7 @@ class ChatViewModel @Inject constructor(
     fun goToLatest() { viewModelScope.launch { requestLatest() } }
     private suspend fun requestLatest() {
         val latest = chats.latestVisible(contactId)
+        reloadKey = 0
         pageVersion.update { it + 1 }
         events.send(ChatEvent.ScrollToLatest(latest?.id ?: 0))
     }
@@ -247,9 +254,34 @@ class ChatViewModel @Inject constructor(
         appScope.launch { chats.saveDraft(contactId, text) }
     }
 
+    // ---------- 引用（0.9.0） ----------
+
+    private val quoteDraft = QuoteDraft(contactId)
+    /** 输入栏上方的引用条：下一条文字或语音带上它，发图片不带、引用条保留 */
+    val quote: StateFlow<Message?> = quoteDraft.state
+
+    fun startQuote(message: Message) = quoteDraft.start(message)
+
+    fun cancelQuote() = quoteDraft.cancel()
+
+    /** 点引用块：原消息不在已载入的列表里时，从它附近重新载入再滚过去；删了时提示 */
+    fun jumpToQuote(quoteId: Long) {
+        viewModelScope.launch {
+            val entry = chats.quoteEntry(contactId, quoteId)
+            if (entry == null) {
+                events.send(ChatEvent.QuoteMissing)
+                return@launch
+            }
+            reloadKey = pagingStartKey(entry.offset)
+            pageVersion.update { it + 1 }
+            events.send(ChatEvent.ScrollToMessage(quoteId))
+        }
+    }
+
     fun sendText(text: String) {
         if (text.isBlank()) return
-        appScope.launch { chats.sendText(contactId, text); requestLatest() }
+        val quote = quoteDraft.take()
+        appScope.launch { chats.sendText(contactId, text, quote); requestLatest() }
     }
 
     fun sendImages(uris: List<Uri>) {
@@ -423,7 +455,7 @@ class ChatViewModel @Inject constructor(
             file.delete()
             isomeria.aichat.data.repo.StorageOperations.unpin(file)
         },
-        send = { file, millis -> chats.sendVoice(contactId, file, millis); requestLatest() },
+        send = { file, millis -> chats.sendVoice(contactId, file, millis, quoteDraft.take()); requestLatest() },
         transcribe = { bytes -> voices.transcribe(contactId, bytes).text },
         emit = { events.send(it) },
         uiScope = viewModelScope,

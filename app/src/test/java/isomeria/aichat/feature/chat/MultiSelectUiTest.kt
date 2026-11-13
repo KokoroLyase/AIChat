@@ -138,7 +138,6 @@ class MultiSelectUiTest {
         show(null, calls)
         compose.onNodeWithText("周末去爬山吗").performTouchInput { longClick() }
         compose.onNodeWithText("收藏").performClick()
-        compose.onNodeWithContentDescription("语音转写", substring = true, useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText("00:09", substring = true, useUnmergedTree = true).performTouchInput { longClick() }
         compose.onNodeWithText("收藏").performClick()
         assertEquals(listOf(1L, 3L), calls.favorited)

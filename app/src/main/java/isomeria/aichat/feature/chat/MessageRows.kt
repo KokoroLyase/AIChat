@@ -141,6 +141,10 @@ data class MessageActions(
     val onCopyCall: (Message) -> Unit = {},
     /** 长按“收藏”（0.9.0） */
     val onFavorite: (Message) -> Unit = {},
+    /** 引用（0.9.0）；通话中为 null，菜单里没有“引用” */
+    val onQuote: ((Message) -> Unit)? = null,
+    /** 点气泡下面的引用块（0.9.0）：跳到原消息 */
+    val onOpenQuote: (Message) -> Unit = {},
 )
 
 /**
@@ -191,6 +195,11 @@ fun MessageRow(
         // 收藏（0.9.0）：文字、语音（含没有转写的）、打完的通话；图片、等待回复中的不能
         if (isomeria.aichat.data.repo.FavoriteRepository.canFavorite(message)) {
             add(MenuItem(stringResource(R.string.chat_menu_favorite), WeIcons.Star) { actions.onFavorite(message) })
+        }
+        // 引用（0.9.0）：文字和有转写的语音；通话中没有
+        val quote = actions.onQuote
+        if (quote != null && isomeria.aichat.data.repo.canQuote(message)) {
+            add(MenuItem(stringResource(R.string.chat_menu_quote), WeIcons.Quote) { quote(message) })
         }
         // 正在进行的通话（0.8.0）不能删
         if (!message.callOngoing) add(MenuItem(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline) { actions.onDelete(message) })
@@ -300,6 +309,21 @@ fun MessageRow(
                         if (menuOpen) WeBubbleMenu(menuItems) { menuOpen = false }
                     }
                     if (voice) VoiceTranscript(message, sent) { menuOpen = true }
+                    // 引用（0.9.0）：气泡下面的灰色块，和气泡主体对齐（不算尖角）
+                    val quoted = message.quoteText
+                    if (quoted != null) {
+                        val name = if (message.quoteRole == Role.USER) myName else contactName
+                        isomeria.aichat.ui.components.QuoteBlock(
+                            label = isomeria.aichat.ui.components.quoteLabel(name, message.quoteType, quoted),
+                            onClick = { actions.onOpenQuote(message) },
+                            onLongClick = { menuOpen = true },
+                            modifier = Modifier.padding(
+                                top = 4.dp,
+                                start = if (sent) 0.dp else dimens.bubbleTailWidth,
+                                end = if (sent) dimens.bubbleTailWidth else 0.dp,
+                            ),
+                        )
+                    }
                 }
 
                 if (sent) {
