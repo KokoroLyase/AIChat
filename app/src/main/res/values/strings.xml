@@ -714,7 +714,7 @@
     <string name="storage_database">数据库</string>
     <string name="storage_clear_cache">清理缓存</string>
     <string name="storage_orphans">清理孤立文件</string>
-    <string name="storage_notice">清理缓存只删可以重新生成的临时文件，不影响聊天图片、头像、聊天背景、语音消息、通话录音、离线识别模型和数据库。孤立文件是没有任何联系人、消息或聊天在用的头像、图片、聊天背景、语音和通话录音文件，清理前会先告诉你数量。聊天图片、语音和通话录音只在删除对应消息时才会删除；离线识别模型在「我 → 语音消息 → 语音识别 → 离线识别」里删除。</string>
+    <string name="storage_notice">清理缓存只删可以重新生成的临时文件，不影响聊天图片、头像、聊天背景、语音消息、通话录音、收藏、离线识别模型和数据库。孤立文件是没有任何联系人、消息、聊天或收藏在用的头像、图片、聊天背景、语音和通话录音文件，清理前会先告诉你数量。聊天图片、语音和通话录音只在删除对应消息时才会删除，收藏的录音只在删除这条收藏时才会删除；离线识别模型在「我 → 语音消息 → 语音识别 → 离线识别」里删除。</string>
     <string name="storage_busy">正在回复、更新或恢复，请稍后再清理。</string>
     <string name="storage_result">已清理 %1$d 个文件，释放约 %2$s。</string>
     <string name="storage_no_orphans">没有发现孤立文件。</string>

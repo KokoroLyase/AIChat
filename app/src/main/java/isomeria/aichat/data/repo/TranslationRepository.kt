@@ -50,6 +50,8 @@ class TranslationRepository @Inject constructor(
             return FailReason.of(e)
         } catch (e: EmptyTranslation) {
             return FailReason.EMPTY_REPLY
+        } catch (e: NoApiKey) {
+            return FailReason.NO_API_KEY
         }
         db.messageDao().setTranslation(messageId, text, shown = true)
         return null
@@ -66,7 +68,12 @@ class TranslationRepository @Inject constructor(
 
     private suspend fun request(contactId: Long, target: TranslateTarget, text: String): String {
         val messages = buildMessages(target, text)
-        val snapshot = providers.snapshot(contactId, memory = false, thinkingOff = true)
+        // 和聊天一样：取配置时就没有 Key（拿不到地址）算“没有 Key”，请求时服务商拒绝的才是 Key 无效
+        val snapshot = try {
+            providers.snapshot(contactId, memory = false, thinkingOff = true)
+        } catch (e: LlmException) {
+            throw if (e.error == isomeria.aichat.data.llm.LlmError.AUTH) NoApiKey() else e
+        }
         val request: ChatRequest = snapshot.request(messages)
         val content = StringBuilder()
         var promptTokens = 0
@@ -94,6 +101,7 @@ class TranslationRepository @Inject constructor(
     }
 
     private class EmptyTranslation : Exception()
+    private class NoApiKey : Exception()
 
     companion object {
         /** 能翻译的：文字、有转写的语音（双方的都可以），里面要有字（只有表情、数字、标点的不行）；待投递的看不到，不算 */

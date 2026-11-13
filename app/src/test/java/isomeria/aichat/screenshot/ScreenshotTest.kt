@@ -212,7 +212,7 @@ class ScreenshotTest {
     @Test fun exportPlainCompletedLight() = backupDialogShot("43-export-completed-plain", false) { ExportSample(ExportUiState(result = ExportSummary(2, 1000, 2, false, encrypted = false))) }
     @Test fun exportLargeLight() = large("43-export-large", false) { ExportSample(ExportUiState(hasApiKey = true, includeKey = true, password = "123", confirm = "", errorRes = isomeria.aichat.R.string.export_password_mismatch)) }
     @Test fun exportLargeDark() = large("43-export-large", true) { ExportSample(ExportUiState()) }
-    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789, backgrounds = 860000, voice = 2400000, asrModels = 239549735, calls = 5600000))
+    private val storageSample = StorageState(loading = false, usage = StorageUsage(12000000, 200000, 12345, 1200000, 3456789, backgrounds = 860000, voice = 2400000, asrModels = 239549735, calls = 5600000, favorites = 1300000))
     @Test fun storageLight() = shot("42-storage", false) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageDark() = shot("42-storage", true) { StorageContent(storageSample, {}, {}, {}, {}, {}, {}) }
     @Test fun storageLoading() = shot("42-storage-loading", false) { StorageContent(StorageState(), {}, {}, {}, {}, {}, {}) }
@@ -1192,6 +1192,54 @@ class ScreenshotTest {
     @Composable private fun InCallBarShot() = Column(Modifier.fillMaxSize(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom) {
         isomeria.aichat.feature.chat.InCallBar(startedAt = 0, now = { 201_000 }) {}
     }
+    // ---------- 0.9.0 消息操作 ----------
+
+    private val selected = setOf(31L, 33L, 34L)
+    @Test fun selectLight() = shot("87-chat-select", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.selectRows, selection = selected) }
+    @Test fun selectDark() = shot("87-chat-select", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.selectRows, selection = selected) }
+    @Test fun selectLarge() = large("87-chat-select-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.selectRows, selection = selected) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun selectNarrow() = large("87-chat-select-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.selectRows, selection = selected) }
+    @Test fun selectNoneLight() = shot("87-chat-select-none", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.selectRows, selection = emptySet()) }
+
+    private val quoteBar = "小雨：明天早上七点出发，记得带水和外套，山上风大"
+    @Test fun quoteLight() = shot("88-chat-quote", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.quoteRows, quote = quoteBar) }
+    @Test fun quoteDark() = shot("88-chat-quote", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.quoteRows, quote = quoteBar) }
+    @Test fun quoteLarge() = large("88-chat-quote-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.quoteRows, quote = quoteBar) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun quoteNarrow() = large("88-chat-quote-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.quoteRows, quote = quoteBar) }
+    private fun quoteMenuShot(name: String, dark: Boolean, scale: Float = 1f) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark, fontScale = scale) {
+                Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) {
+                    ChatPageSample(rows = isomeria.aichat.feature.chat.quoteRows, menuOpenId = 41)
+                }
+            }
+        }
+        captureScreenRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+    @Test fun quoteMenuLight() = quoteMenuShot("88-chat-menu", false)
+    @Test fun quoteMenuDark() = quoteMenuShot("88-chat-menu", true)
+    @Test fun quoteMenuLarge() = quoteMenuShot("88-chat-menu-large", false, scale = 1.6f)
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun quoteMenuNarrow() = quoteMenuShot("88-chat-menu-narrow", true)
+
+    @Test fun translateLight() = shot("89-chat-translate", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.translateRows, translating = isomeria.aichat.feature.chat.translateStates) }
+    @Test fun translateDark() = shot("89-chat-translate", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.translateRows, translating = isomeria.aichat.feature.chat.translateStates) }
+    @Test fun translateLarge() = large("89-chat-translate-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.translateRows, translating = isomeria.aichat.feature.chat.translateStates) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun translateNarrow() = large("89-chat-translate-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.translateRows, translating = isomeria.aichat.feature.chat.translateStates) }
+
+    @Test fun favoritesLight() = shot("90-favorites", false) { isomeria.aichat.feature.favorites.FavoritesSample() }
+    @Test fun favoritesDark() = shot("90-favorites", true) { isomeria.aichat.feature.favorites.FavoritesSample() }
+    @Test fun favoritesLarge() = large("90-favorites-large", false) { isomeria.aichat.feature.favorites.FavoritesSample() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun favoritesNarrow() = large("90-favorites-narrow", true) { isomeria.aichat.feature.favorites.FavoritesSample() }
+    @Test fun favoritesEmptyLight() = shot("90-favorites-empty", false) { isomeria.aichat.feature.favorites.FavoritesSample(empty = true) }
+    @Test fun favoritesSearchDark() = shot("90-favorites-search", true) { isomeria.aichat.feature.favorites.FavoritesSample(query = "火星") }
+
+    @Test fun favoriteDetailLight() = shot("91-favorite-detail", false) { isomeria.aichat.feature.favorites.FavoriteDetailSample() }
+    @Test fun favoriteDetailDark() = shot("91-favorite-detail", true) { isomeria.aichat.feature.favorites.FavoriteDetailSample() }
+    @Test fun favoriteDetailLarge() = large("91-favorite-detail-large", false) { isomeria.aichat.feature.favorites.FavoriteDetailSample() }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun favoriteDetailNarrow() = large("91-favorite-detail-narrow", true) { isomeria.aichat.feature.favorites.FavoriteDetailSample() }
+    @Test fun favoriteCallDetailLight() = shot("91-favorite-call", false) { isomeria.aichat.feature.favorites.FavoriteDetailSample(call = true) }
+    @Test fun favoriteCallDetailDark() = shot("91-favorite-call", true) { isomeria.aichat.feature.favorites.FavoriteDetailSample(call = true) }
+
     @Test fun inCallBarLight() = shot("86-chat-in-call", false) { InCallBarShot() }
     @Test fun inCallBarDark() = shot("86-chat-in-call", true) { InCallBarShot() }
     @Test fun inCallBarLarge() = large("86-chat-in-call-large", false) { InCallBarShot() }

@@ -161,6 +161,18 @@ class TranslationDataTest {
     }
 
     @Test
+    fun noApiKey_reportedAsNoKey_keyRejectedAsAuth() = runBlocking {
+        val id = insert("周末去爬山吗")
+        val config = db.providerDao().get(db.contactDao().get(1)!!.providerId)!!
+        db.providerDao().update(config.copy(apiKeyEncrypted = null))
+        assertEquals(FailReason.NO_API_KEY, repo.translate(id))
+        assertTrue(fake.requests.isEmpty())
+        db.providerDao().update(config)
+        fake.failure = LlmException(LlmError.AUTH)
+        assertEquals(FailReason.AUTH, repo.translate(id))
+    }
+
+    @Test
     fun nothingToTranslate_noRequest() = runBlocking {
         assertNull(repo.translate(insert("😀 123！")))
         assertNull(repo.translate(insert("", MessageType.VOICE, Role.USER, MessageStatus.SENDING)))

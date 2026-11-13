@@ -50,11 +50,14 @@ fun TranslationBlock(text: String, sent: Boolean, onCopy: () -> Unit, onHide: ()
                 .clearAndSetSemantics { contentDescription = description }
                 .padding(horizontal = dimens.bubblePaddingHorizontal, vertical = dimens.bubblePaddingVertical),
         ) {
-            Text(text, style = WeTheme.typography.message, color = if (sent) colors.bubbleSentText else colors.bubbleReceivedText)
+            val textColor = if (sent) colors.bubbleSentText else colors.bubbleReceivedText
+            // 标识跟着气泡的文字颜色淡一些：绿色气泡上用灰色看不清
+            val labelColor = textColor.copy(alpha = 0.55f)
+            Text(text, style = WeTheme.typography.message, color = textColor)
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(WeIcons.Translate, null, tint = colors.textTertiary, modifier = Modifier.size(12.dp))
+                Icon(WeIcons.Translate, null, tint = labelColor, modifier = Modifier.size(12.dp))
                 Box(Modifier.width(4.dp))
-                Text(stringResource(R.string.translation_label), style = WeTheme.typography.tab, color = colors.textTertiary)
+                Text(stringResource(R.string.translation_label), style = WeTheme.typography.tab, color = labelColor)
             }
         }
         if (menuOpen) {

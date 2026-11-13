@@ -228,7 +228,7 @@ fun ChatScreen(
 
     // 看历史时分页刷新换窗口，位置不能丢；停在底部要跟随新消息，定位和回底时由各自的逻辑负责
     val rowKeys = remember(pagedRows.itemSnapshotList) { pagedRows.itemSnapshotList.items.map { it.key } }
-    KeepFirstVisibleItem(listState, rowKeys, enabled = focusDone && !atBottom && pendingLatest == null)
+    KeepFirstVisibleItem(listState, rowKeys, enabled = focusDone && !atBottom && pendingLatest == null && pendingJump == null)
 
     LaunchedEffect(pageEntry, pagedRows.itemSnapshotList, pagedRows.loadState.refresh) {
         val start = pageEntry ?: return@LaunchedEffect

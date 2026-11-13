@@ -1,5 +1,8 @@
 package isomeria.aichat.feature.chat
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -102,7 +105,42 @@ internal val callRows: List<ChatRow> = listOf(
     ChatRow.Item(Message(id = 24, contactId = 1, role = Role.USER, type = MessageType.CALL, status = MessageStatus.SUCCESS, createdAt = 24)),
 )
 
-private val noActions = MessageActions({}, {}, {}, {}, {}, {}, {})
+/** 多选（0.9.0）：文字、语音、图片、通话可以选，等待回复中的不能选 */
+internal val selectRows: List<ChatRow> = listOf(
+    ChatRow.TimeBar("21:30", "t0"),
+    ChatRow.Item(msg(31, Role.USER, "周末去爬山吗")),
+    ChatRow.Item(msg(32, Role.ASSISTANT, "好呀，去哪座山")),
+    ChatRow.Item(voice(33, Role.ASSISTANT, 6, "要不要去香山，听说红叶正好")),
+    ChatRow.Item(Message(id = 34, contactId = 1, role = Role.USER, type = MessageType.CALL, status = MessageStatus.SUCCESS, voiceMillis = 201_000, createdAt = 34)),
+    ChatRow.Item(msg(35, Role.USER, "那就这么定了", status = MessageStatus.SENDING)),
+)
+
+/** 引用（0.9.0）：引用对方的文字、引用自己的语音，下面是引用块 */
+internal val quoteRows: List<ChatRow> = listOf(
+    ChatRow.TimeBar("21:30", "t0"),
+    ChatRow.Item(msg(41, Role.ASSISTANT, "明天早上七点出发，记得带水和外套，山上风大")),
+    ChatRow.Item(voice(42, Role.USER, 4, "好的，我再带点吃的")),
+    ChatRow.Item(
+        msg(43, Role.USER, "七点会不会太早了").copy(quoteId = 41, quoteRole = Role.ASSISTANT, quoteType = MessageType.TEXT, quoteText = "明天早上七点出发，记得带水和外套，山上风大"),
+    ),
+    ChatRow.Item(
+        msg(44, Role.ASSISTANT, "带吃的好，我带水果").copy(quoteId = 42, quoteRole = Role.USER, quoteType = MessageType.VOICE, quoteText = "好的，我再带点吃的"),
+    ),
+)
+
+/** 翻译（0.9.0）：显示译文、正在翻译、翻译失败 */
+internal val translateRows: List<ChatRow> = listOf(
+    ChatRow.TimeBar("21:30", "t0"),
+    ChatRow.Item(msg(51, Role.ASSISTANT, "See you at the station tomorrow!").copy(translation = "明天车站见！", translationShown = true)),
+    ChatRow.Item(msg(52, Role.USER, "好的，我会准时到").copy(translation = "OK, I'll be there on time.", translationShown = true)),
+    ChatRow.Item(msg(53, Role.ASSISTANT, "Don't forget your umbrella.")),
+    ChatRow.Item(msg(54, Role.ASSISTANT, "It might rain in the afternoon.")),
+)
+
+internal val translateStates: Map<Long, TranslationUi> = mapOf(53L to TranslationUi.Loading, 54L to TranslationUi.Failed(isomeria.aichat.data.repo.FailReason.NETWORK))
+
+/** 截图里的长按菜单和真实聊天页一样有“引用”（不在通话中） */
+private val noActions = MessageActions({}, {}, {}, {}, {}, {}, {}, onQuote = {})
 
 /** 聊天页的静态外观：顶栏、消息、输入栏。Compose Preview 和截图测试共用。 */
 @Composable
@@ -119,14 +157,29 @@ internal fun ChatPageSample(
     /** 正在播放的语音、打开长按菜单的消息 */
     playingId: Long? = null,
     menuOpenId: Long? = null,
+    /** 多选（0.9.0）：选中的消息；不为 null 时顶栏是“已选 N 条”，输入栏换成底部操作栏 */
+    selection: Set<Long>? = null,
+    /** 引用条（0.9.0）的文字 */
+    quote: String? = null,
+    /** 正在翻译、翻译失败的消息（0.9.0） */
+    translating: Map<Long, TranslationUi> = emptyMap(),
 ) {
     Column(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) {
-        WeTopBar(
-            title = if (typing) stringResource(R.string.chat_typing) else sampleContact.name,
-            onBack = {},
-            showLine = true,
-        ) {
-            TopBarIcon(WeIcons.More, "", {})
+        if (selection != null) {
+            WeTopBar(
+                title = if (selection.isEmpty()) stringResource(R.string.chat_selected_none) else stringResource(R.string.chat_selected_count, selection.size),
+                showLine = true,
+            ) {
+                isomeria.aichat.ui.components.TopBarTextAction(stringResource(R.string.action_cancel), {})
+            }
+        } else {
+            WeTopBar(
+                title = if (typing) stringResource(R.string.chat_typing) else sampleContact.name,
+                onBack = {},
+                showLine = true,
+            ) {
+                TopBarIcon(WeIcons.More, "", {})
+            }
         }
         androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
             if (background != null) {
@@ -149,11 +202,25 @@ internal fun ChatPageSample(
                     actions = noActions,
                     playingId = playingId,
                     menuOpenId = menuOpenId,
+                    selection = selection,
+                    translating = translating,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
             recording?.let { RecordingOverlay(it, 60_000, {}, {}, {}) }
         }
+        if (selection != null) {
+            val any = selection.isNotEmpty()
+            isomeria.aichat.ui.components.SelectionBar(
+                listOf(
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy, any) {},
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.chat_menu_favorite), WeIcons.Star, any) {},
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline, any, danger = true) {},
+                ),
+            )
+            return@Column
+        }
+        quote?.let { isomeria.aichat.ui.components.QuoteBar(it, onClose = {}) }
         ChatInputBar(
             value = TextFieldValue(input),
             onValueChange = {},
