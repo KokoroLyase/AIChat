@@ -85,6 +85,8 @@ fun TextBubble(
     modifier: Modifier = Modifier,
     onLongClick: () -> Unit = {},
     onClick: () -> Unit = {},
+    /** 0.9.1：长按菜单开着时保持按下的颜色 */
+    held: Boolean = false,
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -115,7 +117,7 @@ fun TextBubble(
     Box(
         modifier
             .clip(shape)
-            .background(if (pressed) pressedOverlay.compositeOver(background) else background)
+            .background(if (pressed || held) pressedOverlay.compositeOver(background) else background)
             .combinedClickable(
                 interactionSource = interaction,
                 indication = null,

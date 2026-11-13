@@ -124,6 +124,8 @@ class LocalVoiceUiTest {
         compose.onNodeWithContentDescription("使用系统语音合成").assertIsEnabled()
         compose.onNodeWithText("引擎默认").performClick()
         compose.onNodeWithText("v1（zh-CN）").performClick()
+        // 0.9.1 起底部菜单先滑下去再执行选项
+        compose.waitForIdle()
         assertEquals("v1", voice)
     }
 

@@ -2,9 +2,7 @@ package isomeria.aichat.ui.components
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -68,6 +66,8 @@ fun VoiceBubble(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 0.9.1：长按菜单开着时保持按下的颜色 */
+    held: Boolean = false,
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
@@ -89,8 +89,8 @@ fun VoiceBubble(
     val clickLabel = stringResource(if (playing) R.string.voice_stop else R.string.voice_action_play)
     val menuLabel = stringResource(R.string.chat_menu_more)
     val step = if (playing) {
-        val transition = rememberInfiniteTransition(label = "voice")
-        val value by transition.animateFloat(0f, 3f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "voiceStep")
+        // 系统移除动画时停在三道声波都亮（0.9.1）
+        val value by isomeria.aichat.ui.theme.loopingFloat(0f, 3f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), still = 2.5f, label = "voiceStep")
         value.toInt().coerceIn(0, 2) + 1
     } else {
         3
@@ -99,7 +99,7 @@ fun VoiceBubble(
         modifier
             .width(voiceBubbleWidth(seconds) + dimens.bubbleTailWidth)
             .clip(shape)
-            .background(if (pressed) pressedOverlay.compositeOver(background) else background)
+            .background(if (pressed || held) pressedOverlay.compositeOver(background) else background)
             .combinedClickable(interactionSource = interaction, indication = null, onClick = onClick, onLongClick = onLongClick)
             .clearAndSetSemantics {
                 role = Role.Button

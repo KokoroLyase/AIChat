@@ -15,10 +15,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -93,6 +91,7 @@ import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.theme.WeTheme
+import isomeria.aichat.ui.theme.loopingFloat
 import kotlinx.coroutines.delay
 
 /** 通话页显示的内容（不依赖 ViewModel，截图测试直接传进来） */
@@ -515,16 +514,15 @@ fun CallContent(ui: CallUi, actions: CallActions) {
 
 /**
  * 头像和它周围的动效：对方在说时一圈圈向外扩散；接通中、对方在想时轻轻呼吸；通话结束后变暗。
- * 系统关掉动画时（开发者选项、省电）Compose 的动画直接停在终点，不会一直闪。
+ * 系统移除动画时（开发者选项、省电）不跑循环：对方在说时停着两圈，头像不呼吸（0.9.1）。
  */
 @Composable
 private fun CallAvatar(ui: CallUi) {
     val colors = WeTheme.colors
     val size = 96.dp
     val corner = WeTheme.dimens.avatarCorner
-    val transition = rememberInfiniteTransition(label = "callAvatar")
-    val ripple by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1_800, easing = LinearEasing)), label = "ripple")
-    val breath by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1_400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breath")
+    val ripple by loopingFloat(0f, 1f, infiniteRepeatable(tween(1_800, easing = LinearEasing)), still = 0.3f, label = "ripple")
+    val breath by loopingFloat(0f, 1f, infiniteRepeatable(tween(1_400, easing = FastOutSlowInEasing), RepeatMode.Reverse), still = 0f, label = "breath")
     val speaking = ui.stage == CallPhase.SPEAKING
     val breathing = ui.stage == null || ui.stage == CallPhase.THINKING
     val ringAlpha by animateFloatAsState(if (speaking) 1f else 0f, tween(300), label = "ringAlpha")
@@ -569,8 +567,7 @@ private fun CallAvatar(ui: CallUi) {
 /** 用户在说：五根高低起伏的绿色竖条 */
 @Composable
 private fun LevelBars(color: Color) {
-    val transition = rememberInfiniteTransition(label = "levelBars")
-    val t by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1_000, easing = LinearEasing)), label = "levelPhase")
+    val t by loopingFloat(0f, 1f, infiniteRepeatable(tween(1_000, easing = LinearEasing)), still = 0.1f, label = "levelPhase")
     Canvas(Modifier.size(width = 44.dp, height = 20.dp).clearAndSetSemantics {}) {
         val bar = 4.dp.toPx()
         val gap = (size.width - bar * 5) / 4
@@ -590,8 +587,7 @@ private fun LevelBars(color: Color) {
 /** 正在识别、对方在想：三个依次亮起的点 */
 @Composable
 private fun WaitingDots(color: Color) {
-    val transition = rememberInfiniteTransition(label = "waitingDots")
-    val t by transition.animateFloat(0f, 3f, infiniteRepeatable(tween(1_200, easing = LinearEasing)), label = "dotsPhase")
+    val t by loopingFloat(0f, 3f, infiniteRepeatable(tween(1_200, easing = LinearEasing)), still = 0.5f, label = "dotsPhase")
     Canvas(Modifier.size(width = 36.dp, height = 12.dp).clearAndSetSemantics {}) {
         val r = 3.dp.toPx()
         val gap = (size.width - r * 6) / 2

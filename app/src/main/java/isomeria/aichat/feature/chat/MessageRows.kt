@@ -1,6 +1,12 @@
 package isomeria.aichat.feature.chat
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -55,6 +62,7 @@ import isomeria.aichat.ui.components.VoiceBubble
 import isomeria.aichat.data.voice.PlayMode
 import isomeria.aichat.ui.components.WeBubbleMenu
 import isomeria.aichat.ui.components.WeIcons
+import isomeria.aichat.ui.theme.WeMotion
 import isomeria.aichat.ui.theme.WeTheme
 import java.io.File
 import kotlin.math.max
@@ -239,14 +247,24 @@ fun MessageRow(
                 .padding(horizontal = dimens.chatAvatarEdge, vertical = dimens.messageSpacing / 2),
             verticalAlignment = Alignment.Top,
         ) {
-            // 多选（0.9.0）：最左边一列勾选圈，和头像的中线对齐
-            if (selection != null) {
-                isomeria.aichat.ui.components.SelectCircle(
-                    selected = selection.selected,
-                    enabled = selection.selectable,
-                    modifier = Modifier.padding(top = (dimens.chatAvatar - 22.dp) / 2),
-                )
-                Spacer(Modifier.width(dimens.chatAvatarEdge))
+            // 多选（0.9.0）：最左边一列勾选圈，和头像的中线对齐。0.9.1：进出多选时从左边滑入、滑出（气泡跟着让位）
+            val lastSelection = remember { mutableStateOf(selection) }
+            selection?.let { lastSelection.value = it }
+            AnimatedVisibility(
+                visible = selection != null,
+                enter = expandHorizontally(tween(WeMotion.SELECTION), expandFrom = Alignment.Start) + fadeIn(tween(WeMotion.SELECTION)),
+                exit = shrinkHorizontally(tween(WeMotion.SELECTION), shrinkTowards = Alignment.Start) + fadeOut(tween(WeMotion.SELECTION)),
+                label = "selectCircle",
+            ) {
+                val shown = selection ?: lastSelection.value
+                Row {
+                    isomeria.aichat.ui.components.SelectCircle(
+                        selected = shown?.selected == true,
+                        enabled = shown?.selectable != false,
+                        modifier = Modifier.padding(top = (dimens.chatAvatar - 22.dp) / 2),
+                    )
+                    Spacer(Modifier.width(dimens.chatAvatarEdge))
+                }
             }
             Row(
                 Modifier.weight(1f),
@@ -288,12 +306,14 @@ fun MessageRow(
                                 text = message.content,
                                 sent = sent,
                                 onLongClick = { menuOpen = true },
+                                held = menuOpen,
                             )
                             MessageType.IMAGE -> ImageMessage(
                                 message = message,
                                 sent = sent,
                                 onClick = { message.imagePath?.let(actions.onImageClick) },
                                 onLongClick = { menuOpen = true },
+                                held = menuOpen,
                             )
                             MessageType.VOICE -> VoiceMessage(
                                 message = message,
@@ -302,12 +322,14 @@ fun MessageRow(
                                 onClick = { actions.onVoiceClick(message) },
                                 onLongClick = { menuOpen = true },
                                 onToText = { actions.onVoiceShowText(message, true) },
+                                held = menuOpen,
                             )
                             MessageType.CALL -> isomeria.aichat.ui.components.CallBubble(
                                 message = message,
                                 sent = sent,
                                 onClick = { actions.onCallClick(message) },
                                 onLongClick = { menuOpen = true },
+                                held = menuOpen,
                             )
                         }
                         if (menuOpen) WeBubbleMenu(menuItems) { menuOpen = false }
@@ -406,7 +428,7 @@ private fun selectionLabel(message: Message): String = when (message.type) {
  * 自己的语音在识别出文字前不显示「转文字」（下面显示「正在识别…」）。
  */
 @Composable
-private fun VoiceMessage(message: Message, sent: Boolean, playing: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onToText: () -> Unit) {
+private fun VoiceMessage(message: Message, sent: Boolean, playing: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onToText: () -> Unit, held: Boolean = false) {
     val unplayed = !sent && !message.voicePlayed
     val toText = @Composable {
         if (message.content.isNotBlank() && !message.voiceShowText) {
@@ -431,6 +453,7 @@ private fun VoiceMessage(message: Message, sent: Boolean, playing: Boolean, onCl
             onClick = onClick,
             onLongClick = onLongClick,
             modifier = Modifier.weight(1f, fill = false),
+            held = held,
         )
         if (!sent) {
             if (unplayed) {
@@ -529,10 +552,12 @@ private fun ThinkingBlock(reasoning: String, millis: Long) {
     }
 }
 
-/** 图片消息：按原比例缩成缩略图，长边最多 140dp，圆角 4dp */
+private val HELD_IMAGE_SHADE = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.2f)
+
+/** 图片消息：按原比例缩成缩略图，长边最多 140dp，圆角 4dp；[held]（0.9.1）长按菜单开着时盖一层暗色 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ImageMessage(message: Message, sent: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun ImageMessage(message: Message, sent: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, held: Boolean = false) {
     val dimens = WeTheme.dimens
     val maxSide = dimens.imageMaxSide
     val w = message.imageWidth.coerceAtLeast(1).toFloat()
@@ -552,6 +577,10 @@ private fun ImageMessage(message: Message, sent: Boolean, onClick: () -> Unit, o
             .size(width, height)
             .clip(RoundedCornerShape(dimens.imageCorner))
             .background(WeTheme.colors.listPressed)
+            .drawWithContent {
+                drawContent()
+                if (held) drawRect(HELD_IMAGE_SHADE)
+            }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     )
 }

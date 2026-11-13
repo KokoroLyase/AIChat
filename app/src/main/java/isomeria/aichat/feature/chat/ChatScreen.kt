@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import isomeria.aichat.ui.theme.WeMotion
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -593,7 +594,8 @@ fun ChatScreen(
         }
         }
 
-        val selectedNow = selection
+        // 0.9.1：进出多选时输入栏和操作栏交叉淡变
+        isomeria.aichat.ui.components.SelectionCrossfade(selection) { selectedNow ->
         if (selectedNow != null) {
             // 多选（0.9.0）：输入栏换成复制、收藏、删除（收藏时图片跳过，见 FavoriteRepository.add）
             val any = selectedNow.isNotEmpty()
@@ -705,6 +707,7 @@ fun ChatScreen(
             Box(Modifier.fillMaxWidth().navigationBarsPadding(), contentAlignment = Alignment.Center) {
                 Text(stringResource(R.string.chat_contact_missing), color = colors.textTertiary)
             }
+        }
         }
     }
 
@@ -850,9 +853,12 @@ fun ChatMessageList(
     onToggleSelection: (Message) -> Unit = {},
     /** 正在翻译、翻译失败的消息（0.9.0） */
     translating: Map<Long, TranslationUi> = emptyMap(),
+    /** 打开聊天的时间（0.9.1）：之后新到的、自己刚发的消息有出现动画，分页加载的历史没有 */
+    openedAt: Long = remember { System.currentTimeMillis() },
 ) {
     val defaultName = stringResource(R.string.default_nickname)
     val highlightColor = WeTheme.colors.messageHighlight
+    val appear = remember(openedAt) { BubbleAppearTracker(openedAt) }
     LazyColumn(
         state = listState,
         reverseLayout = true,
@@ -869,9 +875,24 @@ fun ChatMessageList(
             val row = if (pagingRows != null) pagingRows[index] else rows[rows.lastIndex - index]
             if (row == null) return@items
             val highlighted = row is ChatRow.Item && row.message.id == highlightId
+            // 记在这一项里：重组时不会再判断一次；滚出屏幕再回来时 tracker 已经见过它，不重播
+            val appearProgress = remember(row.key) {
+                val fresh = row is ChatRow.Item && appear.claim(row.message.id, row.message.createdAt)
+                Animatable(if (fresh) 0f else 1f)
+            }
+            LaunchedEffect(appearProgress) {
+                if (appearProgress.value < 1f) appearProgress.animateTo(1f, tween(WeMotion.BUBBLE_APPEAR, easing = WeMotion.Decelerate))
+            }
             Box(
                 Modifier
-                    .animateItem()
+                    // 不要默认的淡入：往上翻加载历史时整页消息不该一条条淡入（0.9.1）；位置变化和删除的淡出保留
+                    .animateItem(fadeInSpec = null)
+                    .graphicsLayer {
+                        // 气泡出现：淡入加轻微上移，约 180ms；系统移除动画时 Compose 直接跳到终点
+                        val p = appearProgress.value
+                        alpha = p
+                        translationY = (1f - p) * WeMotion.BUBBLE_RISE.dp.toPx()
+                    }
                     .then(
                         if (highlighted) {
                             Modifier.drawBehind { drawRect(highlightColor.copy(alpha = highlightColor.alpha * highlightAlpha())) }
@@ -912,6 +933,17 @@ fun ChatMessageList(
 }
 
 private const val FOCUS_IME_WAIT_MILLIS = 800L
+
+/**
+ * 哪些消息播出现动画（0.9.1）：打开聊天以后才有的消息（新到的回复、自己刚发的、到点送达的），每条只播一次；
+ * 打开时已有的和往上翻加载的历史都不播。滚出屏幕再滚回来不重播。
+ */
+internal class BubbleAppearTracker(private val openedAt: Long) {
+    private val seen = HashSet<Long>()
+
+    /** 第一次见到这条消息、而且是打开聊天以后才有的，返回 true */
+    fun claim(id: Long, createdAt: Long): Boolean = seen.add(id) && createdAt >= openedAt
+}
 
 @Composable
 fun NewMessagesButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -977,10 +1009,10 @@ internal fun InCallBar(startedAt: Long?, now: (() -> Long)? = null, onClick: () 
             }
         }
     }
-    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "inCallDot")
-    val pulse by transition.animateFloat(
+    val pulse by isomeria.aichat.ui.theme.loopingFloat(
         0.35f, 1f,
         androidx.compose.animation.core.infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse),
+        still = 1f,
         label = "inCallPulse",
     )
     val tint = colors.brand.copy(alpha = if (colors.isDark) 0.16f else 0.10f).compositeOver(colors.barBackground)

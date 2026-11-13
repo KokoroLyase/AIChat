@@ -1,5 +1,11 @@
 package isomeria.aichat.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import isomeria.aichat.ui.theme.WeMotion
 import isomeria.aichat.ui.theme.WeTheme
 
 /**
@@ -50,6 +58,27 @@ fun SelectCircle(selected: Boolean, enabled: Boolean, modifier: Modifier = Modif
         contentAlignment = Alignment.Center,
     ) {
         if (selected) Icon(WeIcons.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
+    }
+}
+
+/**
+ * 多选进出时底部的切换（0.9.1）：输入栏和操作栏交叉淡变，高度跟着过渡。
+ * [content] 收到的选中集合不为 null 时画操作栏，为 null 时画输入栏；淡出中的操作栏沿用最后一次的选中。
+ */
+@Composable
+fun SelectionCrossfade(selection: Set<Long>?, content: @Composable (selected: Set<Long>?) -> Unit) {
+    val last = remember { mutableStateOf<Set<Long>>(emptySet()) }
+    selection?.let { last.value = it }
+    AnimatedContent(
+        targetState = selection != null,
+        transitionSpec = {
+            fadeIn(tween(WeMotion.SELECTION)) togetherWith fadeOut(tween(WeMotion.SELECTION)) using SizeTransform(clip = false)
+        },
+        label = "selectionBar",
+    ) { selecting ->
+        Column(Modifier.fillMaxWidth()) {
+            content(if (selecting) selection ?: last.value else null)
+        }
     }
 }
 

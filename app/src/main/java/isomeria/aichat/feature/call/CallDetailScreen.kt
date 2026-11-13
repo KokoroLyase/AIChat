@@ -3,9 +3,7 @@ package isomeria.aichat.feature.call
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -469,8 +467,7 @@ private fun TurnRow(turn: CallTurn, name: String, playing: Boolean, current: Boo
                     val tint = if (playing) colors.brandText else colors.textTertiary
                     if (playable) {
                         if (playing) {
-                            val transition = rememberInfiniteTransition(label = "turnWaves")
-                            val step by transition.animateFloat(0f, 3f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "turnWaveStep")
+                            val step by isomeria.aichat.ui.theme.loopingFloat(0f, 3f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), still = 2.5f, label = "turnWaveStep")
                             SoundWaves(tint, step.toInt().coerceIn(0, 2) + 1, pointingRight = true, size = 14.dp)
                         } else {
                             Icon(WeIcons.Play, contentDescription = null, tint = tint, modifier = Modifier.size(12.dp))

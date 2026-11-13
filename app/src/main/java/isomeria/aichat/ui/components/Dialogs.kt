@@ -1,5 +1,8 @@
 package isomeria.aichat.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -29,12 +32,21 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -44,18 +56,37 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import isomeria.aichat.R
+import isomeria.aichat.ui.theme.WeMotion
 import isomeria.aichat.ui.theme.WeTheme
+import isomeria.aichat.ui.theme.rememberEnterProgress
+import isomeria.aichat.ui.theme.scaleFadeIn
+import kotlinx.coroutines.launch
 
 /**
  * 弹窗是独立窗口，系统会给它重新提供 [LocalDensity]，App 内的“字体大小”不会跟过来。
  * 所有弹窗都走这里，和页面用同一个字号。
+ *
+ * 0.9.1：[scaleIn] 为 true 时内容淡入加轻微缩放（对话框）；底部菜单自己做滑出，传 false。
  */
 @Composable
-fun WeDialogWindow(onDismissRequest: () -> Unit, properties: DialogProperties = DialogProperties(), content: @Composable () -> Unit) {
+fun WeDialogWindow(
+    onDismissRequest: () -> Unit,
+    properties: DialogProperties = DialogProperties(),
+    scaleIn: Boolean = true,
+    content: @Composable () -> Unit,
+) {
     val density = LocalDensity.current
     Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-        CompositionLocalProvider(LocalDensity provides density, content = content)
+        CompositionLocalProvider(LocalDensity provides density) {
+            if (scaleIn) {
+                val enter = rememberEnterProgress(WeMotion.DIALOG_ENTER)
+                Box(Modifier.scaleFadeIn(enter, WeMotion.DIALOG_START_SCALE), propagateMinConstraints = true) { content() }
+            } else {
+                content()
+            }
+        }
     }
 }
 
@@ -164,6 +195,8 @@ data class SheetOption(
 
 /**
  * 底部操作菜单：选项在上，间隔后是「取消」。选中项右侧打勾。
+ * 0.9.1：从下往上滑出、背景渐暗；关闭时先滑下去再执行（选项的操作也在滑下去之后）。
+ * 背景的暗色由这里自己画（窗口自带的变暗会一下子出现），深浅取窗口原来的变暗程度。
  */
 @Composable
 fun WeActionSheet(
@@ -173,17 +206,37 @@ fun WeActionSheet(
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
+    val shown = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    var leaving by remember { mutableStateOf(false) }
+    // 先滑下去，再执行 [then]（选项的操作）并关闭
+    val close: (() -> Unit) -> Unit = { then ->
+        if (!leaving) {
+            leaving = true
+            scope.launch {
+                shown.animateTo(0f, tween(WeMotion.SHEET_EXIT, easing = FastOutLinearInEasing))
+                then()
+                onDismiss()
+            }
+        }
+    }
     WeDialogWindow(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { close {} },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        scaleIn = false,
     ) {
+        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+        val scrim = remember(window) { window?.attributes?.dimAmount?.takeIf { it > 0f } ?: DEFAULT_SCRIM }
+        SideEffect { window?.setDimAmount(0f) }
+        LaunchedEffect(Unit) { shown.animateTo(1f, tween(WeMotion.SHEET_ENTER, easing = WeMotion.Decelerate)) }
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
+                .drawBehind { drawRect(Color.Black.copy(alpha = scrim * shown.value)) }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onDismiss,
+                    onClick = { close {} },
                 ),
             contentAlignment = Alignment.BottomCenter,
         ) {
@@ -191,6 +244,7 @@ fun WeActionSheet(
             val optionsMaxHeight = maxHeight * 0.7f
             Column(
                 Modifier
+                    .graphicsLayer { translationY = (1f - shown.value) * size.height }
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(topStart = dimens.dialogCorner, topEnd = dimens.dialogCorner))
                     .background(colors.pageBackground)
@@ -228,10 +282,7 @@ fun WeActionSheet(
                             Modifier
                                 .fillMaxWidth()
                                 .background(colors.listBackground)
-                                .clickable(role = Role.Button) {
-                                    option.onClick()
-                                    onDismiss()
-                                }
+                                .clickable(role = Role.Button) { close(option.onClick) }
                                 .then(if (option.selected) Modifier.semantics { selected = true } else Modifier)
                                 .heightIn(min = dimens.listRowHeight)
                                 .padding(horizontal = 24.dp, vertical = 10.dp),
@@ -268,7 +319,7 @@ fun WeActionSheet(
                     Modifier
                         .fillMaxWidth()
                         .background(colors.listBackground)
-                        .clickable(role = Role.Button, onClick = onDismiss)
+                        .clickable(role = Role.Button) { close {} }
                         .heightIn(min = dimens.listRowHeight),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -278,6 +329,9 @@ fun WeActionSheet(
         }
     }
 }
+
+/** 窗口没有给出变暗程度时用的背景暗度 */
+private const val DEFAULT_SCRIM = 0.6f
 
 /** 加载提示：屏幕中间一块深色圆角方块，转圈加一行字；不能点掉。 */
 @Composable

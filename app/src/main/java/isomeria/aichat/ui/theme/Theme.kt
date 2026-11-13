@@ -45,11 +45,13 @@ object WeTheme {
  * 智信主题。Material3 只作底座（文字选择、光标等），颜色、尺寸、字号全部来自微信风格的自定义 token。
  *
  * @param fontScale 设置里「字体大小」的倍数，叠加在系统字体缩放之上。
+ * @param reduceMotion 系统「移除动画」时为 true，循环动效显示静止状态（0.9.1，见 [WeMotion]）。
  */
 @Composable
 fun AIChatTheme(
     darkTheme: Boolean,
     fontScale: Float = 1f,
+    reduceMotion: Boolean = rememberSystemReduceMotion(),
     content: @Composable () -> Unit,
 ) {
     val colors = if (darkTheme) DarkWeColors else LightWeColors
@@ -93,6 +95,7 @@ fun AIChatTheme(
             LocalWeDimens provides WeDimens(),
             LocalWeTypography provides WeTypography(),
             LocalDensity provides scaledDensity,
+            LocalReduceMotion provides reduceMotion,
             LocalIndication provides WePressIndication(colors.listPressed),
             LocalTextSelectionColors provides TextSelectionColors(
                 handleColor = colors.brand,

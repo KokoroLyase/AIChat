@@ -1,6 +1,8 @@
 package isomeria.aichat.ui.components
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -21,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,7 +31,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -48,7 +55,10 @@ import androidx.compose.ui.unit.round
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import isomeria.aichat.ui.theme.WeMotion
 import isomeria.aichat.ui.theme.WeTheme
+import isomeria.aichat.ui.theme.rememberEnterProgress
+import isomeria.aichat.ui.theme.scaleFadeIn
 
 data class MenuItem(val label: String, val icon: ImageVector? = null, val onClick: () -> Unit)
 
@@ -70,6 +80,8 @@ private fun WePopup(provider: PopupPositionProvider, onDismiss: () -> Unit, cont
  * - 菜单下面铺一层透明的全屏层，点菜单外面只关菜单，不会点到后面的消息或空白处；返回键也是先关菜单；
  * - 左右离屏幕边缘至少 [BUBBLE_MENU_SIDE_MARGIN]，上面不压住标题栏，下面不压住键盘；
  * - 每格一样宽（以最长的一项为准），每行最多 5 项，各行数量尽量均匀（11 项排成 4 + 4 + 3），见 [bubbleMenuRows]。
+ *
+ * 0.9.1：从气泡那一侧缩放淡入，带一个指向气泡的小三角（菜单盖住消息时不画），见 [bubbleMenuArrow]。
  */
 @Composable
 fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
@@ -103,8 +115,50 @@ fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
             }
             // 菜单本体在透明层里的位置，用来分辨按下是在菜单上还是菜单外面
             val cardBounds = remember { arrayOfNulls<IntRect>(1) }
+            // 小三角在菜单上的位置（摆放时算出来，绘制时读），和出现动画的进度
+            var arrow by remember { mutableStateOf(BubbleMenuArrow.None) }
+            val enter = remember { Animatable(0f) }
+            LaunchedEffect(Unit) { enter.animateTo(1f, tween(WeMotion.MENU_ENTER, easing = WeMotion.Decelerate)) }
+            val arrowHalf = with(density) { BUBBLE_MENU_ARROW_HALF.toPx() }
+            val arrowHeight = with(density) { BUBBLE_MENU_ARROW_HEIGHT.toPx() }
+            val cardColor = WeTheme.colors.popupBackground
             Layout(
-                content = { BubbleMenuGrid(items, onDismiss) },
+                content = {
+                    BubbleMenuGrid(
+                        items,
+                        onDismiss,
+                        Modifier
+                            .graphicsLayer {
+                                val v = enter.value
+                                alpha = v
+                                val scale = WeMotion.MENU_START_SCALE + (1f - WeMotion.MENU_START_SCALE) * v
+                                scaleX = scale
+                                scaleY = scale
+                                // 从小三角那里长出来
+                                transformOrigin = TransformOrigin(
+                                    if (size.width > 0f && arrow != BubbleMenuArrow.None) arrow.x / size.width else 0.5f,
+                                    if (arrow.pointsDown) 1f else 0f,
+                                )
+                            }
+                            .drawBehind {
+                                val a = arrow
+                                if (a == BubbleMenuArrow.None) return@drawBehind
+                                val path = Path().apply {
+                                    if (a.pointsDown) {
+                                        moveTo(a.x - arrowHalf, size.height - 1f)
+                                        lineTo(a.x, size.height + arrowHeight)
+                                        lineTo(a.x + arrowHalf, size.height - 1f)
+                                    } else {
+                                        moveTo(a.x - arrowHalf, 1f)
+                                        lineTo(a.x, -arrowHeight)
+                                        lineTo(a.x + arrowHalf, 1f)
+                                    }
+                                    close()
+                                }
+                                drawPath(path, cardColor)
+                            },
+                    )
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(onDismiss) {
@@ -138,6 +192,7 @@ fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
                     )
                     val local = position - origin
                     cardBounds[0] = IntRect(local, IntSize(card.width, card.height))
+                    arrow = bubbleMenuArrow(target, position, IntSize(card.width, card.height), with(density) { (dimens.popupCorner + BUBBLE_MENU_ARROW_HALF).roundToPx() })
                     card.place(local)
                 }
             }
@@ -147,7 +202,7 @@ fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
 
 /** 菜单本体：等宽格子，各行项数见 [bubbleMenuRows]，左对齐 */
 @Composable
-private fun BubbleMenuGrid(items: List<MenuItem>, onDismiss: () -> Unit) {
+private fun BubbleMenuGrid(items: List<MenuItem>, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     val minCell = with(LocalDensity.current) { BUBBLE_MENU_MIN_CELL.roundToPx() }
@@ -178,7 +233,7 @@ private fun BubbleMenuGrid(items: List<MenuItem>, onDismiss: () -> Unit) {
                 }
             }
         },
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(dimens.popupCorner))
             .background(colors.popupBackground)
             .padding(4.dp),
@@ -236,6 +291,28 @@ internal fun bubbleMenuPosition(anchor: IntRect, menu: IntSize, visible: IntRect
     return IntOffset(x, y.coerceIn(top, bottom))
 }
 
+/** 长按菜单上指向气泡的小三角：[x] 是相对菜单左边的位置，[pointsDown] 为 true 时画在菜单下沿（菜单在气泡上方） */
+internal data class BubbleMenuArrow(val x: Float, val pointsDown: Boolean) {
+    companion object {
+        val None = BubbleMenuArrow(-1f, true)
+    }
+}
+
+/**
+ * 小三角放在哪：菜单在气泡上方就画在下沿、在下方就画在上沿，对准气泡中间，但不进菜单的圆角（[inset]）；
+ * 菜单盖住了消息（很长的消息，上下都放不下）时不画。
+ */
+internal fun bubbleMenuArrow(anchor: IntRect, menuTopLeft: IntOffset, menu: IntSize, inset: Int): BubbleMenuArrow {
+    val pointsDown = when {
+        menuTopLeft.y + menu.height <= anchor.top -> true
+        menuTopLeft.y >= anchor.bottom -> false
+        else -> return BubbleMenuArrow.None
+    }
+    val lo = inset.coerceAtMost(menu.width / 2)
+    val hi = (menu.width - inset).coerceAtLeast(lo)
+    return BubbleMenuArrow((anchor.center.x - menuTopLeft.x).coerceIn(lo, hi).toFloat(), pointsDown)
+}
+
 /** 菜单窗口放在应用窗口左上角，铺满整个窗口；菜单本体在里面按屏幕坐标摆放 */
 private object WindowOriginProvider : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize) = IntOffset.Zero
@@ -246,6 +323,9 @@ private val BUBBLE_MENU_SIDE_MARGIN = 12.dp
 private val BUBBLE_MENU_VERTICAL_MARGIN = 8.dp
 private val BUBBLE_MENU_GAP = 6.dp
 private val BUBBLE_MENU_MIN_CELL = 56.dp
+/** 小三角半宽和高；高度小于菜单和气泡的间隙 [BUBBLE_MENU_GAP]，尖不碰到气泡 */
+private val BUBBLE_MENU_ARROW_HALF = 6.dp
+private val BUBBLE_MENU_ARROW_HEIGHT = 5.dp
 
 /**
  * 在按压位置弹出的竖向菜单（聊天列表长按）。[pressOffset] 是相对锚点左上角的按压位置。
@@ -256,8 +336,11 @@ fun WeContextMenu(pressOffset: IntOffset, items: List<MenuItem>, onDismiss: () -
     val dimens = WeTheme.dimens
     val provider = remember(pressOffset) { AtPointProvider(pressOffset) }
     WePopup(provider, onDismiss) {
+        // 0.9.1：从按下的位置缩放淡入，和长按消息的菜单同一套参数
+        val enter = rememberEnterProgress(WeMotion.MENU_ENTER)
         Column(
             Modifier
+                .scaleFadeIn(enter, WeMotion.MENU_START_SCALE, TransformOrigin(0f, 0f))
                 .width(IntrinsicSize.Max)
                 .widthIn(min = 160.dp)
                 .shadow(6.dp, RoundedCornerShape(dimens.popupCorner))
@@ -285,7 +368,7 @@ fun WeContextMenu(pressOffset: IntOffset, items: List<MenuItem>, onDismiss: () -
 }
 
 /**
- * 顶栏「+」弹出的深色菜单，出现在锚点右下方。
+ * 顶栏「+」弹出的深色菜单，出现在锚点右下方；0.9.1 起从右上角展开（缩放淡入）。
  */
 @Composable
 fun WeDropdownMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
@@ -294,8 +377,10 @@ fun WeDropdownMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
     val margin = with(LocalDensity.current) { 4.dp.roundToPx() }
     val provider = remember(margin) { BelowEndProvider(margin) }
     WePopup(provider, onDismiss) {
+        val enter = rememberEnterProgress(WeMotion.MENU_ENTER)
         Column(
             Modifier
+                .scaleFadeIn(enter, WeMotion.MENU_START_SCALE, TransformOrigin(1f, 0f))
                 .clip(RoundedCornerShape(dimens.popupCorner))
                 .background(colors.popupBackground)
                 .padding(vertical = 4.dp),

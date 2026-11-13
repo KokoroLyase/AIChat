@@ -35,10 +35,10 @@ import isomeria.aichat.ui.theme.WeTheme
 
 /**
  * 通话消息的气泡（0.8.0）：和文字气泡同样的形状颜色，里面是「通话时长 03:21」和电话图标；还在通话时写「通话中」。
- * 点击进入这次通话的详情，长按出菜单。
+ * 点击进入这次通话的详情，长按出菜单；[held]（0.9.1）为 true 时菜单开着，保持按下的颜色。
  */
 @Composable
-fun CallBubble(message: Message, sent: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier = Modifier) {
+fun CallBubble(message: Message, sent: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier = Modifier, held: Boolean = false) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     val background = if (sent) colors.bubbleSent else colors.bubbleReceived
@@ -59,7 +59,7 @@ fun CallBubble(message: Message, sent: Boolean, onClick: () -> Unit, onLongClick
     Box(
         modifier
             .clip(shape)
-            .background(if (pressed) pressedOverlay.compositeOver(background) else background)
+            .background(if (pressed || held) pressedOverlay.compositeOver(background) else background)
             .combinedClickable(interactionSource = interaction, indication = null, onClick = onClick, onLongClick = onLongClick)
             .clearAndSetSemantics {
                 role = Role.Button
