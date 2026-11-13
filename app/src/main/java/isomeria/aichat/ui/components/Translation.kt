@@ -77,11 +77,11 @@ fun TranslationLoading(modifier: Modifier = Modifier) {
     Text(stringResource(R.string.translation_loading), style = WeTheme.typography.small, color = WeTheme.colors.textSecondary, modifier = modifier)
 }
 
-/** 翻译失败（0.9.0）：显示原因，点一下重试 */
+/** 翻译失败（0.9.0）：显示原因，点一下重试。有的原因自己以句号结尾，去掉免得和模板里的句号叠成“。。” */
 @Composable
 fun TranslationFailed(reason: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     Text(
-        stringResource(R.string.translation_failed, reason),
+        stringResource(R.string.translation_failed, reason.trimEnd('。')),
         style = WeTheme.typography.small,
         color = WeTheme.colors.textSecondary,
         modifier = modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.translation_retry), onClick = onRetry),

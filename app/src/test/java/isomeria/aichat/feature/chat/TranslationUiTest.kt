@@ -13,6 +13,8 @@ import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.repo.FailReason
+import androidx.compose.ui.test.onAllNodesWithText
+import org.junit.Assert.assertTrue
 import isomeria.aichat.ui.theme.AIChatTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -109,5 +111,25 @@ class TranslationUiTest {
         compose.onNodeWithText("翻译失败", substring = true).assertExists()
         compose.onNodeWithText("点一下重试", substring = true).performClick()
         assertEquals(listOf(5L), calls.translated)
+    }
+
+    /** 真机上发现：“模型参数待修正……兼容规则。”这类自带句号的原因显示成“。。点一下重试” */
+    @Test
+    fun failureReasons_neverDoubleTheFullStop() {
+        val reasons = FailReason.entries
+        compose.setContent {
+            AIChatTheme(darkTheme = false) {
+                androidx.compose.foundation.layout.Column {
+                    reasons.forEach { reason ->
+                        isomeria.aichat.ui.components.TranslationFailed(androidx.compose.ui.res.stringResource(failReasonText(reason)), onRetry = {})
+                    }
+                }
+            }
+        }
+        val shown = compose.onAllNodesWithText("翻译失败", substring = true).fetchSemanticsNodes()
+            .map { node -> node.config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString("") }
+        assertEquals(reasons.size, shown.size)
+        assertTrue(shown.joinToString("\n"), shown.none { "。。" in it })
+        assertTrue(shown.any { it.endsWith("兼容规则。点一下重试") })
     }
 }
