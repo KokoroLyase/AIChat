@@ -1074,6 +1074,7 @@
     <string name="call_end_failures">连续几次没有成功，通话已自动结束</string>
     <string name="call_end_time_limit">已到单次通话的最长时间（60 分钟）</string>
     <string name="call_end_idle">很久没有人说话，通话已自动结束</string>
+    <string name="call_end_microphone">麦克风出错，通话已结束</string>
     <string name="call_subtitle_me">我</string>
     <string name="call_subtitles_show">显示字幕</string>
     <string name="call_subtitles_hide">收起字幕</string>

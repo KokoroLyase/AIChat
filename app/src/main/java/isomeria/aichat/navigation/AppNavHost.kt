@@ -235,10 +235,8 @@ fun AppNavHost(
                 onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
                 onOpenVoiceSettings = { nav.navigate(VoiceProviderListRoute(isomeria.aichat.data.db.ProviderKind.ASR.name)) },
                 onCall = { nav.navigate(CallRoute(it)) { launchSingleTop = true } },
-                onOpenCall = { message ->
-                    // 还在打的通话回到通话页，打完的看详情
-                    if (message.callOngoing) nav.navigate(CallRoute(message.contactId)) { launchSingleTop = true } else nav.navigate(CallDetailRoute(message.id))
-                },
+                // 正在进行的通话由聊天页判断后走 onCall 回到通话页，这里只看详情
+                onOpenCall = { message -> nav.navigate(CallDetailRoute(message.id)) },
             )
         }
         page<CallDetailRoute>(nav) { isomeria.aichat.feature.call.CallDetailScreen(onBack = nav::popBackStackSafely) }

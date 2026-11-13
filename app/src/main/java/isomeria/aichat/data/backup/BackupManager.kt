@@ -527,7 +527,8 @@ class BackupManager @Inject constructor(
                     it.copy(
                         image = it.image?.takeIf(BackupFormat.mediaNamePattern::matches),
                         voice = it.voice?.takeIf { name -> name.startsWith(BackupFormat.VOICE_DIR) && BackupFormat.mediaNamePattern.matches(name) },
-                        voiceMillis = it.voiceMillis.coerceAtLeast(0),
+                        // 通话（0.8.0）恢复后都是打完的：总时长至少 1 毫秒（0 是“通话中”，会让这条删不掉、点开又去打电话）
+                        voiceMillis = if (it.type == MessageType.CALL) it.voiceMillis.coerceAtLeast(1) else it.voiceMillis.coerceAtLeast(0),
                         // 通话（0.8.0）：只有通话消息带每一条话；音频只认 calls/ 下合规的名字
                         call = if (it.type != MessageType.CALL) emptyList() else it.call.map { turn ->
                             turn.copy(

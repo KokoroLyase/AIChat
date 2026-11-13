@@ -91,12 +91,14 @@ class CallEngineTest {
 
     private val mic = object : CallMicrophone {
         @Volatile var onFrame: ((ShortArray, Int) -> Unit)? = null
+        @Volatile var onError: (() -> Unit)? = null
         @Volatile var hearing = true
         var fail = false
         var stopped = 0
-        override fun start(onFrame: (ShortArray, Int) -> Unit) {
+        override fun start(onFrame: (ShortArray, Int) -> Unit, onError: () -> Unit) {
             if (fail) throw IllegalStateException("microphone unavailable")
             this.onFrame = onFrame
+            this.onError = onError
         }
         override fun setListening(listening: Boolean) { hearing = listening }
         override fun stop() { onFrame = null; stopped++ }
@@ -136,6 +138,8 @@ class CallEngineTest {
         /** 为 true 时放音不会自己结束（检查“对方在说”时的打断和挂断） */
         @Volatile var hold = false
         @Volatile var pending: ((Boolean) -> Unit)? = null
+        /** 为 true 时放第一句就出错（文件放不了） */
+        @Volatile var failFirst = false
         var stops = 0
         override fun begin(speakerphone: Boolean, onFocus: (CallFocus) -> Unit): Boolean {
             if (!grant) return false
@@ -147,7 +151,8 @@ class CallEngineTest {
         override fun setSpeakerphone(speakerphone: Boolean) { loud = speakerphone }
         override fun play(file: File, onEnd: (completed: Boolean) -> Unit) {
             played += file
-            if (hold) pending = onEnd else Thread { Thread.sleep(5); onEnd(true) }.start()
+            val ok = !(failFirst && played.size == 1)
+            if (hold) pending = onEnd else Thread { Thread.sleep(5); onEnd(ok) }.start()
         }
         override fun stopPlayback() { stops++; pending = null }
         override fun end() { ended++ }
@@ -429,6 +434,21 @@ class CallEngineTest {
     }
 
     @Test
+    fun sentenceThatCannotBePlayed_keptAsTextOnly_withNotice() {
+        startCall()
+        speaker.failFirst = true
+        mic.say()
+        await("一轮完成") { turns().size == 3 && phase() == CallPhase.LISTENING }
+        val all = turns()
+        assertEquals(listOf(CallTurnStatus.OK, CallTurnStatus.TTS_FAILED, CallTurnStatus.OK), all.map { it.status })
+        assertNull("放不出来的那句不留音频", all[1].audioPath)
+        assertEquals(0L, all[1].audioMillis)
+        assertEquals(CallNotice.TTS_FAILED, engine.state.value!!.notice)
+        // 文件也删掉了：目录里只剩记录引用的
+        await("音频删掉") { callsDir().listFiles().orEmpty().map { it.canonicalPath }.toSet() == all.mapNotNull { it.audioPath }.map { File(it).canonicalPath }.toSet() }
+    }
+
+    @Test
     fun interruptWhileSpeaking_marksTheSentence_dropsTheRest_listensAgain() {
         startCall()
         h.provider.reply = "第一句。第二句。第三句。"
@@ -567,6 +587,33 @@ class CallEngineTest {
         val rows = db.messageDao().listByContact(contactId)
         assertEquals(MessageStatus.SUCCESS, rows.single { it.content == "还没送到" }.status)
         assertTrue("通话接在它后面", rows.last().id == id)
+    }
+
+    @Test
+    fun cannotStart_pendingRepliesStayWhereTheyWere() = runBlocking {
+        val due = start + 60_000
+        db.messageDao().insert(Message(contactId = contactId, role = Role.ASSISTANT, type = MessageType.TEXT, content = "还没送到", status = MessageStatus.PENDING, createdAt = due))
+        // 拿不到声音、麦克风打不开：没打成，等着送达的回复不提前
+        speaker.grant = false
+        assertEquals(CallBlock.AUDIO_BUSY, engine.start(contactId))
+        speaker.grant = true
+        mic.fail = true
+        assertEquals(CallBlock.MICROPHONE, engine.start(contactId))
+        val row = db.messageDao().listByContact(contactId).single { it.content == "还没送到" }
+        assertEquals(MessageStatus.PENDING, row.status)
+        assertEquals(due, row.createdAt)
+    }
+
+    @Test
+    fun microphoneError_endsTheCall() {
+        val id = startCall()
+        mic.onError!!.invoke()
+        await("挂断") { phase() == CallPhase.ENDED }
+        assertEquals(CallEndReason.MICROPHONE, engine.state.value!!.endReason)
+        val call = runBlocking { db.messageDao().get(id)!! }
+        assertEquals(CallEndReason.MICROPHONE, CallEndReason.of(call.errorCode))
+        assertTrue(!call.callOngoing)
+        assertTrue(mic.stopped >= 1 && speaker.ended >= 1 && !host.running && !tracker.inCall(contactId))
     }
 
     @Test

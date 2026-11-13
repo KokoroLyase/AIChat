@@ -30,6 +30,7 @@ import isomeria.aichat.data.voice.WavFormat
 import isomeria.aichat.di.ApplicationScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -234,19 +235,30 @@ class CallEngine @Inject constructor(
      */
     suspend fun start(contactId: Long, speakerphone: Boolean = false): CallBlock? = lock.withLock {
         check(contactId)?.let { return@withLock it }
-        // 已经生成、等着送达的回复先送达，通话接在它们后面
-        deliverPendingNow(contactId)
         val session = Session(contactId, speakerphone)
         if (!speaker.begin(speakerphone) { focus -> session.inputs.trySend(Input.Focus(focus)) }) return@withLock CallBlock.AUDIO_BUSY
         session.vad = activity.create()
         try {
-            microphone.start { frame, count -> if (session.acceptingFrames) session.inputs.trySend(Input.Frame(frame.copyOf(count))) }
+            microphone.start(
+                onFrame = { frame, count -> if (session.acceptingFrames) session.inputs.trySend(Input.Frame(frame.copyOf(count))) },
+                // 麦克风中途出错：读不到声音了，挂断（不然会一直“在听”，直到很久没人说话）
+                onError = { session.inputs.trySend(Input.End(CallEndReason.MICROPHONE)) },
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             speaker.end()
             session.vad.release()
             return@withLock CallBlock.MICROPHONE
+        }
+        // 声音和麦克风都拿到了才动聊天：已经生成、等着送达的回复先送达，通话接在它们后面
+        try {
+            deliverPendingNow(contactId)
+        } catch (e: Throwable) {
+            microphone.stop()
+            speaker.end()
+            session.vad.release()
+            throw e
         }
         val now = clock.now()
         session.startedAt = now
@@ -259,11 +271,13 @@ class CallEngine @Inject constructor(
             session.vad.release()
             throw e
         }
+        // 先建好通话的任务再登记：别处这时要挂断并等收尾（删聊天、恢复数据），一定等得到
+        session.job = scope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) { session.run() }
         this.session = session
         tracker.enter(contactId) { hangUpAndWait() }
         _state.value = CallState(contactId, session.messageId, now, speakerphone = speakerphone, modelVad = session.vad !is isomeria.aichat.data.voice.EnergySpeechActivity)
         host.start(contactId, db.contactDao().get(contactId)?.name.orEmpty())
-        session.job = scope.launch(Dispatchers.Default) { session.run() }
+        session.job?.start()
         null
     }
 
@@ -629,11 +643,18 @@ class CallEngine @Inject constructor(
             files.commitAvatar(file.absolutePath)
             playingTurn = isomeria.aichat.data.db.CallTurn(id = id, messageId = messageId, seq = 0, role = Role.ASSISTANT, text = clip.text, audioPath = file.absolutePath, audioMillis = clip.millis, createdAt = now)
             _state.update { it?.copy(phase = CallPhase.SPEAKING, thinkingSince = 0, subtitle = CallSubtitle(Role.ASSISTANT, clip.text)) }
-            suspendCancellableCoroutine { continuation ->
-                speaker.play(file) { _ -> if (continuation.isActive) continuation.resume(Unit) }
+            val completed = suspendCancellableCoroutine { continuation ->
+                speaker.play(file) { done -> if (continuation.isActive) continuation.resume(done) }
                 continuation.invokeOnCancellation { speaker.stopPlayback() }
             }
+            val turn = playingTurn
             playingTurn = null
+            if (!completed) {
+                // 放不出来（文件格式放不了、播放器出错）：和合成失败一样，只留文字，音频删掉
+                turn?.let { records.updateTurn(it.copy(audioPath = null, audioMillis = 0, status = CallTurnStatus.TTS_FAILED)) }
+                files.delete(file.absolutePath)
+                return false
+            }
             delay(SENTENCE_GAP_MILLIS)
             return true
         }

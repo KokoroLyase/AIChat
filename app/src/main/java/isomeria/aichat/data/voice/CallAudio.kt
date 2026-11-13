@@ -26,8 +26,11 @@ import kotlin.math.sqrt
  * 等下一次开始听再接着往下放，这样“说话—静音—说话”的预置音频能一轮一轮地用。
  */
 interface CallMicrophone {
-    /** 开始采集；[onFrame] 在采集线程上回调。麦克风不可用时抛异常 */
-    fun start(onFrame: (ShortArray, Int) -> Unit)
+    /**
+     * 开始采集；[onFrame] 在采集线程上回调。麦克风不可用时抛异常。
+     * 采集中途出错、读不到声音了（比如录音服务出错）时在采集线程上调用一次 [onError]，之后不再有声音；[stop] 停下的不调用
+     */
+    fun start(onFrame: (ShortArray, Int) -> Unit, onError: () -> Unit = {})
 
     fun setListening(listening: Boolean)
 
@@ -156,7 +159,7 @@ class AndroidCallMicrophone @Inject constructor(@ApplicationContext private val 
     private var thread: Thread? = null
 
     @SuppressLint("MissingPermission") // 调用方先检查 RECORD_AUDIO
-    override fun start(onFrame: (ShortArray, Int) -> Unit) {
+    override fun start(onFrame: (ShortArray, Int) -> Unit, onError: () -> Unit) {
         check(!running) { "already running" }
         val injected = File(context.filesDir, TEST_INPUT).takeIf { BuildConfig.TEST_TOOLS && it.isFile }
         val source: Source = if (injected != null) FileSource(injected) { listening } else MicSource()
@@ -164,15 +167,23 @@ class AndroidCallMicrophone @Inject constructor(@ApplicationContext private val 
         running = true
         thread = Thread({
             val buffer = ShortArray(FRAME)
+            var failed = false
             try {
                 while (running) {
                     val count = source.read(buffer)
-                    if (count < 0) break
+                    // 读出错（AudioRecord 返回负数的错误码）：不再有声音，告诉调用方
+                    if (count < 0) {
+                        failed = true
+                        break
+                    }
                     if (count > 0) onFrame(buffer, count)
                 }
+            } catch (_: Exception) {
+                failed = true
             } finally {
-                source.close()
+                runCatching { source.close() }
             }
+            if (failed && running) onError()
         }, "call-microphone").apply { start() }
     }
 

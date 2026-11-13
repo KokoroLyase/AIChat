@@ -302,6 +302,7 @@ private fun endText(reason: CallEndReason?): String = when (reason) {
     CallEndReason.FAILURES -> stringResource(R.string.call_end_failures)
     CallEndReason.TIME_LIMIT -> stringResource(R.string.call_end_time_limit)
     CallEndReason.IDLE -> stringResource(R.string.call_end_idle)
+    CallEndReason.MICROPHONE -> stringResource(R.string.call_end_microphone)
     else -> ""
 }
 

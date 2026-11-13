@@ -163,6 +163,7 @@ private fun callHeader(detail: CallDetail, formatter: ChatTimeFormatter): String
         CallEndReason.TIME_LIMIT -> stringResource(R.string.call_end_time_limit)
         CallEndReason.IDLE -> stringResource(R.string.call_end_idle)
         CallEndReason.INTERRUPTED -> stringResource(R.string.call_end_interrupted)
+        CallEndReason.MICROPHONE -> stringResource(R.string.call_end_microphone)
         CallEndReason.HANG_UP -> null
     }
     return if (reason == null || call.callOngoing) line else "$line\n$reason"

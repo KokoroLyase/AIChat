@@ -232,4 +232,30 @@ class BackupCallTest {
         assertEquals("缺了音频的两条只留文字", 1, turns.count { it.audioPath != null })
         assertTrue(turns.filter { it.audioPath == null }.all { it.audioMillis == 0L })
     }
+
+    @Test
+    fun callWithoutDuration_isRestoredAsFinished() = runBlocking {
+        seed()
+        val zip = export()
+        // 改出来的文件（或别的工具写的）里通话没有时长：恢复后不能是“通话中”（删不掉、点开又去打电话）
+        val edited = File(context.cacheDir, "no-duration.zip")
+        ZipFile(zip).use { source ->
+            ZipOutputStream(edited.outputStream()).use { out ->
+                for (entry in source.entries()) {
+                    var bytes = source.getInputStream(entry).readBytes()
+                    if (entry.name == BackupFormat.DATA) {
+                        bytes = bytes.toString(Charsets.UTF_8).replace("\"voiceMillis\":9000", "\"voiceMillis\":0").toByteArray()
+                    }
+                    out.putNextEntry(ZipEntry(entry.name))
+                    out.write(bytes)
+                    out.closeEntry()
+                }
+            }
+        }
+        val preview = backup.inspect(edited)
+        backup.restore(preview, RestoreMode.OVERWRITE, null)
+        val call = db.messageDao().listByContact(1).single { it.type == MessageType.CALL }
+        assertTrue(call.voiceMillis >= 1)
+        assertTrue(!call.callOngoing)
+    }
 }

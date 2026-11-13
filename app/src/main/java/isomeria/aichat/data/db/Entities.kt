@@ -43,6 +43,9 @@ enum class CallEndReason(val code: Int) {
 
     /** App 在通话中被关掉，下次启动时补完 */
     INTERRUPTED(5),
+
+    /** 麦克风在通话中出错、读不到声音了 */
+    MICROPHONE(6),
     ;
 
     companion object {

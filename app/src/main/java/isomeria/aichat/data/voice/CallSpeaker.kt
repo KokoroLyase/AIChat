@@ -17,7 +17,7 @@ import javax.inject.Singleton
 
 /** 通话期间声音焦点的变化（0.8.0） */
 enum class CallFocus {
-    /** 别的 App 长期拿走了声音（比如来电）：挂断 */
+    /** 别的 App 长期拿走了声音，或手机来电（响铃、接听）：挂断 */
     LOST,
 
     /** 暂时拿走（比如导航播报、别的 App 的短提示）：先不听也不放 */
@@ -46,12 +46,50 @@ interface CallSpeaker {
     fun end()
 }
 
+/**
+ * 通话声音的几条规则（0.8.0），纯逻辑，便于测试：
+ * - 不开免提时：连着耳机（蓝牙、有线、USB、助听器）就从耳机出声，没有才用听筒；不能强行切到听筒，否则戴着耳机也从听筒出声
+ * - 开免提：扬声器
+ * - 手机来电（系统的声音模式变成响铃、通话中、来电筛选、转接）：挂断。来电时别的 App 多半只收到“暂时失去声音焦点”，
+ *   只看焦点会把通话停在“暂停中”而不是挂断
+ */
+object CallAudioPolicy {
+    private val headsets = listOf(
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_HEARING_AID,
+    )
+
+    private val phoneCallModes = setOf(
+        AudioManager.MODE_RINGTONE,
+        AudioManager.MODE_IN_CALL,
+        AudioManager.MODE_CALL_SCREENING,
+        AudioManager.MODE_CALL_REDIRECT,
+    )
+
+    /** 从能用于通话的设备类型（[available]）里挑一个；都没有时为 null（交给系统） */
+    fun device(speakerphone: Boolean, available: List<Int>): Int? =
+        if (speakerphone) {
+            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER.takeIf { it in available }
+        } else {
+            headsets.firstOrNull { it in available } ?: AudioDeviceInfo.TYPE_BUILTIN_EARPIECE.takeIf { it in available }
+        }
+
+    /** 系统声音模式变成 [mode] 时通话该怎么办；null 是不用管（包括本 App 自己切回普通模式） */
+    fun onModeChanged(mode: Int): CallFocus? = if (mode in phoneCallModes) CallFocus.LOST else null
+}
+
 @Singleton
 class AndroidCallSpeaker @Inject constructor(@ApplicationContext context: Context) : CallSpeaker {
     private val audio = context.getSystemService(AudioManager::class.java)
     private val main = Handler(Looper.getMainLooper())
     private var player: MediaPlayer? = null
     private var focus: AudioFocusRequest? = null
+    private var modeListener: AudioManager.OnModeChangedListener? = null
+    private var speakerphone = false
     private var onEnd: ((Boolean) -> Unit)? = null
     private val attributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -78,22 +116,38 @@ class AndroidCallSpeaker @Inject constructor(@ApplicationContext context: Contex
                 when (change) {
                     AudioManager.AUDIOFOCUS_LOSS -> onFocus(CallFocus.LOST)
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> onFocus(CallFocus.PAUSED)
-                    AudioManager.AUDIOFOCUS_GAIN -> onFocus(CallFocus.RESUMED)
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        // 拿回焦点：期间别处（比如聊天页用听筒放语音消息）可能把声音模式和设备改回了普通，重新设好
+                        if (focus != null) {
+                            audio.mode = AudioManager.MODE_IN_COMMUNICATION
+                            route()
+                        }
+                        onFocus(CallFocus.RESUMED)
+                    }
                 }
             }, main)
             .build()
         if (audio.requestAudioFocus(request) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return@onMain false
         focus = request
+        this.speakerphone = speakerphone
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
-        route(speakerphone)
+        route()
+        val listener = AudioManager.OnModeChangedListener { mode -> CallAudioPolicy.onModeChanged(mode)?.let(onFocus) }
+        audio.addOnModeChangedListener({ command -> main.post(command) }, listener)
+        modeListener = listener
         true
     }
 
-    override fun setSpeakerphone(speakerphone: Boolean) = onMain { route(speakerphone) }
+    override fun setSpeakerphone(speakerphone: Boolean) = onMain {
+        this.speakerphone = speakerphone
+        route()
+    }
 
-    private fun route(speakerphone: Boolean) {
-        val type = if (speakerphone) AudioDeviceInfo.TYPE_BUILTIN_SPEAKER else AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-        audio.availableCommunicationDevices.firstOrNull { it.type == type }?.let { audio.setCommunicationDevice(it) }
+    private fun route() {
+        val devices = audio.availableCommunicationDevices
+        val type = CallAudioPolicy.device(speakerphone, devices.map { it.type })
+        val device = devices.firstOrNull { it.type == type }
+        if (device != null) audio.setCommunicationDevice(device) else audio.clearCommunicationDevice()
     }
 
     override fun play(file: File, onEnd: (completed: Boolean) -> Unit) = onMain {
@@ -139,6 +193,8 @@ class AndroidCallSpeaker @Inject constructor(@ApplicationContext context: Contex
         releasePlayer()
         // 没开始（没拿到焦点，比如正在打电话）时不动通话模式
         val request = focus ?: return@onMain
+        modeListener?.let { runCatching { audio.removeOnModeChangedListener(it) } }
+        modeListener = null
         audio.abandonAudioFocusRequest(request)
         focus = null
         audio.clearCommunicationDevice()

@@ -135,7 +135,7 @@ fun ChatScreen(
     onOpenVoiceSettings: () -> Unit = {},
     /** 语音通话（0.8.0）；参数是联系人 id */
     onCall: (Long) -> Unit = {},
-    /** 点通话消息（0.8.0）：通话中回到通话页，打完的看详情 */
+    /** 看通话详情（0.8.0）；正在进行的通话由 [onCall] 回到通话页 */
     onOpenCall: (isomeria.aichat.data.db.Message) -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
@@ -469,7 +469,7 @@ fun ChatScreen(
             onVoiceClick = viewModel::toggleVoice,
             onVoicePlay = viewModel::playVoice,
             onVoiceShowText = viewModel::setVoiceShowText,
-            onCallClick = onOpenCall,
+            onCallClick = { message -> if (opensCallPage(message, inCall)) state.contact?.let { onCall(it.id) } else onOpenCall(message) },
         )
         Box(Modifier.weight(1f)) {
         background?.let { ChatBackground(it, Modifier.matchParentSize()) }
@@ -826,6 +826,12 @@ private fun ChatBottomArea(reserve: Dp?, content: @Composable () -> Unit) {
         content()
     }
 }
+
+/**
+ * 点聊天里的通话消息（0.8.0）：是正在进行的这通电话就回到通话页，否则看详情。
+ * 还标着“通话中”、却不是正在进行的（App 在通话中被关掉、下次启动还没补完）也看详情，不会因此又打一通
+ */
+internal fun opensCallPage(message: isomeria.aichat.data.db.Message, inCall: Boolean): Boolean = message.callOngoing && inCall
 
 /** 正在和这个联系人通话时代替输入栏（0.8.0）：点一下回到通话页 */
 @Composable
