@@ -249,6 +249,55 @@ class ReplyRequestGoldenTest {
         assertEquals(GOLDEN_GENERIC, requestBody(2))
     }
 
+    // ---------- 0.9.0：引用。没有引用时和 0.8.0 逐字一致（上面各项的测试工具已经配好引用的说法） ----------
+
+    /** 把联系人 [contactId] 等待回复的那条文字换成带引用的（同样的时间和状态） */
+    private suspend fun quoteWaiting(contactId: Long, content: String, role: Role?, quoted: String?) {
+        val m = db.messageDao()
+        val waiting = m.listByContact(contactId).single { it.type == MessageType.TEXT && it.content == content }
+        m.delete(waiting.id)
+        m.insert(waiting.copy(id = 0, quoteId = quoted?.let { 99L }, quoteRole = role, quoteType = quoted?.let { MessageType.TEXT }, quoteText = quoted))
+    }
+
+    @Test
+    fun quoteLabels_matchStringsXml() {
+        assertEquals(ReplyHarness.QUOTE_OTHER, context.getString(isomeria.aichat.R.string.prompt_quote_other))
+        assertEquals(ReplyHarness.QUOTE_SELF, context.getString(isomeria.aichat.R.string.prompt_quote_self))
+    }
+
+    @Test
+    fun quotingContact_addsOneLineBeforeTheText_newlinesFlattened_removingReturnsToGolden() = runBlocking {
+        harness.allOff(2)
+        quoteWaiting(2, "早", Role.ASSISTANT, "要不要喝拿铁\n热的")
+        assertEquals(
+            GOLDEN_GENERIC.replace(""""content":"早"""", """"content":"（回复你之前说的“要不要喝拿铁 热的”）\n早""""),
+            requestBody(2),
+        )
+        quoteWaiting(2, "早", null, null)
+        assertEquals(GOLDEN_GENERIC, requestBody(2))
+    }
+
+    @Test
+    fun quotingSelf_longTextCutAt100CharactersWithoutSplittingEmoji() = runBlocking {
+        harness.allOff(2)
+        // 99 个字 + 1 个 emoji（两个 char）+ 2 个字 = 102 个字：留前 100 个，emoji 完整
+        quoteWaiting(2, "早", Role.USER, "我".repeat(99) + "😀" + "尾巴")
+        assertEquals(
+            GOLDEN_GENERIC.replace(""""content":"早"""", """"content":"（接着我之前说的“${"我".repeat(99)}😀…”）\n早""""),
+            requestBody(2),
+        )
+    }
+
+    @Test
+    fun quoteInMergedUserMessage_lineSitsRightBeforeItsOwnText() = runBlocking {
+        harness.allOff(1)
+        quoteWaiting(1, "看看这张", Role.ASSISTANT, "在呀")
+        assertEquals(
+            GOLDEN_DEEPSEEK.replace("""[图片]\n看看这张""", """[图片]\n（回复你之前说的“在呀”）\n看看这张"""),
+            requestBody(1),
+        )
+    }
+
     /** 全局记忆远超上下文上限：聊天记录被挤掉，但这次等待回复的消息一定带上，回复照常写入 */
     @Test
     fun hugeGlobalMemory_chatStillSendsWaitingMessage() = runBlocking {
@@ -303,6 +352,8 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             replyStyle = "回复方式：每次 %1\$s 条，每条 %2\$d 字左右，用换行分隔。",
             countRange = "%1\$d～%2\$d",
             reminderHint = REMINDER_HINT,
+            quoteOther = QUOTE_OTHER,
+            quoteSelf = QUOTE_SELF,
         ),
         zone,
     )
@@ -423,6 +474,8 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
 
     companion object {
         const val REMINDER_HINT = "约定时间：写 [提醒 年-月-日 时:分 事由]。"
+        const val QUOTE_OTHER = "（回复你之前说的“%1\$s”）"
+        const val QUOTE_SELF = "（接着我之前说的“%1\$s”）"
     }
 
     /** 关掉这个联系人的全部 0.5.0 新能力 */

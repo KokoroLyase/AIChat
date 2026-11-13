@@ -257,7 +257,7 @@ class MemoryEngine @Inject constructor(
         batch: List<Message>,
     ): Summary {
         val myName = nickname.nickname().trim().ifEmpty { labels.defaultMyName }
-        val transcript = MemoryPolicy.transcript(batch, myName, contact.name, labels.imagePlaceholder)
+        val transcript = MemoryPolicy.transcript(batch, myName, contact.name, labels.imagePlaceholder, contextBuilder::textOf)
         if (transcript.isBlank()) return Summary(null, requested = false)
         val text = complete(contact, labels.summaryPrompt.format(contact.name, myName), transcript).text
         return Summary(text.takeUnless(::isNothing), requested = true)

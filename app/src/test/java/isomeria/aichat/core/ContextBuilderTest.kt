@@ -280,4 +280,73 @@ class ContextBuilderTest {
         // 最多小于最少时按最少算
         assertEquals("回复方式：每次 4 条，每条 16 字左右，用换行分隔。", full.replyStyleBlock(ReplyPreferences(minCount = 4, maxCount = 2)))
     }
+
+    // ---------- 0.9.0：引用 ----------
+
+    private val quoting = ContextBuilder(
+        ContextLabels(
+            namePlaceholder = "{名称}",
+            personaPlaceholderPrefix = "{在这里写人设",
+            timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。",
+            nicknameLine = "对方的昵称是「%1\$s」。",
+            weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
+            imagePlaceholder = "[图片]",
+            memoryHeader = "下面是记忆：",
+            memoryItem = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
+            quoteOther = "（回复你之前说的“%1\$s”）",
+            quoteSelf = "（接着我之前说的“%1\$s”）",
+        ),
+        zone,
+    )
+
+    private fun quoted(message: Message, role: Role, text: String) =
+        message.copy(quoteId = 1, quoteRole = role, quoteType = MessageType.TEXT, quoteText = text)
+
+    @Test
+    fun quote_onlyUserMessagesGetTheLine_voiceWithoutTranscriptStillSkipped() {
+        val history = listOf(
+            quoted(text(Role.ASSISTANT, "联系人的消息不加"), Role.USER, "x"),
+            quoted(text(Role.USER, "早"), Role.ASSISTANT, "在呀"),
+            quoted(text(Role.USER, "").copy(type = MessageType.VOICE), Role.ASSISTANT, "没转写的语音"),
+            quoted(text(Role.USER, "语音的转写").copy(type = MessageType.VOICE), Role.USER, "早"),
+        )
+        val messages = quoting.build(contact(""), history, true, "", now, loadImage = loader)
+        assertEquals(listOf(ChatRole.ASSISTANT, ChatRole.USER), messages.map { it.role })
+        assertEquals("联系人的消息不加", messages[0].plainText())
+        assertEquals("（回复你之前说的“在呀”）\n早\n（接着我之前说的“早”）\n语音的转写", messages[1].plainText())
+    }
+
+    @Test
+    fun quote_withoutLabels_orWithoutQuote_isTheOriginalText() {
+        val message = quoted(text(Role.USER, "早"), Role.ASSISTANT, "在呀")
+        assertEquals("早", builder.textOf(message))
+        assertEquals("早", quoting.textOf(text(Role.USER, "早")))
+    }
+
+    @Test
+    fun truncateQuote_flattensLines_cutsByCodePoint() {
+        assertEquals("a b", ContextBuilder.truncateQuote("a\nb"))
+        val exact = "字".repeat(ContextBuilder.QUOTE_MAX_CHARS)
+        assertEquals(exact, ContextBuilder.truncateQuote(exact))
+        assertEquals("😀".repeat(100) + "…", ContextBuilder.truncateQuote("😀".repeat(101)))
+    }
+
+    @Test
+    fun transcript_usesTheSameQuoteLine() {
+        val messages = listOf(text(Role.ASSISTANT, "在呀"), quoted(text(Role.USER, "早"), Role.ASSISTANT, "在呀"))
+        assertEquals("小雨：在呀\n阿哲：（回复你之前说的“在呀”）\n早", MemoryPolicy.transcript(messages, "阿哲", "小雨", "[图片]", quoting::textOf))
+        assertEquals("小雨：在呀\n阿哲：早", MemoryPolicy.transcript(messages, "阿哲", "小雨", "[图片]"))
+    }
+
+    @Test
+    fun tokenEstimate_countsTheQuoteLineOnlyWhenSent() {
+        val estimator = TokenEstimator.forProtocol("openai")
+        val plain = text(Role.USER, "早")
+        val withQuote = quoted(plain, Role.ASSISTANT, "在呀")
+        assertEquals(
+            estimator.message(plain) + estimator.text("在呀") + TokenEstimator.QUOTE_LINE_TOKENS,
+            estimator.message(withQuote),
+        )
+        assertEquals(estimator.message(text(Role.ASSISTANT, "早")), estimator.message(quoted(text(Role.ASSISTANT, "早"), Role.USER, "在呀")))
+    }
 }

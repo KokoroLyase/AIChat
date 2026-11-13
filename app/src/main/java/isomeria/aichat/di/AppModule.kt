@@ -132,6 +132,8 @@ object AppModule {
                 countRange = res.getString(R.string.prompt_count_range),
                 reminderHint = res.getString(R.string.prompt_reminder_hint),
                 callHint = res.getString(R.string.prompt_call_hint),
+                quoteOther = res.getString(R.string.prompt_quote_other),
+                quoteSelf = res.getString(R.string.prompt_quote_self),
             ),
         )
     }

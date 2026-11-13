@@ -47,6 +47,9 @@ data class ContextLabels(
     val reminderHint: String = "",
     /** 现在是语音通话（0.8.0）：只在通话中的请求里 */
     val callHint: String = "",
+    /** 引用（0.9.0）：用户消息引用了联系人说的话、自己说的话时，前面加的一行。参数：被引用的文字（过长时截断） */
+    val quoteOther: String = "",
+    val quoteSelf: String = "",
 )
 
 /** 全局记忆里要发出去的一条：已启用、所在的类别和主题。 */
@@ -81,6 +84,7 @@ data class PromptGlobals(
  * - 历史回复里的思考内容不回传
  * - 只有最近 [MAX_IMAGES] 张图片带原图，更早的替换为「[图片]」；模型不支持图片时全部替换
  * - 连续同一角色的消息合并成一条（文字和图片作为同一条消息的不同部分）
+ * - 引用了别的消息的用户消息（0.9.0）前面加一行 [ContextLabels.quoteOther] 或 [ContextLabels.quoteSelf]；没有引用的和 0.8.0 逐字一致
  */
 class ContextBuilder(
     private val labels: ContextLabels,
@@ -118,9 +122,9 @@ class ContextBuilder(
         for (message in history) {
             val role = if (message.role == Role.USER) ChatRole.USER else ChatRole.ASSISTANT
             val part: ChatPart = when (message.type) {
-                MessageType.TEXT -> ChatPart.Text(message.content)
+                MessageType.TEXT -> ChatPart.Text(textOf(message))
                 // 语音（0.7.0）只发转写文字；还没识别出文字的语音是空的，下面会跳过
-                MessageType.VOICE -> ChatPart.Text(message.content)
+                MessageType.VOICE -> ChatPart.Text(if (message.content.isBlank()) message.content else textOf(message))
                 MessageType.IMAGE -> {
                     val data = if (message.id in imagesWithData) message.imagePath?.let(loadImage) else null
                     if (data != null) ChatPart.Image(data) else ChatPart.Text(labels.imagePlaceholder)
@@ -145,6 +149,24 @@ class ContextBuilder(
         }
         flush()
         return result
+    }
+
+    /**
+     * 文字和语音转写在请求里的样子（0.9.0）：引用了别的消息的用户消息前面加一行“（回复你之前说的“……”）”，
+     * 被引用的文字超过 [QUOTE_MAX_CHARS] 个字时截断加“…”；没有引用时就是原文
+     */
+    fun textOf(message: Message): String {
+        val line = quoteLine(message) ?: return message.content
+        return line + "\n" + message.content
+    }
+
+    /** 引用的那一行；没有引用、不是用户消息、没配说法时为 null */
+    fun quoteLine(message: Message): String? {
+        val quoted = message.quoteText ?: return null
+        if (message.role != Role.USER) return null
+        val template = if (message.quoteRole == Role.USER) labels.quoteSelf else labels.quoteOther
+        if (template.isEmpty()) return null
+        return template.format(truncateQuote(quoted))
     }
 
     fun systemPrompt(
@@ -251,5 +273,15 @@ class ContextBuilder(
 
     companion object {
         const val MAX_IMAGES = 3
+
+        /** 请求里引用的文字最多带这么多字（按 Unicode 字符算），多了截断加“…” */
+        const val QUOTE_MAX_CHARS = 100
+
+        /** 引用的文字：换行换成空格，超过 [QUOTE_MAX_CHARS] 个字截断加“…”（不切开 emoji 这类两个 char 的字） */
+        fun truncateQuote(text: String): String {
+            val flat = MessageCopy.oneLine(text)
+            if (flat.codePointCount(0, flat.length) <= QUOTE_MAX_CHARS) return flat
+            return flat.substring(0, flat.offsetByCodePoints(0, QUOTE_MAX_CHARS)) + "…"
+        }
     }
 }

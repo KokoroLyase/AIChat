@@ -155,12 +155,21 @@ object MemoryPolicy {
         return older.subList(start, older.size).toList()
     }
 
-    /** 发给模型的聊天记录：只有发送成功的消息，图片写成文字，思考内容不带 */
-    fun transcript(messages: List<Message>, myName: String, contactName: String, imagePlaceholder: String): String =
+    /**
+     * 发给模型的聊天记录：只有发送成功的消息，图片写成文字，思考内容不带。
+     * [textOf] 是文字在请求里的样子（0.9.0：带引用的用户消息前面多一行，见 ContextBuilder.textOf）；默认是原文
+     */
+    fun transcript(
+        messages: List<Message>,
+        myName: String,
+        contactName: String,
+        imagePlaceholder: String,
+        textOf: (Message) -> String = { it.content },
+    ): String =
         messages.filter { it.status == MessageStatus.SUCCESS }
             .joinToString("\n") { message ->
                 val speaker = if (message.role == Role.USER) myName else contactName
-                val text = if (message.type == MessageType.IMAGE) imagePlaceholder else message.content
+                val text = if (message.type == MessageType.IMAGE) imagePlaceholder else textOf(message)
                 "$speaker：$text"
             }
 

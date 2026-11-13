@@ -118,6 +118,8 @@ class MemoryEngineTest {
                 imagePlaceholder = "[图片]",
                 memoryHeader = "记忆：",
                 memoryItem = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
+                quoteOther = "（回复你之前说的“%1\$s”）",
+                quoteSelf = "（接着我之前说的“%1\$s”）",
             ),
         )
         engine = MemoryEngine(
@@ -325,6 +327,22 @@ class MemoryEngineTest {
         fake.reply = "长".repeat(MemoryPolicy.CONTENT_MAX_LENGTH + 500)
         engine.autoRun(1)
         assertEquals(MemoryPolicy.CONTENT_MAX_LENGTH, db.memoryDao().listAll().single().content.length)
+    }
+
+    /** 0.9.0：带引用的用户消息在总结用的聊天记录里和聊天请求一样，前面多一行 */
+    @Test
+    fun quotedMessage_transcriptHasTheSameQuoteLine() = runBlocking {
+        contact()
+        nextTime += 1000
+        db.messageDao().insert(
+            Message(
+                contactId = 1, role = Role.USER, type = MessageType.TEXT, content = "一二三四五六七八九十", status = MessageStatus.SUCCESS,
+                createdAt = nextTime, quoteId = 99, quoteRole = Role.ASSISTANT, quoteType = MessageType.TEXT, quoteText = "在呀",
+            ),
+        )
+        messages(69)
+        engine.autoRun(1)
+        assertEquals("阿哲：（回复你之前说的“在呀”）\n一二三四五六七八九十\n阿哲：", fake.requests.single().messages[1].plainText().take(31))
     }
 
     /** 0.8.0：通话按每一条话总结；进度停在通话中间时，下一批从通话的后半段接着来，不重复也不漏 */

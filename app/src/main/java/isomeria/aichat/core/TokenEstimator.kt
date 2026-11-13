@@ -3,6 +3,7 @@ package isomeria.aichat.core
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageType
 import isomeria.aichat.data.db.ProviderProtocol
+import isomeria.aichat.data.db.Role
 import isomeria.aichat.data.llm.ChatMessage
 import isomeria.aichat.data.llm.ChatPart
 import kotlin.math.ceil
@@ -33,10 +34,17 @@ class TokenEstimator(private val wideCharTokens: Double) {
 
     /** 一条消息占的 token；[withImage] 为 true 时这张图片带原图，否则按文字「[图片]」算 */
     fun message(message: Message, withImage: Boolean = false): Int = MESSAGE_OVERHEAD + when (message.type) {
-        MessageType.TEXT, MessageType.VOICE -> text(message.content)
+        MessageType.TEXT, MessageType.VOICE -> text(message.content) + quote(message)
         MessageType.IMAGE -> if (withImage) IMAGE_TOKENS else IMAGE_PLACEHOLDER_TOKENS
         // 通话（0.8.0）在拼上下文前已经展开成每一条话（CallTranscript），走到这里的通话消息没有内容
         MessageType.CALL -> text(message.content)
+    }
+
+    /** 引用（0.9.0）那一行占的 token：被引用的文字（截断后）加上固定说法；没有引用、不是用户消息、语音没转写时为 0 */
+    private fun quote(message: Message): Int {
+        val quoted = message.quoteText ?: return 0
+        if (message.role != Role.USER || message.content.isBlank()) return 0
+        return text(ContextBuilder.truncateQuote(quoted)) + QUOTE_LINE_TOKENS
     }
 
     /** 一次请求的 token：服务商没有返回用量时，用它估算 */
@@ -52,6 +60,8 @@ class TokenEstimator(private val wideCharTokens: Double) {
     companion object {
         const val MESSAGE_OVERHEAD = 4
         const val IMAGE_TOKENS = 1000
+        /** 引用那一行除了被引用文字以外的部分（“（回复你之前说的“”）”和换行），按汉字宽松估 */
+        const val QUOTE_LINE_TOKENS = 14
         private const val IMAGE_PLACEHOLDER_TOKENS = 4
         private const val NARROW_CHAR_TOKENS = 0.3
         private const val WIDE_CHAR_START = 0x2000
