@@ -80,11 +80,12 @@ class BackupVoiceTest {
     private var tts = 0L
     private var asr = 0L
 
+    // 语音服务商和 App 里一样没有兼容方式（VoiceRepository.create 写的是空串）
     private suspend fun seed() {
         tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "mimo-audio", name = "MiMo", baseUrl = "https://api.xiaomimimo.com/v1",
-            apiKeyEncrypted = "enc:sk-tts", defaultModel = "mimo-v2.5-tts", presetId = "mimo", voice = "茉莉"))
+            apiKeyEncrypted = "enc:sk-tts", defaultModel = "mimo-v2.5-tts", presetId = "mimo", voice = "茉莉", compatibility = ""))
         asr = db.providerDao().insert(ProviderConfig(kind = ProviderKind.ASR, provider = "openai-audio", name = "硅基", baseUrl = "https://api.siliconflow.cn/v1",
-            apiKeyEncrypted = "enc:sk-asr", defaultModel = "FunAudioLLM/SenseVoiceSmall"))
+            apiKeyEncrypted = "enc:sk-asr", defaultModel = "FunAudioLLM/SenseVoiceSmall", compatibility = ""))
         settings.v = settings.v.copy(voice = VoiceSettings(ReplyType.VOICE, VoiceSource.provider(tts), VoiceSource.provider(asr)))
         db.contactDao().insert(Contact(id = 1, name = "甲", avatarColor = 1, providerId = 1, model = "m", createdAt = 10, updatedAt = 10,
             replyType = ReplyType.FOLLOW, ttsVoice = "苏打", ttsStyle = "慢一点"))
@@ -134,6 +135,43 @@ class BackupVoiceTest {
         assertEquals(setOf(ProviderKind.LLM, ProviderKind.TTS, ProviderKind.ASR), data.providers.map { it.kind }.toSet())
         assertEquals("茉莉", data.providers.single { it.kind == ProviderKind.TTS }.voice)
         assertEquals(VoiceSettingsDto(ReplyType.VOICE, VoiceSource.provider(tts), VoiceSource.provider(asr)), data.settings.voice)
+    }
+
+    /** 0.7.0–0.8.0 开发版：语音服务商的兼容方式是空串，恢复时当成格式不对，整份带语音服务商的备份都恢复不了 */
+    @Test
+    fun voiceProvidersWithoutCompatibility_backupCanBeReadAndRestored() = runBlocking {
+        seed()
+        val zip = export()
+        val preview = backup.inspect(zip)
+        assertEquals(listOf("", ""), preview.data.providers.filter { it.kind != ProviderKind.LLM }.map { it.compatibility })
+        db.providerDao().deleteAllVoice()
+        backup.restore(preview, RestoreMode.OVERWRITE, null)
+        val voice = db.providerDao().listConfigs().filter { it.kind != ProviderKind.LLM }
+        assertEquals(setOf(ProviderKind.TTS, ProviderKind.ASR), voice.map { it.kind }.toSet())
+        assertTrue(voice.all { it.compatibility == "" })
+    }
+
+    /** 聊天模型的兼容方式仍然要认得出来，不认识的照旧拒绝 */
+    @Test(expected = InvalidBackupException::class)
+    fun chatProviderWithUnknownCompatibility_stillRejected() = runBlocking<Unit> {
+        seed()
+        val zip = export()
+        val broken = File(context.cacheDir, "broken.zip")
+        ZipFile(zip).use { source ->
+            ZipOutputStream(broken.outputStream()).use { out ->
+                source.entries().toList().forEach { entry ->
+                    var bytes = source.getInputStream(entry).readBytes()
+                    if (entry.name == BackupFormat.DATA) {
+                        val text = bytes.toString(Charsets.UTF_8)
+                        val fixed = Regex("\"compatibility\":\"[A-Z_]+\"").replaceFirst(text, "\"compatibility\":\"\"")
+                        check(fixed != text)
+                        bytes = fixed.toByteArray()
+                    }
+                    out.putNextEntry(ZipEntry(entry.name)); out.write(bytes); out.closeEntry()
+                }
+            }
+        }
+        backup.inspect(broken)
     }
 
     @Test

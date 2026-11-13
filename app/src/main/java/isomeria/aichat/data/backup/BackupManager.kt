@@ -485,7 +485,8 @@ class BackupManager @Inject constructor(
     /** 去掉重复 id、找不到联系人的会话和消息、不合规的文件名 */
     private fun sanitize(data: BackupData): BackupData {
         data.providers.forEach { p ->
-            isomeria.aichat.data.llm.Compatibility.valueOf(p.compatibility)
+            // 只有聊天模型有兼容方式；语音服务商（0.7.0 起）存的是空串，不能拿来校验（0.7.x 带语音服务商的备份因此恢复不了）
+            if (p.kind == ProviderKind.LLM) isomeria.aichat.data.llm.Compatibility.valueOf(p.compatibility)
             p.models.forEach { m ->
                 isomeria.aichat.data.llm.ModelRules.decode(m.reportedConfig)
                 isomeria.aichat.data.llm.ModelRules.decode(m.userConfig)
