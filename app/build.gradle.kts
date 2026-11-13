@@ -13,7 +13,7 @@ plugins {
 
 // 版本号：语义化版本；versionCode = 主版本×10000 + 次版本×100 + 修订号。
 // 改版本时只改这一行，versionCode 自动跟着变。
-val appVersionName = "0.8.0"
+val appVersionName = "0.9.0"
 val appVersionCode = appVersionName.split(".").map { it.toInt() }.let { (major, minor, patch) ->
     major * 10000 + minor * 100 + patch
 }
