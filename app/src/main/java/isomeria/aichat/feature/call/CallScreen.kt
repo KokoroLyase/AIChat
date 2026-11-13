@@ -390,17 +390,19 @@ fun CallContent(ui: CallUi, actions: CallActions) {
             Text(ui.name, style = typography.contactName, color = colors.callText, textAlign = TextAlign.Center)
             Spacer(Modifier.size(8.dp))
             Text(ui.status, style = typography.listTitle, color = colors.callTextSecondary, textAlign = TextAlign.Center)
-            // 现在在做什么：换状态时淡入淡出；用户在说时下面跳动的音量条
+            // 现在在做什么：换状态（不是每秒变的“想了几秒”）时淡入淡出；用户在说时下面跳动的音量条
             AnimatedContent(
-                targetState = ui.phase,
+                targetState = ui,
                 transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) using SizeTransform(clip = false) },
+                contentKey = { it.stage to it.muted },
                 label = "callPhase",
-            ) { phase ->
+            ) { state ->
+                val phase = state.phase
                 if (phase.isNotEmpty()) {
                     Text(
                         phase,
                         style = typography.small,
-                        color = if (ui.stage == CallPhase.HEARING) colors.brand else colors.callTextSecondary,
+                        color = if (state.stage == CallPhase.HEARING) colors.brand else colors.callTextSecondary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 4.dp),
                     )
