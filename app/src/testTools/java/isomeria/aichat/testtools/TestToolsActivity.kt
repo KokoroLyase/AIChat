@@ -124,6 +124,21 @@ class TestToolsActivity : ComponentActivity() {
                     android.util.Log.i("TestTools", "proactive_run $result")
                 } catch (_: Exception) { text.setText(R.string.tools_failed) }
             }
+            // 0.9.0：预置音频代替麦克风。先 adb push 到 /sdcard/Android/data/<包名>/files/ 下，再用这个操作复制进 files/
+            // （perf 包不能 run-as）。target=call（默认，通话用 test-call-input.wav）或 voice（按住说话用 test-voice-input.wav）；
+            // remove=true 删掉，回到用麦克风
+            "import_call_audio" -> lifecycleScope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        val name = if (intent.getStringExtra("target") == "voice") isomeria.aichat.data.voice.AndroidVoiceRecorder.TEST_INPUT
+                        else isomeria.aichat.data.voice.AndroidCallMicrophone.TEST_INPUT
+                        val external = getExternalFilesDir(null) ?: return@withContext "noExternalDir"
+                        CallAudioFixture.import(File(external, name), File(filesDir, name), intent.getBooleanExtra("remove", false))
+                    }
+                    text.text = getString(R.string.tools_call_audio_result, result)
+                    android.util.Log.i("TestTools", "import_call_audio $result")
+                } catch (_: Exception) { text.setText(R.string.tools_failed) }
+            }
             // 只看状态，不运行
             "proactive_state" -> lifecycleScope.launch {
                 try {
