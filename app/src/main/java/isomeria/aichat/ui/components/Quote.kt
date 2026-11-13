@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -94,7 +93,7 @@ fun QuoteBar(label: String, onClose: () -> Unit, modifier: Modifier = Modifier) 
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(WeIcons.Close, stringResource(R.string.quote_cancel), tint = colors.textTertiary, modifier = Modifier.size(16.dp))
+            WeIcon(WeIcons.Close, stringResource(R.string.quote_cancel), tint = colors.textTertiary, modifier = Modifier.size(16.dp))
         }
     }
 }

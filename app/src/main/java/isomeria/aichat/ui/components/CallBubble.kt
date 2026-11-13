@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -77,7 +76,7 @@ fun CallBubble(message: Message, sent: Boolean, onClick: () -> Unit, onLongClick
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val icon = @Composable { Icon(WeIcons.Phone, contentDescription = null, tint = content, modifier = Modifier.size(20.dp)) }
+            val icon = @Composable { WeIcon(WeIcons.Phone, contentDescription = null, tint = content, modifier = Modifier.size(20.dp)) }
             val text = @Composable { Text(label, style = WeTheme.typography.message, color = content) }
             if (sent) {
                 text()

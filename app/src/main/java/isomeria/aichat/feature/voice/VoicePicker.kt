@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -42,6 +41,7 @@ import isomeria.aichat.ui.components.ErrorNote
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.WeDivider
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeSearchBar
 import isomeria.aichat.ui.theme.WeTheme
@@ -278,7 +278,7 @@ private fun VoiceOptionRow(
                 Text(secondary, style = WeTheme.typography.listTime, color = colors.textTertiary, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (selected) Icon(WeIcons.Check, stringResource(R.string.voice_picker_current), tint = colors.brand, modifier = Modifier.padding(start = 8.dp).size(20.dp))
+        if (selected) WeIcon(WeIcons.Check, stringResource(R.string.voice_picker_current), tint = colors.brand, modifier = Modifier.padding(start = 8.dp).size(20.dp))
         Box(
             Modifier
                 .clickable(role = Role.Button, enabled = !previewing, onClick = onPreview)

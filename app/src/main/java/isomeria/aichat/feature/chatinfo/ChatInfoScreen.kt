@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -49,6 +48,7 @@ import isomeria.aichat.navigation.ChatInfoRoute
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.SheetOption
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeListRow
@@ -214,9 +214,10 @@ fun ChatInfoContent(
                     .background(colors.listBackground)
                     .padding(horizontal = dimens.horizontalPadding, vertical = 16.dp),
             ) {
+                // 0.9.1：名字放不下时这一列变宽（最多头像的 3 倍），再放不下就换行，不截断
                 Column(
                     Modifier
-                        .width(dimens.chatInfoAvatar + 8.dp)
+                        .widthIn(min = dimens.chatInfoAvatar + 8.dp, max = dimens.chatInfoAvatar * 3)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -230,8 +231,6 @@ fun ChatInfoContent(
                         contact.name,
                         style = WeTheme.typography.listTime,
                         color = colors.textTertiary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -253,7 +252,7 @@ fun ChatInfoContent(
             GroupSpacer()
             WeListRow(title = stringResource(R.string.chat_info_background), onClick = onBackground, titleMaxLines = 2)
             GroupSpacer()
-            WeListRow(title = stringResource(R.string.chat_info_clear), onClick = onClear, showArrow = false)
+            WeActionRow(stringResource(R.string.chat_info_clear), onClick = onClear, danger = true)
             Spacer(Modifier.height(24.dp))
         }
     }

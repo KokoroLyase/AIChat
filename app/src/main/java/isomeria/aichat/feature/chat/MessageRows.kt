@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -61,6 +60,7 @@ import isomeria.aichat.ui.components.UnplayedDot
 import isomeria.aichat.ui.components.VoiceBubble
 import isomeria.aichat.data.voice.PlayMode
 import isomeria.aichat.ui.components.WeBubbleMenu
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.theme.WeMotion
 import isomeria.aichat.ui.theme.WeTheme
@@ -430,21 +430,23 @@ private fun selectionLabel(message: Message): String = when (message.type) {
 @Composable
 private fun VoiceMessage(message: Message, sent: Boolean, playing: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onToText: () -> Unit, held: Boolean = false) {
     val unplayed = !sent && !message.voicePlayed
-    val toText = @Composable {
+    val toText = @Composable { modifier: Modifier ->
         if (message.content.isNotBlank() && !message.voiceShowText) {
             Text(
                 stringResource(R.string.voice_menu_to_text),
                 style = WeTheme.typography.small,
                 color = WeTheme.colors.link,
-                modifier = Modifier
+                modifier = modifier
                     .clip(RoundedCornerShape(4.dp))
                     .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onToText)
                     .padding(horizontal = 6.dp, vertical = 10.dp),
             )
         }
     }
+    // 0.9.1：语音条先量（宽度按秒数，字体大时跟着变宽），「转文字」用剩下的宽度，放不下时换行；
+    // 以前反过来，窄屏多选时语音条被挤得放不下秒数
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (sent) toText()
+        if (sent) toText(Modifier.weight(1f, fill = false))
         VoiceBubble(
             millis = message.voiceMillis,
             sent = sent,
@@ -452,7 +454,6 @@ private fun VoiceMessage(message: Message, sent: Boolean, playing: Boolean, onCl
             unplayed = unplayed,
             onClick = onClick,
             onLongClick = onLongClick,
-            modifier = Modifier.weight(1f, fill = false),
             held = held,
         )
         if (!sent) {
@@ -460,7 +461,7 @@ private fun VoiceMessage(message: Message, sent: Boolean, playing: Boolean, onCl
                 Spacer(Modifier.width(6.dp))
                 UnplayedDot()
             }
-            toText()
+            toText(Modifier.weight(1f, fill = false))
         }
     }
 }
@@ -534,7 +535,7 @@ private fun ThinkingBlock(reasoning: String, millis: Long) {
                 style = WeTheme.typography.small,
                 color = colors.thinkingText,
             )
-            Icon(
+            WeIcon(
                 if (expanded) WeIcons.ChevronUp else WeIcons.ChevronDown,
                 null,
                 tint = colors.thinkingText,

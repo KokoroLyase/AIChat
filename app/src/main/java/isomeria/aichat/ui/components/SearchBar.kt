@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -67,20 +65,21 @@ fun WeSearchBar(
             .fillMaxWidth()
             .background(colors.pageBackground)
             .statusBarsPadding()
-            .height(dimens.topBarHeight)
+            // 0.9.1：字体大时搜索框和「取消」跟着长高，不被裁掉
+            .heightIn(min = dimens.topBarHeight)
             .padding(start = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
             Modifier
                 .weight(1f)
-                .height(36.dp)
+                .heightIn(min = 36.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(colors.inputBackground)
-                .padding(horizontal = 10.dp),
+                .padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(WeIcons.Search, null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+            WeIcon(WeIcons.Search, null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) {

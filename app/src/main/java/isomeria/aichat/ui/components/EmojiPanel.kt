@@ -27,7 +27,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -296,7 +295,7 @@ private fun DeleteKey(enabled: Boolean, onDelete: () -> Unit) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
+        WeIcon(
             WeIcons.Backspace,
             contentDescription = stringResource(R.string.emoji_backspace),
             tint = if (enabled) colors.textPrimary else colors.textSecondary,
@@ -337,7 +336,7 @@ private fun EmojiTabs(sections: List<EmojiSection>, selected: Int, onSelect: (In
                 contentAlignment = Alignment.Center,
             ) {
                 if (section.icon == null) {
-                    Icon(WeIcons.Clock, null, tint = colors.textTertiary, modifier = Modifier.size(22.dp))
+                    WeIcon(WeIcons.Clock, null, tint = colors.textTertiary, modifier = Modifier.size(22.dp))
                 } else {
                     Text(section.icon, fontSize = 20.sp, maxLines = 1)
                 }

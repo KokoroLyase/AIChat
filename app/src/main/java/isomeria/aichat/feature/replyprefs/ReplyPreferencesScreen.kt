@@ -49,6 +49,7 @@ import isomeria.aichat.data.settings.SettingsStore
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.SheetOption
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeSwitch
@@ -282,11 +283,9 @@ internal fun ReplyPreferencesFields(p: ReplyPreferences, onChange: ((ReplyPrefer
     FootnoteText(stringResource(R.string.reply_pref_interval_hint))
 
     GroupSpacer()
-    WeListRow(
-        title = stringResource(R.string.reply_pref_reset),
-        titleColor = colors.link,
-        showArrow = false,
-        enabled = p != ReplyPreferences(),
+    WeActionRow(
+        stringResource(R.string.reply_pref_reset),
         onClick = { onChange { ReplyPreferences() } },
+        enabled = p != ReplyPreferences(),
     )
 }

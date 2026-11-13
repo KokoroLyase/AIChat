@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,6 +44,7 @@ import isomeria.aichat.navigation.UsageDetailRoute
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.WeDivider
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeSegmented
 import isomeria.aichat.ui.components.WeTopBar
@@ -229,7 +229,7 @@ private fun UsageRows(rows: List<UsageRowItem>, onOpen: ((UsageRowItem) -> Unit)
                 if (row.total.hasVoice) Text(voiceDetail(row.total), style = WeTheme.typography.listTime, color = colors.textTertiary)
             }
             if (onOpen != null) {
-                Icon(
+                WeIcon(
                     WeIcons.ChevronRight,
                     contentDescription = null,
                     tint = colors.arrow,

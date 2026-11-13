@@ -29,6 +29,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import isomeria.aichat.R
 import isomeria.aichat.data.logs.CrashLogs
 import isomeria.aichat.ui.components.*
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -172,13 +173,7 @@ fun CrashLogsContent(
                     }
                     if (state.names.isNotEmpty()) {
                         GroupSpacer()
-                        WeListRow(
-                            stringResource(R.string.crash_clear),
-                            onClick = { confirm = true },
-                            enabled = !state.busy,
-                            titleColor = colors.danger,
-                            showArrow = false,
-                        )
+                        WeActionRow(stringResource(R.string.crash_clear), onClick = { confirm = true }, danger = true, enabled = !state.busy)
                     }
                 }
             }

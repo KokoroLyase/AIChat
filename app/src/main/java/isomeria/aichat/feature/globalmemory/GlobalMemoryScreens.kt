@@ -22,7 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,8 +71,10 @@ import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.TopBarIcon
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeDialog
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeSmallButton
@@ -640,16 +641,7 @@ fun GlobalMemoryItemContent(
             FootnoteText(stringResource(R.string.global_memory_item_enabled_hint))
             if (state.exists) {
                 GroupSpacer()
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(colors.listBackground)
-                        .clickable(role = Role.Button) { confirmDelete = true }
-                        .heightIn(min = dimens.listRowHeight),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(stringResource(R.string.global_memory_item_delete), style = WeTheme.typography.listTitle, color = colors.danger)
-                }
+                WeActionRow(stringResource(R.string.global_memory_item_delete), onClick = { confirmDelete = true }, danger = true)
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -724,7 +716,7 @@ private fun OrderedRow(
                 }
             }
         }
-        Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+        WeIcon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
     }
 }
 
@@ -760,13 +752,13 @@ internal fun ValueRow(title: String, value: String, onClick: () -> Unit) {
         Text(title, style = WeTheme.typography.listTitle, color = colors.textPrimary, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(16.dp))
         Text(value, style = WeTheme.typography.listTitle, color = colors.textTertiary, maxLines = 1)
-        Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+        WeIcon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
     }
 }
 
 @Composable
 private fun AddRow(text: String, onClick: () -> Unit) {
-    WeListRow(title = text, titleColor = WeTheme.colors.link, onClick = onClick, showArrow = false)
+    WeActionRow(text, onClick = onClick)
 }
 
 @Composable

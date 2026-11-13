@@ -4,7 +4,6 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,6 +62,7 @@ import isomeria.aichat.navigation.MemoryEditRoute
 import isomeria.aichat.navigation.MemoryRoute
 import isomeria.aichat.ui.components.ErrorNote
 import isomeria.aichat.ui.components.FootnoteText
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.configurationIssueText
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
@@ -338,16 +338,7 @@ fun MemoryContent(
 
             if (hasAny) {
                 GroupSpacer()
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(colors.listBackground)
-                        .clickable(onClick = onClearAll)
-                        .heightIn(min = dimens.listRowHeight),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(stringResource(R.string.memory_clear), style = WeTheme.typography.listTitle, color = colors.danger)
-                }
+                WeActionRow(stringResource(R.string.memory_clear), onClick = onClearAll, danger = true)
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -497,16 +488,7 @@ fun MemoryEditScreen(onBack: () -> Unit, viewModel: MemoryEditViewModel = hiltVi
             }
             FootnoteText(stringResource(if (state.core) R.string.memory_edit_core_hint else R.string.memory_edit_hint))
             GroupSpacer()
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(colors.listBackground)
-                    .clickable { confirmDelete = true }
-                    .heightIn(min = dimens.listRowHeight),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(stringResource(if (state.core) R.string.memory_delete_core else R.string.memory_delete), style = WeTheme.typography.listTitle, color = colors.danger)
-            }
+            WeActionRow(stringResource(if (state.core) R.string.memory_delete_core else R.string.memory_delete), onClick = { confirmDelete = true }, danger = true)
             Spacer(Modifier.height(24.dp))
         }
     }

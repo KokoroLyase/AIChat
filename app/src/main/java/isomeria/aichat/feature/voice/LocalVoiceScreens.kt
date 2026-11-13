@@ -5,17 +5,12 @@ import android.content.Intent
 import android.widget.Toast
 import android.content.Context
 import android.net.ConnectivityManager
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.semantics.Role
 import dagger.hilt.android.qualifiers.ApplicationContext
 import isomeria.aichat.data.voice.ModelDownloadControl
 import isomeria.aichat.data.voice.ModelDownloadWork
@@ -25,6 +20,7 @@ import isomeria.aichat.data.voice.OfflineAsrEngine
 import isomeria.aichat.data.voice.OfflineAsrModel
 import isomeria.aichat.data.voice.OfflineModelStore
 import isomeria.aichat.ui.components.SectionHeader
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeDivider
 import androidx.compose.foundation.background
@@ -327,20 +323,15 @@ fun OfflineAsrContent(state: OfflineAsrUiState, onBack: () -> Unit, actions: Off
             val model = state.model
             when {
                 state.busy && model != ModelState.Verifying ->
-                    WeListRow(stringResource(R.string.offline_asr_pause), onClick = actions.onPause, showArrow = false)
+                    WeActionRow(stringResource(R.string.offline_asr_pause), onClick = actions.onPause)
                 model == ModelState.Missing ->
-                    WeListRow(stringResource(R.string.offline_asr_download), onClick = { confirmDownload = actions.metered() }, showArrow = false, titleColor = colors.brandText)
+                    WeActionRow(stringResource(R.string.offline_asr_download), onClick = { confirmDownload = actions.metered() })
                 model is ModelState.Partial || model is ModelState.Failed ->
-                    WeListRow(stringResource(R.string.offline_asr_resume), onClick = { confirmDownload = actions.metered() }, showArrow = false, titleColor = colors.brandText)
+                    WeActionRow(stringResource(R.string.offline_asr_resume), onClick = { confirmDownload = actions.metered() })
             }
             if (!state.busy && model != ModelState.Missing) {
                 GroupSpacer()
-                Box(
-                    Modifier.fillMaxWidth().background(colors.listBackground).clickable(role = Role.Button) { confirmDelete = true }.heightIn(min = dimens.listRowHeight),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(stringResource(if (state.installed) R.string.offline_asr_delete else R.string.offline_asr_delete_partial), style = WeTheme.typography.listTitle, color = colors.danger)
-                }
+                WeActionRow(stringResource(if (state.installed) R.string.offline_asr_delete else R.string.offline_asr_delete_partial), onClick = { confirmDelete = true }, danger = true)
             }
             FootnoteText(stringResource(R.string.offline_asr_note))
             FootnoteText(stringResource(R.string.offline_asr_source_note))

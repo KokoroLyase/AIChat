@@ -28,7 +28,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -52,7 +51,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -134,12 +135,7 @@ fun WeDialog(
                     )
                 }
                 if (message.isNotEmpty()) {
-                    Text(
-                        message,
-                        style = WeTheme.typography.dialogMessage,
-                        color = if (title == null) colors.textPrimary else colors.textTertiary,
-                        textAlign = TextAlign.Center,
-                    )
+                    DialogMessage(message, if (title == null) colors.textPrimary else colors.textTertiary)
                 }
                 content?.invoke(this)
             }
@@ -165,6 +161,26 @@ fun WeDialog(
         }
     }
 }
+
+/** 对话框正文（0.9.1）：一行放得下时居中，两行以上左对齐 */
+@Composable
+private fun DialogMessage(text: String, color: Color) {
+    val style = WeTheme.typography.dialogMessage
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val width = constraints.maxWidth
+        val lines = remember(text, style, width) { measurer.measure(text, style, constraints = Constraints(maxWidth = width)).lineCount }
+        Text(
+            text,
+            style = style,
+            color = color,
+            textAlign = dialogMessageAlign(lines),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+internal fun dialogMessageAlign(lineCount: Int): TextAlign = if (lineCount > 1) TextAlign.Start else TextAlign.Center
 
 @Composable
 private fun DialogButton(text: String, color: Color, onClick: () -> Unit, modifier: Modifier, bold: Boolean = false) {
@@ -306,7 +322,7 @@ fun WeActionSheet(
                                 }
                             }
                             if (option.selected) {
-                                Icon(WeIcons.Check, null, tint = colors.brand, modifier = Modifier.size(24.dp))
+                                WeIcon(WeIcons.Check, null, tint = colors.brand, modifier = Modifier.size(24.dp))
                             } else {
                                 Spacer(Modifier.size(24.dp))
                             }

@@ -44,6 +44,7 @@ import isomeria.aichat.data.settings.ThemeMode
 import isomeria.aichat.di.ApplicationScope
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.GroupSpacer
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.UnreadBadge
@@ -396,7 +397,7 @@ fun SettingsSectionList(section: SettingsSection, state: SettingsUiState, naviga
             WeListRow(titleMaxLines = 2, title = stringResource(R.string.storage_title), onClick = navigation.onOpenStorage, showDivider = true)
             WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_export), onClick = navigation.onOpenExport, showDivider = true)
             WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_restore), onClick = navigation.onOpenRestore, showDivider = true)
-            WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_clear_all), onClick = actions.onClearAll, showArrow = false)
+            WeActionRow(stringResource(R.string.settings_clear_all), onClick = actions.onClearAll, danger = true)
             FootnoteText(stringResource(R.string.settings_data_notice))
         }
         SettingsSection.ABOUT -> {

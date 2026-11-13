@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -79,10 +78,12 @@ import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.SheetOption
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.WeButton
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeDivider
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeSmallButton
@@ -629,7 +630,7 @@ fun ProviderEditContent(
                         Modifier.offset(x = 13.dp).size(48.dp).clickable(role = Role.Button) { showKey = !showKey },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
+                        WeIcon(
                             if (showKey) WeIcons.VisibilityOff else WeIcons.Visibility,
                             stringResource(if (showKey) R.string.key_hide else R.string.key_show),
                             tint = colors.inputIcon,
@@ -640,12 +641,7 @@ fun ProviderEditContent(
             }
             if (state.savedKeyMasked != null) {
                 if (state.keyInput.isEmpty()) FootnoteText(stringResource(R.string.llm_api_key_saved, state.savedKeyMasked))
-                WeListRow(
-                    title = stringResource(R.string.llm_api_key_clear),
-                    titleColor = colors.danger,
-                    onClick = onClearKey,
-                    showArrow = false,
-                )
+                WeActionRow(stringResource(R.string.llm_api_key_clear), onClick = onClearKey, danger = true)
             }
             if (state.protocol == ProviderProtocol.DEEPSEEK) FootnoteText(stringResource(R.string.llm_get_key))
 
@@ -694,16 +690,7 @@ fun ProviderEditContent(
 
             if (state.providerId != null) {
                 Spacer(Modifier.height(8.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(colors.listBackground)
-                        .clickable { confirmDelete = true }
-                        .heightIn(min = dimens.listRowHeight),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(stringResource(R.string.llm_delete_provider), style = WeTheme.typography.listTitle, color = colors.danger)
-                }
+                WeActionRow(stringResource(R.string.llm_delete_provider), onClick = { confirmDelete = true }, danger = true)
             }
             FootnoteText(stringResource(R.string.llm_security_notice))
             Spacer(Modifier.height(24.dp))
@@ -839,7 +826,7 @@ private fun ModelSearchField(query: String, onChange: (String) -> Unit) {
                 .padding(start = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(WeIcons.Search, null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+            WeIcon(WeIcons.Search, null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(6.dp))
             Box(Modifier.weight(1f).padding(vertical = 6.dp)) {
                 if (query.isEmpty()) {
@@ -859,7 +846,7 @@ private fun ModelSearchField(query: String, onChange: (String) -> Unit) {
             if (query.isNotEmpty()) {
                 // 高度不超过搜索框，输入后这一行不跳动；点击区由 Compose 按最小触控尺寸扩到 48dp
                 Box(Modifier.size(48.dp, 36.dp).clickable(role = Role.Button) { onChange("") }, contentAlignment = Alignment.Center) {
-                    Icon(WeIcons.Close, stringResource(R.string.action_clear), tint = colors.textTertiary, modifier = Modifier.size(16.dp))
+                    WeIcon(WeIcons.Close, stringResource(R.string.action_clear), tint = colors.textTertiary, modifier = Modifier.size(16.dp))
                 }
             } else {
                 Spacer(Modifier.size(10.dp))

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.Composable
@@ -1064,7 +1066,8 @@ class ScreenshotTest {
         globalTts = "provider:3",
         globalAsr = "local:offline-asr",
     )
-    @Composable private fun ContactVoice() = Column {
+    // 真实页面可以滚动；不能滚动时内容比屏幕高，最后几行会被压缩叠在一起（0.9.0 截图里的「选择音色」）
+    @Composable private fun ContactVoice() = Column(Modifier.verticalScroll(rememberScrollState())) {
         GroupSpacer()
         isomeria.aichat.feature.contactedit.ContactVoiceRows(
             isomeria.aichat.feature.contactedit.ContactForm(), isomeria.aichat.data.db.ReplyType.FOLLOW, "mimo_default", {}, {}, canPickVoice = true,

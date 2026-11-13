@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +31,7 @@ import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.WeDivider
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeSmallButton
 import isomeria.aichat.ui.components.WeTopBar
@@ -118,7 +118,7 @@ fun ProviderListContent(
                         color = colors.textTertiary,
                         modifier = Modifier.padding(start = 12.dp),
                     )
-                    Icon(
+                    WeIcon(
                         WeIcons.ChevronRight,
                         contentDescription = null,
                         tint = colors.arrow,

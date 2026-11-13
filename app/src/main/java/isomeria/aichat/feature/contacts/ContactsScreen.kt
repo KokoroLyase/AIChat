@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,6 +46,7 @@ import isomeria.aichat.data.repo.ContactRepository
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.TopBarIcon
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeTopBar
@@ -121,7 +121,7 @@ fun ContactsContent(
                                     .background(colors.brand),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Icon(WeIcons.PersonAdd, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                                WeIcon(WeIcons.PersonAdd, null, tint = Color.White, modifier = Modifier.size(24.dp))
                             }
                         },
                     )

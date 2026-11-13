@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -57,7 +56,7 @@ fun SelectCircle(selected: Boolean, enabled: Boolean, modifier: Modifier = Modif
             ),
         contentAlignment = Alignment.Center,
     ) {
-        if (selected) Icon(WeIcons.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
+        if (selected) WeIcon(WeIcons.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -123,7 +122,7 @@ fun SelectionBar(actions: List<SelectionAction>, modifier: Modifier = Modifier) 
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Icon(action.icon, null, tint = tint, modifier = Modifier.size(dimens.topBarIcon))
+                WeIcon(action.icon, null, tint = tint, modifier = Modifier.size(dimens.topBarIcon))
                 Text(action.label, style = WeTheme.typography.small, color = tint, modifier = Modifier.padding(top = 2.dp))
             }
         }

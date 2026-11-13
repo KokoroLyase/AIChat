@@ -28,7 +28,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -80,6 +79,7 @@ import isomeria.aichat.data.voice.VoicePlayback
 import isomeria.aichat.navigation.CallDetailRoute
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.SoundWaves
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.theme.WeTheme
@@ -350,7 +350,7 @@ private fun PlayerBar(player: CallPlayerUi, onTogglePlay: () -> Unit, onSeek: (L
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
+            WeIcon(
                 if (playing) WeIcons.Pause else WeIcons.Play,
                 contentDescription = null,
                 tint = Color.White,
@@ -417,15 +417,19 @@ private fun PlayerBar(player: CallPlayerUi, onTogglePlay: () -> Unit, onSeek: (L
  * 一条话：像聊天一样，自己的在右、绿色；联系人的在左；上面一行小字写是谁说的，下面是时长和状态。点一下单独放它。
  * [playing] 时下面的声波动起来；[current] 是完整通话停在或正在放的那一条，气泡描一圈绿边。
  */
+/** 这一句是不是只能显示“没有识别出文字”的占位 */
+internal fun isTurnPlaceholder(turn: CallTurn): Boolean = turn.status == CallTurnStatus.ASR_FAILED || turn.text.isBlank()
+
+private const val PLACEHOLDER_BORDER_ALPHA = 0.5f
+
 @Composable
 private fun TurnRow(turn: CallTurn, name: String, playing: Boolean, current: Boolean, playable: Boolean, onClick: () -> Unit) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     val sent = turn.role == SpeakerRole.USER
-    val text = when {
-        turn.status == CallTurnStatus.ASR_FAILED || turn.text.isBlank() -> stringResource(R.string.call_turn_asr_failed)
-        else -> turn.text
-    }
+    // 0.9.1：没有识别出文字时是灰色占位样式（没有底色、灰色细边和灰字），不像一句真的话
+    val placeholder = isTurnPlaceholder(turn)
+    val text = if (placeholder) stringResource(R.string.call_turn_asr_failed) else turn.text
     val note = when (turn.status) {
         CallTurnStatus.TTS_FAILED -> stringResource(R.string.call_turn_tts_failed)
         CallTurnStatus.INTERRUPTED -> stringResource(R.string.call_turn_interrupted)
@@ -433,7 +437,11 @@ private fun TurnRow(turn: CallTurn, name: String, playing: Boolean, current: Boo
     }
     val seconds = stringResource(R.string.voice_seconds, ((turn.audioMillis + 500) / 1000).toInt().coerceAtLeast(1))
     val state = stringResource(if (playing) R.string.voice_state_playing else R.string.call_turn_tap_to_play)
-    val background = if (sent) colors.bubbleSent else colors.bubbleReceived
+    val background = when {
+        placeholder -> Color.Transparent
+        sent -> colors.bubbleSent
+        else -> colors.bubbleReceived
+    }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val pressedOverlay = if (colors.isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.08f)
@@ -453,12 +461,21 @@ private fun TurnRow(turn: CallTurn, name: String, playing: Boolean, current: Boo
                     .widthIn(max = 280.dp)
                     .clip(shape)
                     .background(if (pressed && playable) pressedOverlay.compositeOver(background) else background)
+                    .then(if (placeholder) Modifier.border(1.dp, colors.textTertiary.copy(alpha = PLACEHOLDER_BORDER_ALPHA), shape) else Modifier)
                     .border(2.dp, outline, shape)
                     .then(if (playable) Modifier.clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick) else Modifier)
                     .semantics { if (playable) stateDescription = state }
                     .padding(horizontal = dimens.bubblePaddingHorizontal, vertical = dimens.bubblePaddingVertical),
             ) {
-                Text(text, style = WeTheme.typography.message, color = if (sent) colors.bubbleSentText else colors.bubbleReceivedText)
+                Text(
+                    text,
+                    style = WeTheme.typography.message,
+                    color = when {
+                        placeholder -> colors.textTertiary
+                        sent -> colors.bubbleSentText
+                        else -> colors.bubbleReceivedText
+                    },
+                )
             }
             val meta = listOfNotNull(if (playable) seconds else null, if (playing) stringResource(R.string.voice_state_playing) else null, note).joinToString(" · ")
             if (meta.isNotEmpty()) {
@@ -470,7 +487,7 @@ private fun TurnRow(turn: CallTurn, name: String, playing: Boolean, current: Boo
                             val step by isomeria.aichat.ui.theme.loopingFloat(0f, 3f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), still = 2.5f, label = "turnWaveStep")
                             SoundWaves(tint, step.toInt().coerceIn(0, 2) + 1, pointingRight = true, size = 14.dp)
                         } else {
-                            Icon(WeIcons.Play, contentDescription = null, tint = tint, modifier = Modifier.size(12.dp))
+                            WeIcon(WeIcons.Play, contentDescription = null, tint = tint, modifier = Modifier.size(12.dp))
                         }
                     }
                     Text(meta, style = WeTheme.typography.listTime, color = tint)

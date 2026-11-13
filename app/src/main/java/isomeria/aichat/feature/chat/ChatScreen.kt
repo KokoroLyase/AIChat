@@ -38,7 +38,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -59,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.theme.WeMotion
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.ClipEntry
@@ -1036,7 +1036,7 @@ internal fun InCallBar(startedAt: Long?, now: (() -> Long)? = null, onClick: () 
                     .background(colors.brand, androidx.compose.foundation.shape.CircleShape),
             )
             Spacer(Modifier.width(10.dp))
-            Icon(isomeria.aichat.ui.components.WeIcons.Phone, null, tint = colors.brandText, modifier = Modifier.size(20.dp))
+            WeIcon(isomeria.aichat.ui.components.WeIcons.Phone, null, tint = colors.brandText, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Text(text, style = WeTheme.typography.listTitle, color = colors.brandText, modifier = Modifier.weight(1f, fill = false))
         }

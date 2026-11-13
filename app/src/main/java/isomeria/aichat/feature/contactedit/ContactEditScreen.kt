@@ -82,6 +82,7 @@ import isomeria.aichat.ui.components.FormRow
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SheetOption
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeActionSheet
 import isomeria.aichat.ui.components.ErrorNote
 import isomeria.aichat.ui.components.WeDialog
@@ -277,16 +278,7 @@ fun ContactEditScreen(
 
             if (!state.isNew) {
                 GroupSpacer()
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(colors.listBackground)
-                        .clickable { showDelete = true }
-                        .heightIn(min = dimens.listRowHeight),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(stringResource(R.string.contact_delete), style = WeTheme.typography.listTitle, color = colors.danger)
-                }
+                WeActionRow(stringResource(R.string.contact_delete), onClick = { showDelete = true }, danger = true)
             }
             Spacer(Modifier.height(32.dp))
         }

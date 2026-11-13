@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,7 +52,7 @@ fun TranslationBlock(text: String, sent: Boolean, onCopy: () -> Unit, onHide: ()
             val labelColor = textColor.copy(alpha = 0.55f)
             Text(text, style = WeTheme.typography.message, color = textColor)
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(WeIcons.Translate, null, tint = labelColor, modifier = Modifier.size(12.dp))
+                WeIcon(WeIcons.Translate, null, tint = labelColor, modifier = Modifier.size(12.dp))
                 Box(Modifier.width(4.dp))
                 Text(stringResource(R.string.translation_label), style = WeTheme.typography.tab, color = labelColor)
             }

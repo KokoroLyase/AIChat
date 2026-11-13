@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +64,7 @@ import isomeria.aichat.ui.components.TopBarIcon
 import isomeria.aichat.ui.components.VoiceBubble
 import isomeria.aichat.ui.components.WeContextMenu
 import isomeria.aichat.ui.components.WeDialog
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeSearchBar
 import isomeria.aichat.ui.components.WeTopBar
@@ -315,7 +315,7 @@ private fun FavoritePreview(entry: FavoriteEntry, playing: Boolean, onToggleVoic
         }
         MessageType.CALL -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(WeIcons.Phone, null, tint = colors.textPrimary, modifier = Modifier.size(18.dp))
+                WeIcon(WeIcons.Phone, null, tint = colors.textPrimary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(stringResource(R.string.favorite_call_summary, CallDurations.format(favorite.audioMillis)), style = WeTheme.typography.message, color = colors.textPrimary)
             }

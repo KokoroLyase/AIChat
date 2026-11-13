@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -74,7 +73,7 @@ fun PasswordField(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
+            WeIcon(
                 if (visible) WeIcons.VisibilityOff else WeIcons.Visibility,
                 stringResource(if (visible) R.string.password_hide else R.string.password_show),
                 tint = colors.inputIcon,

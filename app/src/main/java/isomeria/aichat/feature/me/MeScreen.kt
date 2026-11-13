@@ -18,10 +18,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,7 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -52,9 +51,12 @@ import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.WeActionSheet
+import isomeria.aichat.ui.components.WeFitText
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeTopBar
+import isomeria.aichat.ui.components.WeWrapText
 import isomeria.aichat.ui.theme.AIChatTheme
 import isomeria.aichat.ui.theme.SelfAvatarColor
 import isomeria.aichat.ui.theme.WeTheme
@@ -150,20 +152,18 @@ fun MeContent(
             Avatar(avatarPath, name, SelfAvatarColor, dimens.profileAvatar, corner = dimens.profileAvatarCorner)
             Spacer(Modifier.width(20.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    name,
-                    style = WeTheme.typography.profileName,
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
+                // 0.9.1：名字长或字体大时换行，不截断；英文单词放不下先缩小字号，不在单词中间断开
+                WeWrapText(name, style = WeTheme.typography.profileName, color = colors.textPrimary)
+                // 版本号只占一行：放不下时缩小字号，不在“0.9.1-debug”中间断开
+                val versionStyle = WeTheme.typography.profileAccount
+                WeFitText(
                     stringResource(R.string.me_version, BuildConfig.VERSION_NAME),
-                    style = WeTheme.typography.profileAccount,
+                    style = versionStyle,
                     color = colors.textTertiary,
+                    textAlign = TextAlign.Start,
                 )
             }
-            Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.size(18.dp))
+            WeIcon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.size(18.dp))
         }
         GroupSpacer()
         WeListRow(title = stringResource(R.string.me_favorites), onClick = onOpenFavorites)

@@ -46,6 +46,7 @@ import isomeria.aichat.feature.replyprefs.StepperRow
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.SectionHeader
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeSwitch
 import isomeria.aichat.ui.components.WeTopBar
@@ -255,12 +256,10 @@ fun ProactiveContent(
             FootnoteText(stringResource(R.string.proactive_contacts_hint, ProactivePolicy.MAX_UNANSWERED))
 
             GroupSpacer()
-            WeListRow(
-                title = stringResource(R.string.reply_pref_reset),
-                titleColor = colors.link,
-                showArrow = false,
-                enabled = limits != ProactiveSettings(),
+            WeActionRow(
+                stringResource(R.string.reply_pref_reset),
                 onClick = { onChange { ProactiveSettings() } },
+                enabled = limits != ProactiveSettings(),
             )
             Spacer(Modifier.height(24.dp))
         }

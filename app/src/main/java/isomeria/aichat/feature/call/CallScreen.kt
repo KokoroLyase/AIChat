@@ -27,12 +27,12 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,17 +40,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,6 +92,7 @@ import isomeria.aichat.feature.chat.failReasonText
 import isomeria.aichat.feature.chat.findActivity
 import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.WeDialog
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.theme.WeTheme
 import isomeria.aichat.ui.theme.loopingFloat
@@ -353,6 +357,10 @@ private fun blockText(block: CallBlock): Pair<String, Int?> = when (block) {
     CallBlock.NO_CONTACT -> stringResource(R.string.chat_contact_missing) to null
 }
 
+/** 字幕换句时的尺寸过渡（260ms）走完以后再对一次位置 */
+private const val SUBTITLE_SETTLE_MILLIS = 300L
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CallContent(ui: CallUi, actions: CallActions) {
     val colors = WeTheme.colors
@@ -378,6 +386,17 @@ fun CallContent(ui: CallUi, actions: CallActions) {
                     .clickable(role = Role.Button) { actions.onSubtitles(!ui.subtitles) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
+        }
+        // 0.9.1：字体大、一屏放不下时，换到新的一句字幕就把整张字幕卡片滚进可见区域（不被裁掉下半截）。
+        // 等出现动画的尺寸过渡走完再滚一次，卡片的最终大小才算数
+        val subtitleInView = remember { BringIntoViewRequester() }
+        LaunchedEffect(ui.subtitle) {
+            if (ui.subtitle != null) {
+                withFrameNanos {}
+                subtitleInView.bringIntoView()
+                delay(SUBTITLE_SETTLE_MILLIS)
+                subtitleInView.bringIntoView()
+            }
         }
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
@@ -421,6 +440,7 @@ fun CallContent(ui: CallUi, actions: CallActions) {
                 },
                 contentAlignment = Alignment.Center,
                 label = "callSubtitle",
+                modifier = Modifier.bringIntoViewRequester(subtitleInView),
             ) { subtitle ->
                 if (subtitle != null) {
                     val (speaker, text) = subtitle
@@ -461,7 +481,7 @@ fun CallContent(ui: CallUi, actions: CallActions) {
                 ) {
                     Text(last, style = typography.small, color = colors.callText, modifier = Modifier.weight(1f, fill = false))
                     Spacer(Modifier.size(6.dp))
-                    Icon(WeIcons.Close, contentDescription = null, tint = colors.callTextSecondary, modifier = Modifier.size(16.dp))
+                    WeIcon(WeIcons.Close, contentDescription = null, tint = colors.callTextSecondary, modifier = Modifier.size(16.dp))
                 }
             }
             for (hint in ui.hints) {
@@ -683,7 +703,7 @@ private fun CallButton(
                 .background(background),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(30.dp))
+            WeIcon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(30.dp))
         }
         Spacer(Modifier.size(8.dp))
         Text(label, style = WeTheme.typography.small, color = colors.callTextSecondary, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 120.dp))

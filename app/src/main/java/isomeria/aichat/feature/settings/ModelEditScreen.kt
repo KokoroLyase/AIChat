@@ -9,7 +9,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -47,6 +46,8 @@ import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.data.repo.ReferencePurpose
 import isomeria.aichat.navigation.ModelEditRoute
 import isomeria.aichat.ui.components.*
+import isomeria.aichat.ui.components.WeActionRow
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -223,13 +224,11 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
                 ChoiceRow(stringResource(R.string.stream_options), stringResource(if (override.streamOptions ?: inherited.streamOptions) R.string.rule_send else R.string.rule_no_send), stringResource(if (override.streamOptions == null) R.string.rule_inherited else R.string.rule_user),
                     listOf(stringResource(R.string.rule_send) to true, stringResource(R.string.rule_no_send) to false), showDivider = true) { set(override.copy(streamOptions = it)) }
                 // 这是一个动作，不进入下一页；没有覆盖时没什么可恢复的
-                WeListRow(stringResource(R.string.rule_restore_inheritance), onClick = { onChange(model.copy(compatibilityOverride = null)) }, showArrow = false, enabled = model.compatibilityOverride != null)
+                WeActionRow(stringResource(R.string.rule_restore_inheritance), onClick = { onChange(model.copy(compatibilityOverride = null)) }, enabled = model.compatibilityOverride != null)
                 FootnoteText(stringResource(R.string.model_advanced_note))
             }
             Spacer(Modifier.height(8.dp))
-            Box(Modifier.fillMaxWidth().background(colors.listBackground).clickable { confirmRemove = true }.heightIn(min = d.listRowHeight), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.model_remove), style = WeTheme.typography.listTitle, color = colors.danger)
-            }
+            WeActionRow(stringResource(R.string.model_remove), onClick = { confirmRemove = true }, danger = true)
             Spacer(Modifier.height(d.horizontalPadding))
         }
     }
@@ -327,7 +326,7 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
             },
             detail = detail?.let { text -> { Text(text, style = WeTheme.typography.small, color = colors.textTertiary) } },
         )
-        if (enabled) Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+        if (enabled) WeIcon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
     }
 }
 /** 一行放得下就左右排，值靠右，并按整行垂直居中（和箭头对齐）；放不下就上下排，值靠左。[detail] 总在标题一侧的最下面。 */

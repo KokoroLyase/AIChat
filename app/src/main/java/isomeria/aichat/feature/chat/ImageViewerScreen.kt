@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -41,6 +40,7 @@ import isomeria.aichat.R
 import isomeria.aichat.data.repo.FileStorage
 import isomeria.aichat.ui.components.SheetOption
 import isomeria.aichat.ui.components.WeActionSheet
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import kotlinx.coroutines.launch
 import java.io.File
@@ -122,7 +122,7 @@ fun ImageViewerScreen(path: String, onBack: () -> Unit, viewModel: ImageViewerVi
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(WeIcons.Download, stringResource(R.string.image_save), tint = Color.White)
+            WeIcon(WeIcons.Download, stringResource(R.string.image_save), tint = Color.White)
         }
     }
 

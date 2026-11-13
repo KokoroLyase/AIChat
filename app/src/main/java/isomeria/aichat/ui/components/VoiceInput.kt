@@ -253,7 +253,8 @@ private fun OverlayButton(label: String, symbol: String, highlighted: Boolean, e
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text(label, style = WeTheme.typography.small, color = Color.White, textAlign = TextAlign.Center)
+        // 0.9.1：窄屏大字体时不折成“转文 / 字”两行，放不下就缩小
+        WeFitText(label, WeTheme.typography.small, Color.White)
     }
 }
 

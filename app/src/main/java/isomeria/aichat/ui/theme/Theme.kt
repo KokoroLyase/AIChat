@@ -96,6 +96,7 @@ fun AIChatTheme(
             LocalWeTypography provides WeTypography(),
             LocalDensity provides scaledDensity,
             LocalReduceMotion provides reduceMotion,
+            isomeria.aichat.ui.components.LocalIconScale provides isomeria.aichat.ui.components.iconScaleFor(fontScale),
             LocalIndication provides WePressIndication(colors.listPressed),
             LocalTextSelectionColors provides TextSelectionColors(
                 handleColor = colors.brand,

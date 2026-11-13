@@ -20,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -76,8 +75,10 @@ import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
 import isomeria.aichat.ui.components.PasswordField
 import isomeria.aichat.ui.components.SectionHeader
+import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeDivider
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeSegmented
@@ -275,7 +276,7 @@ fun VoiceProviderListContent(
                         color = colors.textTertiary,
                     )
                 }
-                Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+                WeIcon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
             }
             SectionHeader(stringResource(R.string.voice_providers_group))
             if (state.providers.isEmpty()) FootnoteText(stringResource(R.string.voice_providers_empty))
@@ -303,7 +304,7 @@ fun VoiceProviderListContent(
                             color = colors.textTertiary,
                         )
                     }
-                    Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+                    WeIcon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 4.dp).size(18.dp))
                 }
                 if (index != state.providers.lastIndex) WeDivider(startIndent = dimens.horizontalPadding)
             }
@@ -656,7 +657,7 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
             }
             if (state.savedKeyMasked != null) {
                 if (state.keyInput.isEmpty()) FootnoteText(stringResource(R.string.llm_api_key_saved, state.savedKeyMasked))
-                WeListRow(title = stringResource(R.string.llm_api_key_clear), titleColor = colors.danger, onClick = actions.onClearKey, showArrow = false)
+                WeActionRow(stringResource(R.string.llm_api_key_clear), onClick = actions.onClearKey, danger = true)
             }
 
             GroupSpacer()
@@ -668,12 +669,7 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
             presetEndpoint?.priceRes?.takeIf { it != 0 }?.let { FootnoteText(stringResource(it)) }
             if (state.providerId != null) {
                 Spacer(Modifier.height(8.dp))
-                Box(
-                    Modifier.fillMaxWidth().background(colors.listBackground).clickable(role = Role.Button) { confirmDelete = true }.heightIn(min = dimens.listRowHeight),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(stringResource(R.string.voice_delete_provider), style = WeTheme.typography.listTitle, color = colors.danger)
-                }
+                WeActionRow(stringResource(R.string.voice_delete_provider), onClick = { confirmDelete = true }, danger = true)
             }
             FootnoteText(stringResource(R.string.llm_security_notice))
             Spacer(Modifier.height(24.dp))

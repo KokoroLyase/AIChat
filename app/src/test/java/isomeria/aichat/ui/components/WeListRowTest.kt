@@ -56,7 +56,7 @@ class WeListRowTest {
     }
 
     @Test
-    fun valueTakesAllRemainingWidth() {
+    fun valueSitsAtRightEdgeBesideTitle() {
         compose.setContent {
             AIChatTheme(darkTheme = false) {
                 Column(Modifier.width(rowWidth)) {
@@ -66,8 +66,10 @@ class WeListRowTest {
         }
         val bounds = compose.onNodeWithText("DeepSeek-V4.1-Flash", useUnmergedTree = true).getBoundsInRoot()
         assertDpEquals(rowWidth - padding - ARROW, bounds.right)
-        // 标题「模型」两个字之后的宽度都归值所有，远大于原来平分的一半
-        assertTrue("value width ${bounds.right - bounds.left}", bounds.right - bounds.left > rowWidth / 2)
+        // 0.9.1 起值按自身宽度靠右（以前是文字框占满标题后面的全部宽度）；放得下时和标题在同一行
+        val title = compose.onNodeWithText("模型", useUnmergedTree = true).getBoundsInRoot()
+        assertDpEquals(title.top, bounds.top)
+        assertTrue("值 ${bounds.left} 挤到了标题 ${title.right} 上", bounds.left > title.right)
     }
 
     private fun assertDpEquals(expected: Dp, actual: Dp) = assertEquals(expected.value, actual.value, 0.5f)

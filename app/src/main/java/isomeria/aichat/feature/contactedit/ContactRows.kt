@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,6 +22,7 @@ import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.theme.WeTheme
 
@@ -69,6 +69,6 @@ internal fun DetailEntryRow(
                 modifier = Modifier.clearAndSetSemantics { text = AnnotatedString(detail) },
             )
         }
-        Icon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 16.dp).size(18.dp))
+        WeIcon(WeIcons.ChevronRight, null, tint = colors.arrow, modifier = Modifier.padding(start = 16.dp).size(18.dp))
     }
 }

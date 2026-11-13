@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -46,6 +44,7 @@ import isomeria.aichat.data.repo.MemoryRepository
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.feature.settings.ConfigActionRow
 import isomeria.aichat.navigation.ContactDetailRoute
+import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.configurationIssueText
 import isomeria.aichat.ui.components.temperatureText
@@ -54,6 +53,7 @@ import isomeria.aichat.ui.components.Avatar
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeTopBar
+import isomeria.aichat.ui.components.WeWrapText
 import isomeria.aichat.ui.theme.AIChatTheme
 import isomeria.aichat.ui.theme.AvatarPalette
 import isomeria.aichat.ui.theme.WeTheme
@@ -165,7 +165,8 @@ fun ContactDetailContent(
                 .fillMaxWidth()
                 .background(colors.listBackground)
                 .padding(start = 24.dp, end = dimens.horizontalPadding, top = 8.dp, bottom = 32.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            // 0.9.1：头像和名字顶部对齐（字体大、文字多行时不再相对整段文字居中）
+            verticalAlignment = Alignment.Top,
         ) {
             Avatar(
                 contact.avatarPath,
@@ -176,20 +177,13 @@ fun ContactDetailContent(
             )
             Spacer(Modifier.width(20.dp))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    contact.name,
-                    style = WeTheme.typography.contactName,
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // 0.9.1：名字和服务商名长时换行，不截断
+                WeWrapText(contact.name, style = WeTheme.typography.contactName, color = colors.textPrimary)
                 if (state.providerName.isNotEmpty()) {
                     Text(
                         stringResource(R.string.contact_provider_line, state.providerName),
                         style = WeTheme.typography.small,
                         color = colors.textTertiary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Text(
@@ -278,7 +272,7 @@ private fun ActionRow(icon: ImageVector, text: String, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = colors.link, modifier = Modifier.size(20.dp))
+            WeIcon(icon, null, tint = colors.link, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Text(text, style = WeTheme.typography.listTitle, color = colors.link)
         }

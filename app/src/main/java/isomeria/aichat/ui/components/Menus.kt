@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -221,7 +220,7 @@ private fun BubbleMenuGrid(items: List<MenuItem>, onDismiss: () -> Unit, modifie
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (item.icon != null) {
-                        Icon(item.icon, null, tint = colors.popupText, modifier = Modifier.size(20.dp))
+                        WeIcon(item.icon, null, tint = colors.popupText, modifier = Modifier.size(20.dp))
                     }
                     Text(
                         item.label,
@@ -397,7 +396,7 @@ fun WeDropdownMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (item.icon != null) {
-                        Icon(item.icon, null, tint = colors.popupText, modifier = Modifier.size(22.dp))
+                        WeIcon(item.icon, null, tint = colors.popupText, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(14.dp))
                     }
                     Text(item.label, style = WeTheme.typography.listTitle, color = colors.popupText, maxLines = 1)

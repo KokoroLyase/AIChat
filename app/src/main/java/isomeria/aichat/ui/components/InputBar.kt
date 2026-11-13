@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -139,7 +138,7 @@ fun ChatInputBar(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
+                    WeIcon(
                         WeIcons.Mic,
                         contentDescription = stringResource(R.string.voice_mic_desc),
                         tint = if (voice.transcribing) colors.disabled else colors.inputIcon,
@@ -181,7 +180,7 @@ private fun BarIcon(icon: ImageVector, description: String, onClick: () -> Unit)
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, description, tint = WeTheme.colors.textPrimary, modifier = Modifier.size(dimens.inputBarIcon))
+        WeIcon(icon, description, tint = WeTheme.colors.textPrimary, modifier = Modifier.size(dimens.inputBarIcon))
     }
 }
 
@@ -222,7 +221,8 @@ fun MorePanel(
             .background(colors.barBackground)
             .padding(horizontal = 24.dp, vertical = 20.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+        // 0.9.1：按自身宽度靠左排；窄屏大字体时最后一项只剩剩下的宽度，标签缩小字号，不折成两行
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             PanelItem(WeIcons.Image, stringResource(R.string.chat_album), imageEnabled, onAlbum)
             PanelItem(WeIcons.Camera, stringResource(R.string.chat_camera), imageEnabled, onCamera)
             PanelItem(WeIcons.Phone, stringResource(R.string.chat_voice_call), true, onCall)
@@ -231,10 +231,10 @@ fun MorePanel(
 }
 
 @Composable
-private fun PanelItem(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun PanelItem(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = WeTheme.colors
     Column(
-        Modifier.clickable(
+        modifier.clickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null,
             onClick = onClick,
@@ -249,13 +249,13 @@ private fun PanelItem(icon: ImageVector, label: String, enabled: Boolean, onClic
                 .background(colors.inputBackground),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
+            WeIcon(
                 icon,
                 null,
                 tint = if (enabled) colors.textPrimary else colors.disabled,
                 modifier = Modifier.size(28.dp),
             )
         }
-        Text(label, style = WeTheme.typography.listTime, color = if (enabled) colors.textTertiary else colors.disabled)
+        WeFitText(label, WeTheme.typography.listTime, if (enabled) colors.textTertiary else colors.disabled)
     }
 }
