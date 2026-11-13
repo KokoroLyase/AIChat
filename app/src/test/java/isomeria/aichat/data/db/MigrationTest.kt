@@ -391,7 +391,7 @@ class MigrationTest {
         val voiceId = db.messageDao().insert(Message(contactId = 8, role = Role.USER, type = MessageType.VOICE, voicePath = "/v/1.m4a", voiceMillis = 3200, status = MessageStatus.SUCCESS, createdAt = 120, content = "转写"))
         assertEquals(listOf("/v/1.m4a"), db.messageDao().allVoicePaths())
         assertEquals(3200L, db.messageDao().get(voiceId)!!.voiceMillis)
-        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "mimo-audio", baseUrl = "https://x.test/v1", defaultModel = "tts", voice = "冰糖"))
+        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = "mimo-audio", baseUrl = "https://x.test/v1", defaultModel = "tts", voice = "冰糖"))
         assertEquals(listOf(tts), db.providerDao().listByKind(ProviderKind.TTS).map { it.id })
         assertEquals(listOf(1L), db.providerDao().llmList().map { it.id })
     }

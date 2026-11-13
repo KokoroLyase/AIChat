@@ -244,7 +244,7 @@ class BackupVoiceTest {
         // 本机：联系人和语音服务商都删了，另一个合成服务商占了 id
         db.contactDao().delete(1)
         db.providerDao().deleteAllVoice()
-        db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "openai-audio", name = "别的", baseUrl = "https://other.test", defaultModel = "x"))
+        db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = "openai-audio", name = "别的", baseUrl = "https://other.test", defaultModel = "x"))
 
         backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
         val restored = db.contactDao().get(1)!!
@@ -286,7 +286,7 @@ class BackupVoiceTest {
         seed()
         val zip = export()
         // 导出后本机加了一个合成服务商，联系人单独选了它；识别单独选了备份里也有的那个
-        val extra = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "openai-audio", name = "新加的", baseUrl = "https://extra.test", defaultModel = "x"))
+        val extra = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = "openai-audio", name = "新加的", baseUrl = "https://extra.test", defaultModel = "x"))
         db.contactDao().update(db.contactDao().get(1)!!.copy(ttsSource = VoiceSource.provider(extra), asrSource = VoiceSource.provider(asr)))
 
         backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null, setOf(BackupModule.PROVIDERS))

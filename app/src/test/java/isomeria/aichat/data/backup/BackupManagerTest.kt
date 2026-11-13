@@ -516,13 +516,13 @@ class BackupManagerTest {
     @Test
     fun voiceSettingsWithoutProviders_pointToLocalSameProvider() = runBlocking {
         seed()
-        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "chat-audio", baseUrl = "https://tts.example.com/v1", defaultModel = "t"))
+        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = "chat-audio", baseUrl = "https://tts.example.com/v1", defaultModel = "t"))
         settings.value = settings.value.copy(voice = isomeria.aichat.core.VoiceSettings(isomeria.aichat.data.db.ReplyType.VOICE, isomeria.aichat.core.VoiceSource.provider(tts), ""))
         val zip = exportModules(setOf(BackupModule.VOICE_SETTINGS))
         assertEquals(listOf(tts), backup.inspect(zip).data.providerRefs.filter { it.kind == ProviderKind.TTS }.map { it.id })
         // 本机按同一个地址重新添加，id 变了；来源也临时换掉
         db.providerDao().delete(tts)
-        val again = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "chat-audio", baseUrl = "https://tts.example.com/v1/", defaultModel = "t"))
+        val again = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = "chat-audio", baseUrl = "https://tts.example.com/v1/", defaultModel = "t"))
         settings.value = settings.value.copy(voice = isomeria.aichat.core.VoiceSettings())
         backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
         assertEquals(isomeria.aichat.core.VoiceSource.provider(again), settings.value.voice.ttsSource)

@@ -138,9 +138,9 @@ class Backup060FixtureTest {
      */
     @Test
     fun overwritingWith060Backup_keepsLocalVoiceProvidersAndSettings() = runBlocking {
-        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "mimo-audio", name = "MiMo 合成", baseUrl = "https://api.xiaomimimo.com/v1",
+        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = "mimo-audio", name = "MiMo 合成", baseUrl = "https://api.xiaomimimo.com/v1",
             apiKeyEncrypted = "enc:sk-tts", defaultModel = "mimo-v2.5-tts", presetId = "mimo", voice = "冰糖"))
-        val asr = db.providerDao().insert(ProviderConfig(kind = ProviderKind.ASR, provider = "openai-audio", name = "硅基流动", baseUrl = "https://api.siliconflow.cn/v1",
+        val asr = db.providerDao().insert(ProviderConfig(kind = ProviderKind.ASR, compatibility = "", provider = "openai-audio", name = "硅基流动", baseUrl = "https://api.siliconflow.cn/v1",
             apiKeyEncrypted = "enc:sk-asr", defaultModel = "FunAudioLLM/SenseVoiceSmall", presetId = "siliconflow"))
         val local = VoiceSettings(ReplyType.VOICE, VoiceSource.provider(tts), VoiceSource.provider(asr))
         settings.v = settings.v.copy(voice = local)
@@ -162,7 +162,7 @@ class Backup060FixtureTest {
     /** 合并 0.6.0 的备份：本机的语音服务商和语音设置都不动 */
     @Test
     fun mergingA060Backup_keepsLocalVoiceProvidersAndSettings() = runBlocking {
-        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "mimo-audio", baseUrl = "https://api.xiaomimimo.com/v1", defaultModel = "mimo-v2.5-tts"))
+        val tts = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = "mimo-audio", baseUrl = "https://api.xiaomimimo.com/v1", defaultModel = "mimo-v2.5-tts"))
         val local = VoiceSettings(ReplyType.TEXT, VoiceSource.provider(tts), "")
         settings.v = settings.v.copy(voice = local)
         backup.restore(backup.inspect(fixture("aichat-060-plain.zip")), RestoreMode.MERGE, null)

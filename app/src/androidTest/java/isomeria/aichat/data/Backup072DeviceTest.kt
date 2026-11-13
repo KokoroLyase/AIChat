@@ -121,4 +121,16 @@ class Backup072DeviceTest {
         assertEquals("sk-tts-not-real", cipher.decrypt(db.providerDao().listByKind(ProviderKind.TTS).single().apiKeyEncrypted!!))
         assertFalse(preview.file.exists())
     }
+
+    /** 用 App 自己的代码建服务商的“真实形态”备份（assets/backup072real）：v0.7.2 自己都读不了，0.8.0 在真机上要能恢复 */
+    @Test
+    fun realisticEncryptedFileFrom072_withVoiceProviders_restores() = runBlocking {
+        val target = File(context.cacheDir, "real.aichat").also { f -> assets.open("backup072real/aichat-072-realistic-encrypted.aichat").use { input -> f.outputStream().use(input::copyTo) } }
+        val preview = backup.inspect(target, "pw123456".toCharArray())
+        backup.restore(preview, RestoreMode.OVERWRITE, "pw123456".toCharArray())
+        val voice = db.providerDao().listConfigs().filter { it.kind != ProviderKind.LLM }
+        assertEquals(3, voice.size)
+        assertTrue(voice.all { it.compatibility == "" })
+        assertEquals("sk-fake-asr", cipher.decrypt(db.providerDao().listByKind(ProviderKind.ASR).single().apiKeyEncrypted!!))
+    }
 }

@@ -126,8 +126,8 @@ class VoiceReplyTest {
         runBlocking {
             db.providerDao().insert(ProviderConfig(id = 1, kind = ProviderKind.LLM, provider = ProviderProtocol.OPENAI, name = "测试", baseUrl = "https://example.com/v1", apiKeyEncrypted = "enc:k", defaultModel = "m"))
             db.providerDao().upsertModels(listOf(ProviderModel(1, "m", "M")))
-            ttsId = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = VoiceProtocol.CHAT_AUDIO, name = "合成", baseUrl = "https://tts.example.com/v1", apiKeyEncrypted = "enc:t", defaultModel = "mimo-v2.5-tts", voice = "mimo_default"))
-            asrId = db.providerDao().insert(ProviderConfig(kind = ProviderKind.ASR, provider = VoiceProtocol.OPENAI_AUDIO, name = "识别", baseUrl = "https://asr.example.com/v1", apiKeyEncrypted = "enc:a", defaultModel = "sense"))
+            ttsId = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = VoiceProtocol.CHAT_AUDIO, name = "合成", baseUrl = "https://tts.example.com/v1", apiKeyEncrypted = "enc:t", defaultModel = "mimo-v2.5-tts", voice = "mimo_default"))
+            asrId = db.providerDao().insert(ProviderConfig(kind = ProviderKind.ASR, compatibility = "", provider = VoiceProtocol.OPENAI_AUDIO, name = "识别", baseUrl = "https://asr.example.com/v1", apiKeyEncrypted = "enc:a", defaultModel = "sense"))
             contactId = db.contactDao().insert(Contact(name = "小雨", avatarColor = 0, providerId = 1, model = "m", systemPrompt = "人设", createdAt = 1, updatedAt = 1, useReplyPreferences = false))
             db.conversationDao().upsert(Conversation(contactId = contactId, lastMessageTime = start - 10_000))
         }
@@ -307,7 +307,7 @@ class VoiceReplyTest {
     /** 0.7.2：联系人单独选的合成来源用不了时回文字，不换成全局的（全局的可以用） */
     @Test
     fun contactOwnTtsUnavailable_voiceModeFallsBackToText_globalNotUsed() = runBlocking {
-        val noKey = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = VoiceProtocol.CHAT_AUDIO, name = "没 Key", baseUrl = "https://own.example.com/v1", defaultModel = "m"))
+        val noKey = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = VoiceProtocol.CHAT_AUDIO, name = "没 Key", baseUrl = "https://own.example.com/v1", defaultModel = "m"))
         settings.value = settings.value.copy(replyType = ReplyType.VOICE)
         setContact { it.copy(ttsSource = VoiceSource.provider(noKey)) }
         // 判断这一轮回不回语音时就按联系人自己的来源：用不了就直接回文字，不先写等合成的语音消息

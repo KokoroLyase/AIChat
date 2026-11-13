@@ -112,7 +112,7 @@ class Backup060DeviceTest {
     @Test
     fun encryptedFileFrom060Restores_keepsLocalVoiceProviderKey() = runBlocking {
         val tts = db.providerDao().insert(
-            ProviderConfig(kind = ProviderKind.TTS, provider = "chat-audio", name = "合成", baseUrl = "https://api.xiaomimimo.com/v1",
+            ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = "chat-audio", name = "合成", baseUrl = "https://api.xiaomimimo.com/v1",
                 apiKeyEncrypted = cipher.encrypt("sk-tts-not-real"), defaultModel = "mimo-v2.5-tts", presetId = "mimo", voice = "mimo_default"),
         )
         settings.v = settings.v.copy(voice = VoiceSettings(ReplyType.VOICE, VoiceSource.provider(tts), ""))

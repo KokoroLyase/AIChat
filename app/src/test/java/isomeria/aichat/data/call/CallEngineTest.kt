@@ -231,8 +231,8 @@ class CallEngineTest {
         runBlocking {
             db.providerDao().insert(ProviderConfig(id = 1, kind = ProviderKind.LLM, provider = ProviderProtocol.OPENAI, name = "测试", baseUrl = "https://example.com/v1", apiKeyEncrypted = "enc:k", defaultModel = "m"))
             db.providerDao().upsertModels(listOf(ProviderModel(1, "m", "M")))
-            ttsId = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = VoiceProtocol.CHAT_AUDIO, name = "合成", baseUrl = "https://tts.example.com/v1", apiKeyEncrypted = "enc:t", defaultModel = "mimo-v2.5-tts", voice = "v"))
-            asrId = db.providerDao().insert(ProviderConfig(kind = ProviderKind.ASR, provider = VoiceProtocol.OPENAI_AUDIO, name = "识别", baseUrl = "https://asr.example.com/v1", apiKeyEncrypted = "enc:a", defaultModel = "sense"))
+            ttsId = db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = VoiceProtocol.CHAT_AUDIO, name = "合成", baseUrl = "https://tts.example.com/v1", apiKeyEncrypted = "enc:t", defaultModel = "mimo-v2.5-tts", voice = "v"))
+            asrId = db.providerDao().insert(ProviderConfig(kind = ProviderKind.ASR, compatibility = "", provider = VoiceProtocol.OPENAI_AUDIO, name = "识别", baseUrl = "https://asr.example.com/v1", apiKeyEncrypted = "enc:a", defaultModel = "sense"))
             contactId = db.contactDao().insert(Contact(name = "小雨", avatarColor = 0, providerId = 1, model = "m", systemPrompt = "人设", createdAt = 1, updatedAt = 1, useReplyPreferences = false))
             db.conversationDao().upsert(Conversation(contactId = contactId))
         }
