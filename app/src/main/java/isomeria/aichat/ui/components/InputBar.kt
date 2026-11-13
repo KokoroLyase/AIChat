@@ -17,11 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Keyboard
-import androidx.compose.material.icons.outlined.Mic
-import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -89,7 +84,7 @@ fun ChatInputBar(
         verticalAlignment = Alignment.Bottom,
     ) {
         BarIcon(
-            icon = if (voiceMode) Icons.Outlined.Keyboard else WeIcons.Voice,
+            icon = if (voiceMode) WeIcons.Keyboard else WeIcons.Voice,
             description = stringResource(if (voiceMode) R.string.chat_keyboard else R.string.chat_voice),
             onClick = onToggleVoice,
         )
@@ -145,7 +140,7 @@ fun ChatInputBar(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        Icons.Outlined.Mic,
+                        WeIcons.Mic,
                         contentDescription = stringResource(R.string.voice_mic_desc),
                         tint = if (voice.transcribing) colors.disabled else colors.inputIcon,
                         modifier = Modifier.size(22.dp),
@@ -155,7 +150,7 @@ fun ChatInputBar(
         }
         Spacer(Modifier.width(8.dp))
         BarIcon(
-            icon = if (panel == InputPanel.EMOJI) Icons.Outlined.Keyboard else WeIcons.Emoji,
+            icon = if (panel == InputPanel.EMOJI) WeIcons.Keyboard else WeIcons.Emoji,
             description = stringResource(R.string.chat_emoji),
             onClick = { onTogglePanel(if (panel == InputPanel.EMOJI) InputPanel.NONE else InputPanel.EMOJI) },
         )
@@ -228,8 +223,8 @@ fun MorePanel(
             .padding(horizontal = 24.dp, vertical = 20.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-            PanelItem(Icons.Outlined.Image, stringResource(R.string.chat_album), imageEnabled, onAlbum)
-            PanelItem(Icons.Outlined.PhotoCamera, stringResource(R.string.chat_camera), imageEnabled, onCamera)
+            PanelItem(WeIcons.Image, stringResource(R.string.chat_album), imageEnabled, onAlbum)
+            PanelItem(WeIcons.Camera, stringResource(R.string.chat_camera), imageEnabled, onCamera)
             PanelItem(WeIcons.Phone, stringResource(R.string.chat_voice_call), true, onCall)
         }
     }

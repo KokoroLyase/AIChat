@@ -27,9 +27,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Backspace
-import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -300,7 +297,7 @@ private fun DeleteKey(enabled: Boolean, onDelete: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            Icons.AutoMirrored.Outlined.Backspace,
+            WeIcons.Backspace,
             contentDescription = stringResource(R.string.emoji_backspace),
             tint = if (enabled) colors.textPrimary else colors.textSecondary,
             modifier = Modifier.size(22.dp),
@@ -340,7 +337,7 @@ private fun EmojiTabs(sections: List<EmojiSection>, selected: Int, onSelect: (In
                 contentAlignment = Alignment.Center,
             ) {
                 if (section.icon == null) {
-                    Icon(Icons.Outlined.AccessTime, null, tint = colors.textTertiary, modifier = Modifier.size(22.dp))
+                    Icon(WeIcons.Clock, null, tint = colors.textTertiary, modifier = Modifier.size(22.dp))
                 } else {
                     Text(section.icon, fontSize = 20.sp, maxLines = 1)
                 }

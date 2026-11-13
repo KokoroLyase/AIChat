@@ -1,8 +1,5 @@
 package isomeria.aichat.feature.chat
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -213,9 +210,9 @@ internal fun ChatPageSample(
             val any = selection.isNotEmpty()
             isomeria.aichat.ui.components.SelectionBar(
                 listOf(
-                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy, any) {},
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_copy), WeIcons.Copy, any) {},
                     isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.chat_menu_favorite), WeIcons.Star, any) {},
-                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline, any, danger = true) {},
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_delete), WeIcons.Delete, any, danger = true) {},
                 ),
             )
             return@Column

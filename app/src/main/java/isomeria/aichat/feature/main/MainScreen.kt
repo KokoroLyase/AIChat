@@ -5,13 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.Contacts
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Contacts
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -29,6 +22,7 @@ import isomeria.aichat.feature.contacts.ContactsScreen
 import isomeria.aichat.feature.me.MeScreen
 import isomeria.aichat.ui.components.TabItem
 import isomeria.aichat.ui.components.WeBottomBar
+import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -62,9 +56,9 @@ fun MainScreen(
     val pager = rememberPagerState { 3 }
     val scope = rememberCoroutineScope()
     val tabs = listOf(
-        TabItem(stringResource(R.string.tab_chats), Icons.Outlined.ChatBubbleOutline, Icons.Filled.ChatBubble, unread),
-        TabItem(stringResource(R.string.tab_contacts), Icons.Outlined.Contacts, Icons.Filled.Contacts),
-        TabItem(stringResource(R.string.tab_me), Icons.Outlined.Person, Icons.Filled.Person),
+        TabItem(stringResource(R.string.tab_chats), WeIcons.Chats, WeIcons.ChatsFilled, unread),
+        TabItem(stringResource(R.string.tab_contacts), WeIcons.Contacts, WeIcons.ContactsFilled),
+        TabItem(stringResource(R.string.tab_me), WeIcons.Person, WeIcons.PersonFilled),
     )
     Column(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) {
         HorizontalPager(

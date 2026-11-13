@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +46,7 @@ import isomeria.aichat.data.repo.MemoryRepository
 import isomeria.aichat.data.repo.ProviderRepository
 import isomeria.aichat.feature.settings.ConfigActionRow
 import isomeria.aichat.navigation.ContactDetailRoute
+import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.configurationIssueText
 import isomeria.aichat.ui.components.temperatureText
 import isomeria.aichat.ui.components.thinkingDisplayName
@@ -238,7 +237,7 @@ fun ContactDetailContent(
             onClick = onOpenMemory,
         )
         GroupSpacer()
-        ActionRow(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.contact_send_message), onSendMessage)
+        ActionRow(WeIcons.Chats, stringResource(R.string.contact_send_message), onSendMessage)
         // 0.8.0：「发消息」下面是「语音通话」
         Box(Modifier.fillMaxWidth().background(colors.listBackground).padding(start = WeTheme.dimens.horizontalPadding)) {
             Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.divider))

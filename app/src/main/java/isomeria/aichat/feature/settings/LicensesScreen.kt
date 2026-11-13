@@ -25,7 +25,7 @@ private data class Library(val name: String, val owner: String, val license: Str
 private val libraries = listOf(
     Library("Kotlin / kotlinx.coroutines / kotlinx.serialization", "JetBrains", "Apache License 2.0"),
     Library("AndroidX (Core, Activity, Lifecycle, Navigation, Room, WorkManager)", "Google", "Apache License 2.0"),
-    Library("Jetpack Compose / Material 3 / Material Icons", "Google", "Apache License 2.0"),
+    Library("Jetpack Compose / Material 3", "Google", "Apache License 2.0"),
     Library("Dagger Hilt", "Google", "Apache License 2.0"),
     Library("OkHttp / Okio", "Square", "Apache License 2.0"),
     Library("Coil", "Coil Contributors", "Apache License 2.0"),

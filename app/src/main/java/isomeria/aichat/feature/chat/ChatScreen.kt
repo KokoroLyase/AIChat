@@ -38,9 +38,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -602,7 +599,7 @@ fun ChatScreen(
             val any = selectedNow.isNotEmpty()
             isomeria.aichat.ui.components.SelectionBar(
                 listOf(
-                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy, any) {
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_copy), WeIcons.Copy, any) {
                         scope.launch {
                             val text = viewModel.takeSelectedText() ?: return@launch
                             clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("messages", text)))
@@ -611,7 +608,7 @@ fun ChatScreen(
                     isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.chat_menu_favorite), WeIcons.Star, any) {
                         viewModel.favoriteSelected()
                     },
-                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline, any, danger = true) {
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_delete), WeIcons.Delete, any, danger = true) {
                         deleteSelectedDialog = selectedNow.size
                     },
                 ),

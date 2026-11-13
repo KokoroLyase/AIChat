@@ -21,15 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Block
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Headphones
-import androidx.compose.material.icons.outlined.PhoneInTalk
-import androidx.compose.material.icons.outlined.TextFields
-import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -191,11 +182,11 @@ fun MessageRow(
     val hasText = message.content.isNotBlank()
     val menuItems = buildList {
         if (message.type == MessageType.TEXT || (voice && hasText)) {
-            add(MenuItem(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy) { actions.onCopy(message.content) })
+            add(MenuItem(stringResource(R.string.action_copy), WeIcons.Copy) { actions.onCopy(message.content) })
         }
         // 通话（0.9.0）：复制这次通话的完整内容；正在进行的不复制
         if (message.type == MessageType.CALL && !message.callOngoing) {
-            add(MenuItem(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy) { actions.onCopyCall(message) })
+            add(MenuItem(stringResource(R.string.action_copy), WeIcons.Copy) { actions.onCopyCall(message) })
         }
         // 收藏（0.9.0）：文字、语音（含没有转写的）、打完的通话；图片、等待回复中的不能
         if (isomeria.aichat.data.repo.FavoriteRepository.canFavorite(message)) {
@@ -215,29 +206,29 @@ fun MessageRow(
             add(MenuItem(stringResource(R.string.chat_menu_quote), WeIcons.Quote) { quote(message) })
         }
         // 正在进行的通话（0.8.0）不能删
-        if (!message.callOngoing) add(MenuItem(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline) { actions.onDelete(message) })
+        if (!message.callOngoing) add(MenuItem(stringResource(R.string.action_delete), WeIcons.Delete) { actions.onDelete(message) })
         // 多选（0.9.0）：等待回复中的消息、正在进行的通话不能选
         if (isomeria.aichat.data.repo.isSelectable(message)) {
             add(MenuItem(stringResource(R.string.chat_menu_select), WeIcons.MultiSelect) { actions.onStartSelection(message) })
         }
         if (voice) {
-            add(MenuItem(stringResource(R.string.voice_menu_earpiece), Icons.Outlined.PhoneInTalk) { actions.onVoicePlay(message, PlayMode.EARPIECE) })
-            add(MenuItem(stringResource(R.string.voice_menu_background), Icons.Outlined.Headphones) { actions.onVoicePlay(message, PlayMode.BACKGROUND) })
+            add(MenuItem(stringResource(R.string.voice_menu_earpiece), WeIcons.Earpiece) { actions.onVoicePlay(message, PlayMode.EARPIECE) })
+            add(MenuItem(stringResource(R.string.voice_menu_background), WeIcons.Headphones) { actions.onVoicePlay(message, PlayMode.BACKGROUND) })
             if (hasText) {
                 add(
                     MenuItem(
                         stringResource(if (message.voiceShowText) R.string.voice_menu_hide_text else R.string.voice_menu_to_text),
-                        Icons.Outlined.TextFields,
+                        WeIcons.TextFields,
                     ) { actions.onVoiceShowText(message, !message.voiceShowText) },
                 )
             }
-            add(MenuItem(stringResource(R.string.voice_menu_continuous), Icons.AutoMirrored.Outlined.PlaylistPlay) { actions.onVoicePlay(message, PlayMode.CONTINUOUS) })
+            add(MenuItem(stringResource(R.string.voice_menu_continuous), WeIcons.PlayList) { actions.onVoicePlay(message, PlayMode.CONTINUOUS) })
         }
         if (canRegenerate) {
-            add(MenuItem(stringResource(R.string.chat_menu_regenerate), Icons.Outlined.Refresh, actions.onRegenerate))
+            add(MenuItem(stringResource(R.string.chat_menu_regenerate), WeIcons.Refresh, actions.onRegenerate))
         }
         if (waitingReply) {
-            add(MenuItem(stringResource(R.string.chat_menu_cancel_reply), Icons.Outlined.Block, actions.onCancelReply))
+            add(MenuItem(stringResource(R.string.chat_menu_cancel_reply), WeIcons.Block, actions.onCancelReply))
         }
     }
 

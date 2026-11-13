@@ -1,6 +1,7 @@
 package isomeria.aichat.ui.components
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -10,8 +11,9 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 /**
- * 自绘细线图标：返回箭头、右箭头、「···」、搜索、加号。
- * 其余图标先用 Material Icons 占位，1.0.0 前统一换成自绘线性图标；不使用微信的图标素材。
+ * 自绘线性图标：24×24 网格，圆头圆角描边，线宽默认 1.6。
+ * App 里的图标都从这里取（0.9.1 起不再用 Material Icons）；不使用微信的图标素材。
+ * Tab 栏选中时用对应的实心版（名字带 Filled）。
  */
 object WeIcons {
     val Back: ImageVector by lazy {
@@ -142,23 +144,7 @@ object WeIcons {
     }
 
     /** 电话听筒（0.8.0 语音通话）：左上是听筒、右下是话筒，中间是握把 */
-    val Phone: ImageVector by lazy {
-        lineIcon("Phone") {
-            moveTo(5.2f, 4f)
-            lineTo(8.4f, 4f)
-            lineTo(10f, 8.1f)
-            lineTo(8f, 9.7f)
-            quadTo(9.6f, 13.6f, 14.3f, 16f)
-            lineTo(15.9f, 14f)
-            lineTo(20f, 15.6f)
-            lineTo(20f, 18.8f)
-            quadTo(20f, 20f, 18.8f, 20f)
-            quadTo(11f, 19.6f, 7.3f, 16.7f)
-            quadTo(4.4f, 13f, 4f, 5.2f)
-            quadTo(4f, 4f, 5.2f, 4f)
-            close()
-        }
-    }
+    val Phone: ImageVector by lazy { lineIcon("Phone") { phone(dx = 4f, dy = 4f) } }
 
     /** 麦克风（0.8.0 通话的静音按钮） */
     val Mic: ImageVector by lazy { lineIcon("Mic") { mic() } }
@@ -304,6 +290,342 @@ object WeIcons {
         }
     }
 
+    /** 复制（0.9.1）：前后两张叠着的纸 */
+    val Copy: ImageVector by lazy {
+        lineIcon("Copy") {
+            roundRect(4.5f, 8.5f, 14.5f, 19.5f, 1.8f)
+            moveTo(9.5f, 8.5f)
+            lineTo(9.5f, 6.3f)
+            quadTo(9.5f, 4.5f, 11.3f, 4.5f)
+            lineTo(17.7f, 4.5f)
+            quadTo(19.5f, 4.5f, 19.5f, 6.3f)
+            lineTo(19.5f, 12.7f)
+            quadTo(19.5f, 14.5f, 17.7f, 14.5f)
+            lineTo(14.5f, 14.5f)
+        }
+    }
+
+    /** 删除（0.9.1）：垃圾桶 */
+    val Delete: ImageVector by lazy {
+        lineIcon("Delete") {
+            moveTo(4.5f, 6.5f)
+            lineTo(19.5f, 6.5f)
+            moveTo(9.5f, 6.5f)
+            lineTo(9.5f, 5f)
+            quadTo(9.5f, 4f, 10.5f, 4f)
+            lineTo(13.5f, 4f)
+            quadTo(14.5f, 4f, 14.5f, 5f)
+            lineTo(14.5f, 6.5f)
+            moveTo(6.4f, 6.5f)
+            lineTo(7.2f, 18.4f)
+            quadTo(7.3f, 20f, 8.9f, 20f)
+            lineTo(15.1f, 20f)
+            quadTo(16.7f, 20f, 16.8f, 18.4f)
+            lineTo(17.6f, 6.5f)
+            moveTo(10.2f, 10f)
+            lineTo(10.2f, 16.4f)
+            moveTo(13.8f, 10f)
+            lineTo(13.8f, 16.4f)
+        }
+    }
+
+    /** 保存到相册（0.9.1）：向下的箭头和托盘 */
+    val Download: ImageVector by lazy {
+        lineIcon("Download") {
+            moveTo(12f, 4f)
+            lineTo(12f, 15f)
+            moveTo(7.5f, 10.5f)
+            lineTo(12f, 15f)
+            lineTo(16.5f, 10.5f)
+            moveTo(4.5f, 15.5f)
+            lineTo(4.5f, 18.2f)
+            quadTo(4.5f, 20f, 6.3f, 20f)
+            lineTo(17.7f, 20f)
+            quadTo(19.5f, 20f, 19.5f, 18.2f)
+            lineTo(19.5f, 15.5f)
+        }
+    }
+
+    /** 听筒播放（0.9.1）：缩小的听筒，右上两道声波 */
+    val Earpiece: ImageVector by lazy {
+        lineIcon("Earpiece") {
+            phone(scale = 0.78f, dx = 3.4f, dy = 6.6f)
+            moveTo(14f, 6.6f)
+            arcTo(3.8f, 3.8f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 17.8f, y1 = 10.4f)
+            moveTo(14f, 3.2f)
+            arcTo(7.2f, 7.2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 21.2f, y1 = 10.4f)
+        }
+    }
+
+    /** 后台播放（0.9.1）：耳机 */
+    val Headphones: ImageVector by lazy {
+        lineIcon("Headphones") {
+            moveTo(4.5f, 14.5f)
+            lineTo(4.5f, 12f)
+            arcTo(7.5f, 7.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19.5f, y1 = 12f)
+            lineTo(19.5f, 14.5f)
+            roundRect(4.5f, 13.5f, 8.5f, 20f, 1.6f)
+            roundRect(15.5f, 13.5f, 19.5f, 20f, 1.6f)
+        }
+    }
+
+    /** 转文字（0.9.1）：一大一小两个 T */
+    val TextFields: ImageVector by lazy {
+        lineIcon("TextFields") {
+            moveTo(3.5f, 5.5f)
+            lineTo(13f, 5.5f)
+            moveTo(8.25f, 5.5f)
+            lineTo(8.25f, 19f)
+            moveTo(12.5f, 11f)
+            lineTo(20f, 11f)
+            moveTo(16.25f, 11f)
+            lineTo(16.25f, 19f)
+        }
+    }
+
+    /** 连续朗读（0.9.1）：三行字和右下的播放三角 */
+    val PlayList: ImageVector by lazy {
+        lineIcon("PlayList") {
+            moveTo(4f, 6f)
+            lineTo(17f, 6f)
+            moveTo(4f, 11f)
+            lineTo(17f, 11f)
+            moveTo(4f, 16f)
+            lineTo(10f, 16f)
+            moveTo(14f, 13.8f)
+            lineTo(14f, 19.8f)
+            lineTo(19f, 16.8f)
+            close()
+        }
+    }
+
+    /** 重新生成（0.9.1）：缺口在右上的圆圈箭头 */
+    val Refresh: ImageVector by lazy {
+        lineIcon("Refresh") {
+            moveTo(19f, 12f)
+            arcTo(7f, 7f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 16.95f, y1 = 7.05f)
+            moveTo(17.2f, 3.4f)
+            lineTo(17.2f, 7.3f)
+            lineTo(13.3f, 7.3f)
+        }
+    }
+
+    /** 取消回复（0.9.1）：圆圈加斜线 */
+    val Block: ImageVector by lazy {
+        lineIcon("Block") {
+            circle(12f, 12f, 8.5f)
+            moveTo(6f, 6f)
+            lineTo(18f, 18f)
+        }
+    }
+
+    /** 新建联系人（0.9.1）：人像和右上的加号 */
+    val PersonAdd: ImageVector by lazy {
+        lineIcon("PersonAdd") {
+            circle(9.5f, 8.5f, 3.5f)
+            moveTo(3.5f, 19.5f)
+            quadTo(4f, 14f, 9.5f, 14f)
+            quadTo(15f, 14f, 15.5f, 19.5f)
+            moveTo(18.5f, 7f)
+            lineTo(18.5f, 13f)
+            moveTo(15.5f, 10f)
+            lineTo(21.5f, 10f)
+        }
+    }
+
+    /** Tab「智信」：带尾巴的圆角气泡；选中时用实心版 */
+    val Chats: ImageVector by lazy { lineIcon("Chats") { chatBubble() } }
+    val ChatsFilled: ImageVector by lazy { solidIcon("ChatsFilled", strokeWidth = 1.6f) { chatBubble() } }
+
+    /** Tab「通讯录」：卡片上一个人像 */
+    val Contacts: ImageVector by lazy {
+        lineIcon("Contacts") {
+            roundRect(4f, 3.5f, 20f, 20.5f, 2.5f)
+            circle(12f, 10f, 2.6f)
+            moveTo(7.6f, 16.6f)
+            quadTo(8.2f, 13.8f, 12f, 13.8f)
+            quadTo(15.8f, 13.8f, 16.4f, 16.6f)
+        }
+    }
+
+    /** 实心版只填不描边，外框按描边的一半放大，和线性版一样大；人像挖空 */
+    val ContactsFilled: ImageVector by lazy {
+        ImageVector.Builder("ContactsFilled", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = SolidColor(Color.Black), pathFillType = PathFillType.EvenOdd) {
+                roundRect(3.2f, 2.7f, 20.8f, 21.3f, 3.3f)
+                circle(12f, 10f, 3.2f)
+                moveTo(6.9f, 17.4f)
+                quadTo(7.6f, 13.1f, 12f, 13.1f)
+                quadTo(16.4f, 13.1f, 17.1f, 17.4f)
+                close()
+            }
+        }.build()
+    }
+
+    /** Tab「我」：人像 */
+    val Person: ImageVector by lazy { lineIcon("Person") { person() } }
+    val PersonFilled: ImageVector by lazy { solidIcon("PersonFilled", strokeWidth = 1.6f) { person() } }
+
+    /** 显示密码（0.9.1）：眼睛 */
+    val Visibility: ImageVector by lazy {
+        lineIcon("Visibility") {
+            eye()
+            circle(12f, 12f, 3.2f)
+        }
+    }
+
+    /** 隐藏密码：眼睛加斜线 */
+    val VisibilityOff: ImageVector by lazy {
+        lineIcon("VisibilityOff") {
+            eye()
+            circle(12f, 12f, 3.2f)
+            moveTo(4.5f, 4.5f)
+            lineTo(19.5f, 19.5f)
+        }
+    }
+
+    /** 表情面板的删除键（0.9.1）：向左的标签里一个叉 */
+    val Backspace: ImageVector by lazy {
+        lineIcon("Backspace") {
+            moveTo(8.6f, 5.5f)
+            lineTo(19f, 5.5f)
+            quadTo(21f, 5.5f, 21f, 7.5f)
+            lineTo(21f, 16.5f)
+            quadTo(21f, 18.5f, 19f, 18.5f)
+            lineTo(8.6f, 18.5f)
+            lineTo(3f, 12f)
+            close()
+            moveTo(11.6f, 9.2f)
+            lineTo(16.6f, 14.8f)
+            moveTo(16.6f, 9.2f)
+            lineTo(11.6f, 14.8f)
+        }
+    }
+
+    /** 表情面板的「最近使用」（0.9.1）：钟 */
+    val Clock: ImageVector by lazy {
+        lineIcon("Clock") {
+            circle(12f, 12f, 8.5f)
+            moveTo(12f, 7.2f)
+            lineTo(12f, 12f)
+            lineTo(15.4f, 14f)
+        }
+    }
+
+    /** 切回键盘（0.9.1）：圆角键盘，两排按键和空格键 */
+    val Keyboard: ImageVector by lazy {
+        lineIcon("Keyboard") {
+            roundRect(2.5f, 6f, 21.5f, 18f, 2f)
+            for (x in listOf(6.5f, 9.5f, 12.5f, 15.5f, 17.5f)) dot(x, 9.6f)
+            for (x in listOf(6.5f, 9.5f, 12.5f, 15.5f, 17.5f)) dot(x, 12.4f)
+            moveTo(8f, 15.2f)
+            lineTo(16f, 15.2f)
+        }
+    }
+
+    /** 相册（0.9.1）：画框里的太阳和山 */
+    val Image: ImageVector by lazy {
+        lineIcon("Image") {
+            roundRect(3.5f, 4.5f, 20.5f, 19.5f, 2f)
+            circle(8.8f, 9.3f, 1.6f)
+            moveTo(3.5f, 17f)
+            lineTo(9f, 12f)
+            lineTo(12.5f, 15f)
+            lineTo(15.5f, 12.2f)
+            lineTo(20.5f, 16.6f)
+        }
+    }
+
+    /** 拍照（0.9.1）：相机 */
+    val Camera: ImageVector by lazy {
+        lineIcon("Camera") {
+            moveTo(3.5f, 8.8f)
+            quadTo(3.5f, 7f, 5.3f, 7f)
+            lineTo(7.8f, 7f)
+            lineTo(9.4f, 4.8f)
+            lineTo(14.6f, 4.8f)
+            lineTo(16.2f, 7f)
+            lineTo(18.7f, 7f)
+            quadTo(20.5f, 7f, 20.5f, 8.8f)
+            lineTo(20.5f, 17.7f)
+            quadTo(20.5f, 19.5f, 18.7f, 19.5f)
+            lineTo(5.3f, 19.5f)
+            quadTo(3.5f, 19.5f, 3.5f, 17.7f)
+            close()
+            circle(12f, 13f, 3.6f)
+        }
+    }
+
+    /** 电话听筒的轮廓（16×16），按 [scale] 缩放后平移 */
+    private fun PathBuilder.phone(scale: Float = 1f, dx: Float = 0f, dy: Float = 0f) {
+        fun x(v: Float) = dx + v * scale
+        fun y(v: Float) = dy + v * scale
+        moveTo(x(1.2f), y(0f))
+        lineTo(x(4.4f), y(0f))
+        lineTo(x(6f), y(4.1f))
+        lineTo(x(4f), y(5.7f))
+        quadTo(x(5.6f), y(9.6f), x(10.3f), y(12f))
+        lineTo(x(11.9f), y(10f))
+        lineTo(x(16f), y(11.6f))
+        lineTo(x(16f), y(14.8f))
+        quadTo(x(16f), y(16f), x(14.8f), y(16f))
+        quadTo(x(7f), y(15.6f), x(3.3f), y(12.7f))
+        quadTo(x(0.4f), y(9f), x(0f), y(1.2f))
+        quadTo(x(0f), y(0f), x(1.2f), y(0f))
+        close()
+    }
+
+    private fun PathBuilder.chatBubble() {
+        moveTo(8f, 4.5f)
+        lineTo(16f, 4.5f)
+        quadTo(20.5f, 4.5f, 20.5f, 9f)
+        lineTo(20.5f, 12.5f)
+        quadTo(20.5f, 17f, 16f, 17f)
+        lineTo(11.6f, 17f)
+        lineTo(7.2f, 20.2f)
+        lineTo(7.6f, 17f)
+        quadTo(3.5f, 16.8f, 3.5f, 12.5f)
+        lineTo(3.5f, 9f)
+        quadTo(3.5f, 4.5f, 8f, 4.5f)
+        close()
+    }
+
+    private fun PathBuilder.person() {
+        circle(12f, 8f, 4f)
+        moveTo(4.5f, 20f)
+        quadTo(5f, 13.6f, 12f, 13.6f)
+        quadTo(19f, 13.6f, 19.5f, 20f)
+        close()
+    }
+
+    private fun PathBuilder.eye() {
+        moveTo(2.5f, 12f)
+        quadTo(6.8f, 5.2f, 12f, 5.2f)
+        quadTo(17.2f, 5.2f, 21.5f, 12f)
+        quadTo(17.2f, 18.8f, 12f, 18.8f)
+        quadTo(6.8f, 18.8f, 2.5f, 12f)
+        close()
+    }
+
+    /** 线宽大小的圆点（极短线段加圆头） */
+    private fun PathBuilder.dot(x: Float, y: Float) {
+        moveTo(x, y)
+        lineTo(x + 0.01f, y)
+    }
+
+    private fun PathBuilder.roundRect(left: Float, top: Float, right: Float, bottom: Float, r: Float) {
+        moveTo(left + r, top)
+        lineTo(right - r, top)
+        arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = right, y1 = top + r)
+        lineTo(right, bottom - r)
+        arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = right - r, y1 = bottom)
+        lineTo(left + r, bottom)
+        arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = left, y1 = bottom - r)
+        lineTo(left, top + r)
+        arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = left + r, y1 = top)
+        close()
+    }
+
     /** 麦克风：上面的胶囊、下面的托和支架 */
     private fun PathBuilder.mic() {
         moveTo(9f, 6f)
@@ -332,12 +654,12 @@ object WeIcons {
         }.build()
 
     /** 实心图标：填满并描一圈圆角边，角不那么尖 */
-    private fun solidIcon(name: String, block: PathBuilder.() -> Unit): ImageVector =
+    private fun solidIcon(name: String, strokeWidth: Float = 1.4f, block: PathBuilder.() -> Unit): ImageVector =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
             path(
                 fill = SolidColor(Color.Black),
                 stroke = SolidColor(Color.Black),
-                strokeLineWidth = 1.4f,
+                strokeLineWidth = strokeWidth,
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Round,
                 pathBuilder = block,

@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,7 +61,7 @@ fun TranslationBlock(text: String, sent: Boolean, onCopy: () -> Unit, onHide: ()
         if (menuOpen) {
             WeBubbleMenu(
                 listOf(
-                    MenuItem(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy, onCopy),
+                    MenuItem(stringResource(R.string.action_copy), WeIcons.Copy, onCopy),
                     MenuItem(stringResource(R.string.chat_menu_hide_translation), WeIcons.Translate, onHide),
                 ),
             ) { menuOpen = false }

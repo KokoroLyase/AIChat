@@ -6,13 +6,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.Contacts
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Contacts
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -53,6 +49,7 @@ import isomeria.aichat.data.db.ProviderConfig
 import isomeria.aichat.data.db.ProviderKind
 import isomeria.aichat.ui.components.UpdateFailedDialog
 import isomeria.aichat.ui.components.UpdateProgressDialog
+import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.update.UpdateFailure
 import isomeria.aichat.update.UpdateInstallState
 import isomeria.aichat.ui.components.EmojiCatalog
@@ -114,9 +111,9 @@ class ScreenshotTest {
             Box(Modifier.weight(1f)) { content() }
             WeBottomBar(
                 items = listOf(
-                    TabItem("智信", Icons.Outlined.ChatBubbleOutline, Icons.Filled.ChatBubble, unread),
-                    TabItem("通讯录", Icons.Outlined.Contacts, Icons.Filled.Contacts),
-                    TabItem("我", Icons.Outlined.Person, Icons.Filled.Person),
+                    TabItem("智信", WeIcons.Chats, WeIcons.ChatsFilled, unread),
+                    TabItem("通讯录", WeIcons.Contacts, WeIcons.ContactsFilled),
+                    TabItem("我", WeIcons.Person, WeIcons.PersonFilled),
                 ),
                 selectedIndex = selected,
                 onSelect = {},
@@ -1239,6 +1236,72 @@ class ScreenshotTest {
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun favoriteDetailNarrow() = large("91-favorite-detail-narrow", true) { isomeria.aichat.feature.favorites.FavoriteDetailSample() }
     @Test fun favoriteCallDetailLight() = shot("91-favorite-call", false) { isomeria.aichat.feature.favorites.FavoriteDetailSample(call = true) }
     @Test fun favoriteCallDetailDark() = shot("91-favorite-call", true) { isomeria.aichat.feature.favorites.FavoriteDetailSample(call = true) }
+
+    // ---------- 0.9.1 图标、动画和界面 ----------
+
+    /** 全部自绘图标的总览：每格 32dp 的图标和名字，新加的图标自动出现在这里 */
+    @Composable private fun IconGallery() {
+        val colors = WeTheme.colors
+        val icons = isomeria.aichat.ui.components.allWeIcons()
+        Column(Modifier.fillMaxSize().padding(12.dp)) {
+            icons.chunked(5).forEach { row ->
+                androidx.compose.foundation.layout.Row(Modifier.padding(vertical = 6.dp)) {
+                    row.forEach { (name, icon) ->
+                        Column(Modifier.weight(1f), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            androidx.compose.material3.Icon(icon, null, tint = colors.textPrimary, modifier = Modifier.size(32.dp))
+                            androidx.compose.material3.Text(name, color = colors.textSecondary, fontSize = androidx.compose.ui.unit.TextUnit(9f, androidx.compose.ui.unit.TextUnitType.Sp), maxLines = 1)
+                        }
+                    }
+                    repeat(5 - row.size) { Box(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+    /** 把一个资源画成指定像素大小的位图；[tint] 给单色层和通知图标着色 */
+    private fun renderResource(context: android.content.Context, id: Int, sizePx: Int, tint: Int? = null): androidx.compose.ui.graphics.ImageBitmap {
+        val drawable = requireNotNull(androidx.core.content.res.ResourcesCompat.getDrawable(context.resources, id, context.theme)).mutate()
+        if (tint != null) drawable.setTint(tint)
+        val bitmap = android.graphics.Bitmap.createBitmap(sizePx, sizePx, android.graphics.Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, sizePx, sizePx)
+        drawable.draw(android.graphics.Canvas(bitmap))
+        return bitmap.asImageBitmap()
+    }
+
+    /** 自适应图标的一层按 [shape] 遮罩；[background] 为 true 时垫上图标自己的渐变底，否则垫 [bg] */
+    @Composable private fun MaskedIcon(shape: androidx.compose.ui.graphics.Shape, background: Boolean, layer: Int, tint: Int? = null, bg: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.Transparent) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        Box(Modifier.size(108.dp).clip(shape).background(bg)) {
+            if (background) androidx.compose.foundation.Image(renderResource(context, isomeria.aichat.R.drawable.ic_launcher_background, 324), null, Modifier.fillMaxSize())
+            androidx.compose.foundation.Image(renderResource(context, layer, 324, tint), null, Modifier.fillMaxSize())
+        }
+    }
+
+    /** App 图标（方案 B）：自适应图标按圆形和圆角方形两种遮罩、主题图标（单色层着色）、通知小图标 */
+    @Composable private fun AppIconSheet() {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val colors = WeTheme.colors
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+            androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+                MaskedIcon(androidx.compose.foundation.shape.CircleShape, true, isomeria.aichat.R.drawable.ic_launcher_foreground)
+                MaskedIcon(androidx.compose.foundation.shape.RoundedCornerShape(28.dp), true, isomeria.aichat.R.drawable.ic_launcher_foreground)
+            }
+            androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+                // 主题图标：系统用壁纸取色，这里用一组浅绿底深绿线、一组深底浅线模拟
+                MaskedIcon(androidx.compose.foundation.shape.CircleShape, false, isomeria.aichat.R.drawable.ic_launcher_monochrome, 0xFF0B3D24.toInt(), androidx.compose.ui.graphics.Color(0xFFCDEBD6))
+                MaskedIcon(androidx.compose.foundation.shape.CircleShape, false, isomeria.aichat.R.drawable.ic_launcher_monochrome, 0xFFCDEBD6.toInt(), androidx.compose.ui.graphics.Color(0xFF1E2B24))
+            }
+            androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                // 通知小图标：状态栏实际约 24dp，这里放大看一次、原大看一次
+                androidx.compose.foundation.Image(renderResource(context, isomeria.aichat.R.drawable.ic_notification, 288, colors.textPrimary.toArgb()), null, Modifier.size(96.dp))
+                androidx.compose.foundation.Image(renderResource(context, isomeria.aichat.R.drawable.ic_notification, 72, colors.textPrimary.toArgb()), null, Modifier.size(24.dp))
+            }
+        }
+    }
+    @Test fun appIconLight() = shot("93-app-icon", false) { AppIconSheet() }
+    @Test fun appIconDark() = shot("93-app-icon", true) { AppIconSheet() }
+
+    @Test fun iconsLight() = shot("92-icons", false) { IconGallery() }
+    @Test fun iconsDark() = shot("92-icons", true) { IconGallery() }
 
     @Test fun inCallBarLight() = shot("86-chat-in-call", false) { InCallBarShot() }
     @Test fun inCallBarDark() = shot("86-chat-in-call", true) { InCallBarShot() }

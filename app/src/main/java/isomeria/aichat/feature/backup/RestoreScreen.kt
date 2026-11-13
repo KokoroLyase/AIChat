@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,6 +62,7 @@ import isomeria.aichat.ui.components.PasswordField
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.WeButton
 import isomeria.aichat.ui.components.WeDialog
+import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeListRow
 import isomeria.aichat.ui.components.WeLoading
 import isomeria.aichat.ui.components.WeTopBar
@@ -552,7 +551,7 @@ private fun ModeRow(title: String, description: String, selected: Boolean, showD
             Text(description, style = WeTheme.typography.small, color = colors.textTertiary)
         }
         if (selected) {
-            Icon(Icons.Filled.Check, null, tint = colors.brand, modifier = Modifier.padding(start = 12.dp).size(24.dp))
+            Icon(WeIcons.Check, null, tint = colors.brand, modifier = Modifier.padding(start = 12.dp).size(24.dp))
         }
     }
 }

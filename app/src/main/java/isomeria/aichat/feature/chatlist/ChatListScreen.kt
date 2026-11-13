@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.PersonAddAlt
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -124,7 +122,7 @@ fun ChatListContent(
                 if (showAddMenu) {
                     WeDropdownMenu(
                         items = listOf(
-                            MenuItem(stringResource(R.string.menu_new_contact), Icons.Outlined.PersonAddAlt, onNewContact),
+                            MenuItem(stringResource(R.string.menu_new_contact), WeIcons.PersonAdd, onNewContact),
                         ),
                         onDismiss = { showAddMenu = false },
                     )

@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -44,6 +42,7 @@ import isomeria.aichat.ui.components.ErrorNote
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.SectionHeader
 import isomeria.aichat.ui.components.WeDivider
+import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeSearchBar
 import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.CancellationException
@@ -279,7 +278,7 @@ private fun VoiceOptionRow(
                 Text(secondary, style = WeTheme.typography.listTime, color = colors.textTertiary, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (selected) Icon(Icons.Filled.Check, stringResource(R.string.voice_picker_current), tint = colors.brand, modifier = Modifier.padding(start = 8.dp).size(20.dp))
+        if (selected) Icon(WeIcons.Check, stringResource(R.string.voice_picker_current), tint = colors.brand, modifier = Modifier.padding(start = 8.dp).size(20.dp))
         Box(
             Modifier
                 .clickable(role = Role.Button, enabled = !previewing, onClick = onPreview)

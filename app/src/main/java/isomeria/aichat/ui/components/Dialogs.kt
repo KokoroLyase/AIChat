@@ -24,8 +24,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -257,7 +255,7 @@ fun WeActionSheet(
                                 }
                             }
                             if (option.selected) {
-                                Icon(Icons.Filled.Check, null, tint = colors.brand, modifier = Modifier.size(24.dp))
+                                Icon(WeIcons.Check, null, tint = colors.brand, modifier = Modifier.size(24.dp))
                             } else {
                                 Spacer(Modifier.size(24.dp))
                             }

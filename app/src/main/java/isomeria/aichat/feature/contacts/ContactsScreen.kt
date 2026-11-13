@@ -17,8 +17,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PersonAddAlt1
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -123,7 +121,7 @@ fun ContactsContent(
                                     .background(colors.brand),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Icon(Icons.Filled.PersonAddAlt1, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                                Icon(WeIcons.PersonAdd, null, tint = Color.White, modifier = Modifier.size(24.dp))
                             }
                         },
                     )

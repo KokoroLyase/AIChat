@@ -25,9 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -633,7 +630,7 @@ fun ProviderEditContent(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            if (showKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            if (showKey) WeIcons.VisibilityOff else WeIcons.Visibility,
                             stringResource(if (showKey) R.string.key_hide else R.string.key_show),
                             tint = colors.inputIcon,
                             modifier = Modifier.size(22.dp),

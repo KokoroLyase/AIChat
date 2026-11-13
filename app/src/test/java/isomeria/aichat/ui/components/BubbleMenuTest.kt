@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -60,7 +58,7 @@ class BubbleMenuTest {
             AIChatTheme(darkTheme = false) {
                 Box(Modifier.fillMaxSize(), contentAlignment = if (alignEnd) Alignment.TopEnd else Alignment.TopStart) {
                     Box(Modifier.offset(x = anchorX, y = 400.dp).size(40.dp, 30.dp)) {
-                        if (open) WeBubbleMenu(labels.map { label -> MenuItem(label, Icons.Outlined.ContentCopy) { picked += label } }) { open = false }
+                        if (open) WeBubbleMenu(labels.map { label -> MenuItem(label, WeIcons.Copy) { picked += label } }) { open = false }
                     }
                 }
             }
@@ -150,7 +148,7 @@ class BubbleMenuTest {
             AIChatTheme(darkTheme = false, fontScale = 1.6f) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.offset(y = 400.dp).size(40.dp, 30.dp)) {
-                        WeBubbleMenu(ten.map { label -> MenuItem(label, Icons.Outlined.ContentCopy) {} }) {}
+                        WeBubbleMenu(ten.map { label -> MenuItem(label, WeIcons.Copy) {} }) {}
                     }
                 }
             }

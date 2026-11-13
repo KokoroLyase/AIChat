@@ -5,7 +5,6 @@ ksp = "2.3.13"
 hilt = "2.60.1"
 androidxHilt = "1.4.0"
 composeBom = "2026.09.00"
-materialIcons = "1.7.8"
 activityCompose = "1.13.0"
 coreKtx = "1.19.1"
 lifecycle = "2.11.0"
@@ -44,7 +43,6 @@ androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 androidx-compose-foundation = { module = "androidx.compose.foundation:foundation" }
 androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
-androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialIcons" }
 
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }

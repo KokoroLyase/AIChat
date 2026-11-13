@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +29,7 @@ import isomeria.aichat.feature.replyprefs.ReplyPreferencesFields
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.WeDivider
+import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.theme.WeTheme
 
@@ -112,7 +111,7 @@ private fun ModeChoice(title: String, detail: String, selected: Boolean, showDiv
             Text(title, style = WeTheme.typography.listTitle, color = colors.textPrimary)
             Text(detail, style = WeTheme.typography.listTime, color = colors.textTertiary)
         }
-        if (selected) Icon(Icons.Filled.Check, null, tint = colors.brand, modifier = Modifier.padding(start = 8.dp).size(20.dp))
+        if (selected) Icon(WeIcons.Check, null, tint = colors.brand, modifier = Modifier.padding(start = 8.dp).size(20.dp))
     }
     if (showDivider) WeDivider(startIndent = dimens.horizontalPadding)
 }
