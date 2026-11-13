@@ -230,6 +230,80 @@ object WeIcons {
         }
     }
 
+    /** 勾（0.9.0 多选的勾选圈里） */
+    val Check: ImageVector by lazy {
+        lineIcon("Check", strokeWidth = 2f) {
+            moveTo(5.5f, 12.5f)
+            lineTo(10f, 16.8f)
+            lineTo(18.5f, 7.6f)
+        }
+    }
+
+    /** 五角星（0.9.0 收藏） */
+    val Star: ImageVector by lazy {
+        lineIcon("Star") {
+            for (i in 0..9) {
+                val angle = Math.toRadians(-90.0 + i * 36.0)
+                val radius = if (i % 2 == 0) 9f else 4f
+                val x = 12f + radius * kotlin.math.cos(angle).toFloat()
+                val y = 12.8f + radius * kotlin.math.sin(angle).toFloat()
+                if (i == 0) moveTo(x, y) else lineTo(x, y)
+            }
+            close()
+        }
+    }
+
+    /** 多选（0.9.0）：左边两个勾，右边三行 */
+    val MultiSelect: ImageVector by lazy {
+        lineIcon("MultiSelect") {
+            moveTo(3.5f, 6.8f)
+            lineTo(5.2f, 8.4f)
+            lineTo(8f, 5.4f)
+            moveTo(3.5f, 12.8f)
+            lineTo(5.2f, 14.4f)
+            lineTo(8f, 11.4f)
+            moveTo(11f, 7f)
+            lineTo(20.5f, 7f)
+            moveTo(11f, 13f)
+            lineTo(20.5f, 13f)
+            moveTo(11f, 19f)
+            lineTo(20.5f, 19f)
+            moveTo(4f, 19f)
+            lineTo(7.5f, 19f)
+        }
+    }
+
+    /** 引用（0.9.0）：一对左引号 */
+    val Quote: ImageVector by lazy {
+        lineIcon("Quote") {
+            circle(7.6f, 14.6f, 2.6f)
+            moveTo(5f, 14.6f)
+            quadTo(5f, 8.6f, 10f, 6.6f)
+            circle(16.4f, 14.6f, 2.6f)
+            moveTo(13.8f, 14.6f)
+            quadTo(13.8f, 8.6f, 18.8f, 6.6f)
+        }
+    }
+
+    /** 翻译（0.9.0）：左上一个“文”，右下一个 A */
+    val Translate: ImageVector by lazy {
+        lineIcon("Translate") {
+            moveTo(3f, 6.5f)
+            lineTo(12f, 6.5f)
+            moveTo(7.5f, 4f)
+            lineTo(7.5f, 6.5f)
+            moveTo(10.2f, 6.5f)
+            quadTo(8.6f, 12.4f, 3.6f, 14.6f)
+            moveTo(5f, 9f)
+            quadTo(7f, 12.6f, 11f, 14f)
+            moveTo(12.4f, 20.5f)
+            lineTo(16.5f, 10f)
+            lineTo(20.6f, 20.5f)
+            moveTo(13.9f, 16.8f)
+            lineTo(19.1f, 16.8f)
+        }
+    }
+
     /** 麦克风：上面的胶囊、下面的托和支架 */
     private fun PathBuilder.mic() {
         moveTo(9f, 6f)

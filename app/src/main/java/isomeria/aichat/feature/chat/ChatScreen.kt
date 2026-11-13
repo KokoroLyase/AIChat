@@ -38,6 +38,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -172,6 +175,9 @@ fun ChatScreen(
     val asrAvailable by viewModel.asrAvailable.collectAsStateWithLifecycle()
     val asrOwnSource by viewModel.asrOwnSource.collectAsStateWithLifecycle()
     val playingId by viewModel.playingId.collectAsStateWithLifecycle()
+    // 多选（0.9.0）
+    val selection by viewModel.selection.collectAsStateWithLifecycle()
+    var deleteSelectedDialog by remember { mutableStateOf<Int?>(null) }
     var showAsrSetup by remember { mutableStateOf(false) }
     var voiceIntroName by remember { mutableStateOf<String?>(null) }
     var showMicDenied by remember { mutableStateOf(false) }
@@ -434,6 +440,8 @@ fun ChatScreen(
 
     BackHandler(enabled = panel != InputPanel.NONE) { panel = InputPanel.NONE }
     ImeBackHandler()
+    // 多选（0.9.0）：返回手势先退出多选
+    BackHandler(enabled = selection != null) { viewModel.cancelSelection() }
 
     val contact = state.contact
     val title = when {
@@ -451,9 +459,20 @@ fun ChatScreen(
     }
 
     Column(Modifier.fillMaxSize().background(colors.pageBackground)) {
-        WeTopBar(title = title, onBack = onBack, showLine = true) {
-            if (contact != null) {
-                TopBarIcon(WeIcons.More, stringResource(R.string.chat_info), { onOpenChatInfo(contact.id) })
+        val selected = selection
+        if (selected != null) {
+            // 多选（0.9.0）：顶栏换成“已选 N 条”和“取消”
+            WeTopBar(
+                title = if (selected.isEmpty()) stringResource(R.string.chat_selected_none) else stringResource(R.string.chat_selected_count, selected.size),
+                showLine = true,
+            ) {
+                isomeria.aichat.ui.components.TopBarTextAction(stringResource(R.string.action_cancel), viewModel::cancelSelection)
+            }
+        } else {
+            WeTopBar(title = title, onBack = onBack, showLine = true) {
+                if (contact != null) {
+                    TopBarIcon(WeIcons.More, stringResource(R.string.chat_info), { onOpenChatInfo(contact.id) })
+                }
             }
         }
 
@@ -474,6 +493,16 @@ fun ChatScreen(
             onVoicePlay = viewModel::playVoice,
             onVoiceShowText = viewModel::setVoiceShowText,
             onCallClick = { message -> if (opensCallPage(message, inCall)) state.contact?.let { onCall(it.id) } else onOpenCall(message) },
+            onStartSelection = { message ->
+                closePanels()
+                viewModel.startSelection(message)
+            },
+            onCopyCall = { message ->
+                scope.launch {
+                    val text = viewModel.callText(message)
+                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("message", text)))
+                }
+            },
         )
         Box(Modifier.weight(1f)) {
         background?.let { ChatBackground(it, Modifier.matchParentSize()) }
@@ -491,6 +520,8 @@ fun ChatScreen(
             onBackgroundClick = ::closePanels,
             highlightId = highlightId,
             highlightAlpha = { highlight.value },
+            selection = selection,
+            onToggleSelection = viewModel::toggleSelection,
             modifier = Modifier.fillMaxSize(),
         )
         }
@@ -522,7 +553,24 @@ fun ChatScreen(
         }
         }
 
-        if (contact != null && inCall) {
+        val selectedNow = selection
+        if (selectedNow != null) {
+            // 多选（0.9.0）：输入栏换成复制、删除
+            val any = selectedNow.isNotEmpty()
+            isomeria.aichat.ui.components.SelectionBar(
+                listOf(
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy, any) {
+                        scope.launch {
+                            val text = viewModel.takeSelectedText() ?: return@launch
+                            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("messages", text)))
+                        }
+                    },
+                    isomeria.aichat.ui.components.SelectionAction(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline, any, danger = true) {
+                        deleteSelectedDialog = selectedNow.size
+                    },
+                ),
+            )
+        } else if (contact != null && inCall) {
             // 0.8.0：正在和这个联系人通话，不从这里发消息
             InCallBar(callStartedAt) { onCall(contact.id) }
         } else if (contact != null) {
@@ -702,6 +750,19 @@ fun ChatScreen(
         )
     }
 
+    deleteSelectedDialog?.let { count ->
+        WeDialog(
+            message = stringResource(R.string.chat_delete_selected_confirm, count),
+            confirmText = stringResource(R.string.action_delete),
+            destructive = true,
+            onDismiss = { deleteSelectedDialog = null },
+            onConfirm = {
+                deleteSelectedDialog = null
+                viewModel.deleteSelected()
+            },
+        )
+    }
+
     deleteDialog?.let { message ->
         WeDialog(
             message = stringResource(R.string.chat_delete_message_confirm),
@@ -734,6 +795,9 @@ fun ChatMessageList(
     playingId: Long? = null,
     /** 截图用：打开这条消息的长按菜单 */
     menuOpenId: Long? = null,
+    /** 多选（0.9.0）时选中的消息 id；不在多选时为 null */
+    selection: Set<Long>? = null,
+    onToggleSelection: (Message) -> Unit = {},
 ) {
     val defaultName = stringResource(R.string.default_nickname)
     val highlightColor = WeTheme.colors.messageHighlight
@@ -780,6 +844,13 @@ fun ChatMessageList(
                         actions = actions,
                         playing = row.message.id == playingId,
                         menuInitiallyOpen = row.message.id == menuOpenId,
+                        selection = selection?.let { ids ->
+                            RowSelection(
+                                selected = row.message.id in ids,
+                                selectable = isomeria.aichat.data.repo.isSelectable(row.message),
+                                onToggle = { onToggleSelection(row.message) },
+                            )
+                        },
                     )
                 }
             }

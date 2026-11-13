@@ -289,6 +289,61 @@ class ChatViewModel @Inject constructor(
         appScope.launch { chats.deleteMessage(messageId) }
     }
 
+    // ---------- 多选（0.9.0） ----------
+
+    private val selectionState = MutableStateFlow<Set<Long>?>(null)
+
+    /** 多选时选中的消息 id；不在多选时为 null。按 id 记，往上翻页加载更多时一直保留 */
+    val selection: StateFlow<Set<Long>?> = selectionState
+
+    init {
+        // 消息有变化时，删掉的、变成不能选的从选择里去掉（“已选 N 条”不多算）
+        viewModelScope.launch {
+            timeline.collect {
+                val current = selectionState.value
+                if (current.isNullOrEmpty()) return@collect
+                val alive = chats.selectableIds(current)
+                selectionState.update { latest -> latest?.filterTo(LinkedHashSet()) { it in alive || it !in current } }
+            }
+        }
+    }
+
+    /** 长按菜单“多选”：进入多选，先选中这一条 */
+    fun startSelection(message: Message) {
+        selectionState.value = if (isomeria.aichat.data.repo.isSelectable(message)) linkedSetOf(message.id) else linkedSetOf()
+    }
+
+    fun toggleSelection(message: Message) {
+        selectionState.update { current ->
+            when {
+                current == null -> null
+                message.id in current -> current - message.id
+                isomeria.aichat.data.repo.isSelectable(message) -> current + message.id
+                else -> current
+            }
+        }
+    }
+
+    fun cancelSelection() { selectionState.value = null }
+
+    /** 删除选中的消息（已经确认过），退出多选 */
+    fun deleteSelected() {
+        val ids = selectionState.value ?: return
+        selectionState.value = null
+        ids.forEach(playback::onDeleted)
+        appScope.launch { chats.deleteMessages(ids) }
+    }
+
+    /** 选中消息复制出来的文字（每条一行），退出多选；没选时为 null */
+    suspend fun takeSelectedText(): String? {
+        val ids = selectionState.value?.takeIf { it.isNotEmpty() } ?: return null
+        selectionState.value = null
+        return chats.copyText(contactId, ids)
+    }
+
+    /** 长按通话“复制”（0.9.0）：这次通话的完整内容 */
+    suspend fun callText(message: Message): String = chats.copyText(contactId, listOf(message.id))
+
     // ---------- 语音播放（0.7.0） ----------
 
     /** 这个聊天里正在放的语音 */

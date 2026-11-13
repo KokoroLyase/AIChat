@@ -40,6 +40,18 @@
     <string name="preview_voice">[语音]</string>
     <string name="preview_call">[通话]</string>
     <string name="preview_call_duration">[通话] %1$s</string>
+    <!-- 0.9.0 多选和复制 -->
+    <string name="chat_menu_select">多选</string>
+    <string name="chat_selected_count">已选 %1$d 条</string>
+    <string name="chat_selected_none">选择消息</string>
+    <string name="chat_delete_selected_confirm">删除 %1$d 条消息？</string>
+    <string name="chat_select_desc">选择这条消息：%1$s</string>
+    <string name="copy_me">我</string>
+    <string name="copy_image">[图片]</string>
+    <string name="copy_voice">[语音]</string>
+    <string name="copy_call_header">语音通话 %1$s · %2$s</string>
+    <string name="copy_call_time_pattern">yyyy年M月d日 HH:mm</string>
+    <string name="copy_speaker_line">%1$s：%2$s</string>
     <string name="call_message_duration">通话时长 %1$s</string>
     <string name="call_message_ongoing">通话中</string>
     <string name="call_message_open">查看通话内容</string>

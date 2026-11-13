@@ -198,6 +198,57 @@ class ChatRepository @Inject constructor(
         }
     }
 
+    /**
+     * 多选删除（0.9.0）：规则和 [deleteMessage] 一样（通话连同每一条话、文件在事务后删），只是一个事务删完、每个聊天的预览只刷新一次。
+     * 等待回复中的消息、待投递的回复、正在进行的通话不删（多选里本来也选不了）。返回删了几条
+     */
+    suspend fun deleteMessages(ids: Collection<Long>): Int {
+        val messages = ids.distinct().chunked(ID_CHUNK).flatMap { messageDao.getByIds(it) }.filter(::isSelectable)
+        if (messages.isEmpty()) return 0
+        val calls = messages.filter { it.type == MessageType.CALL }.map { it.id }
+        val callAudio = calls.flatMap { db.callDao().audioPaths(it) }
+        db.withTransaction {
+            messages.map { it.id }.chunked(ID_CHUNK).forEach { messageDao.deleteByIds(it) }
+            if (calls.isNotEmpty()) db.callDao().deleteOrphans()
+            messages.mapTo(LinkedHashSet()) { it.contactId }.forEach { refreshLastMessage(it) }
+        }
+        for (message in messages) {
+            files.delete(message.imagePath)
+            files.delete(message.voicePath)
+        }
+        callAudio.forEach(files::delete)
+        return messages.size
+    }
+
+    /** 多选里还在、还能选的消息（0.9.0）：删掉或变成不能选的从选择里去掉 */
+    suspend fun selectableIds(ids: Collection<Long>): Set<Long> =
+        ids.distinct().chunked(ID_CHUNK).flatMap { messageDao.getByIds(it) }.filter(::isSelectable).mapTo(LinkedHashSet()) { it.id }
+
+    /** 多选复制和长按通话复制（0.9.0）的文字，见 [isomeria.aichat.core.MessageCopy] */
+    suspend fun copyText(contactId: Long, ids: Collection<Long>): String {
+        val messages = ids.distinct().chunked(ID_CHUNK).flatMap { messageDao.getByIds(it) }.filter { it.status != MessageStatus.PENDING }
+        val calls = messages.filter { it.type == MessageType.CALL }.map { it.id }
+        val turns = if (calls.isEmpty()) emptyMap() else db.callDao().turnsOf(calls).groupBy { it.messageId }
+        val name = contactDao.get(contactId)?.name.orEmpty()
+        return isomeria.aichat.core.MessageCopy.text(messages, turns, copyLabels(name))
+    }
+
+    private fun copyLabels(contactName: String): isomeria.aichat.core.CopyLabels {
+        val time = java.time.format.DateTimeFormatter.ofPattern(context.getString(isomeria.aichat.R.string.copy_call_time_pattern))
+        return isomeria.aichat.core.CopyLabels(
+            me = context.getString(isomeria.aichat.R.string.copy_me),
+            contact = contactName,
+            image = context.getString(isomeria.aichat.R.string.copy_image),
+            voice = context.getString(isomeria.aichat.R.string.copy_voice),
+            asrFailed = context.getString(isomeria.aichat.R.string.call_turn_asr_failed),
+            callHeader = { call ->
+                val start = java.time.Instant.ofEpochMilli(call.createdAt).atZone(java.time.ZoneId.systemDefault())
+                context.getString(isomeria.aichat.R.string.copy_call_header, time.format(start), isomeria.aichat.core.CallDurations.format(call.voiceMillis))
+            },
+            speaker = { speaker, text -> context.getString(isomeria.aichat.R.string.copy_speaker_line, speaker, text) },
+        )
+    }
+
     /** 删除聊天：只删聊天记录，不删联系人 */
     suspend fun deleteConversation(contactId: Long) {
         calls.hangUpFor(contactId)
@@ -360,6 +411,15 @@ class ChatRepository @Inject constructor(
 
     private fun previewOf(message: Message): String = previews.preview(message)
 }
+
+/**
+ * 多选（0.9.0）能不能选这条：等待回复中的消息（含还在识别的语音）、待投递的回复、正在进行的通话不能选
+ */
+fun isSelectable(message: Message): Boolean =
+    message.status != MessageStatus.SENDING && message.status != MessageStatus.PENDING && !message.callOngoing
+
+/** 按 id 查或删消息时每批的个数，免得超过 SQLite 的参数上限 */
+private const val ID_CHUNK = 500
 
 /** 全局搜索里的一个聊天；[single] 是只命中一条时的那条消息 */
 data class MessageSearchResult(val group: MessageSearchGroup, val single: Message?)

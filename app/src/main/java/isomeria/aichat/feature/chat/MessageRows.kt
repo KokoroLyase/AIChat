@@ -5,6 +5,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -132,7 +135,17 @@ data class MessageActions(
     val onVoiceShowText: (Message, Boolean) -> Unit = { _, _ -> },
     /** 点通话消息（0.8.0）：进入这次通话的详情 */
     val onCallClick: (Message) -> Unit = {},
+    /** 长按菜单“多选”（0.9.0） */
+    val onStartSelection: (Message) -> Unit = {},
+    /** 长按通话“复制”（0.9.0）：复制这次通话的完整内容 */
+    val onCopyCall: (Message) -> Unit = {},
 )
+
+/**
+ * 多选（0.9.0）时这一行的状态：[selectable] 为 false 的（等待回复中、正在进行的通话）点了不选中。
+ * 多选时点整行切换选中，气泡、头像、语音条都不响应
+ */
+data class RowSelection(val selected: Boolean, val selectable: Boolean, val onToggle: () -> Unit)
 
 /**
  * 一条消息。自己的在右、绿色气泡；联系人的在左、白色（深色模式深灰）气泡。
@@ -153,10 +166,14 @@ fun MessageRow(
     actions: MessageActions,
     playing: Boolean = false,
     menuInitiallyOpen: Boolean = false,
+    /** 多选（0.9.0）时不为 null */
+    selection: RowSelection? = null,
 ) {
     val dimens = WeTheme.dimens
     val sent = message.role == Role.USER
     var menuOpen by remember { mutableStateOf(menuInitiallyOpen) }
+    // 进入多选时收起这一条的菜单
+    if (selection != null && menuOpen) menuOpen = false
 
     val voice = message.type == MessageType.VOICE
     // 语音转写的文字：用户的语音识别成功前为空
@@ -165,8 +182,16 @@ fun MessageRow(
         if (message.type == MessageType.TEXT || (voice && hasText)) {
             add(MenuItem(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy) { actions.onCopy(message.content) })
         }
+        // 通话（0.9.0）：复制这次通话的完整内容；正在进行的不复制
+        if (message.type == MessageType.CALL && !message.callOngoing) {
+            add(MenuItem(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy) { actions.onCopyCall(message) })
+        }
         // 正在进行的通话（0.8.0）不能删
         if (!message.callOngoing) add(MenuItem(stringResource(R.string.action_delete), Icons.Outlined.DeleteOutline) { actions.onDelete(message) })
+        // 多选（0.9.0）：等待回复中的消息、正在进行的通话不能选
+        if (isomeria.aichat.data.repo.isSelectable(message)) {
+            add(MenuItem(stringResource(R.string.chat_menu_select), WeIcons.MultiSelect) { actions.onStartSelection(message) })
+        }
         if (voice) {
             add(MenuItem(stringResource(R.string.voice_menu_earpiece), Icons.Outlined.PhoneInTalk) { actions.onVoicePlay(message, PlayMode.EARPIECE) })
             add(MenuItem(stringResource(R.string.voice_menu_background), Icons.Outlined.Headphones) { actions.onVoicePlay(message, PlayMode.BACKGROUND) })
@@ -188,82 +213,136 @@ fun MessageRow(
         }
     }
 
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = dimens.chatAvatarEdge, vertical = dimens.messageSpacing / 2),
-        horizontalArrangement = if (sent) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Top,
-    ) {
-        if (!sent) {
-            Avatar(
-                contactAvatarPath,
-                contactName,
-                contactAvatarColor,
-                dimens.chatAvatar,
-                Modifier.clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = actions.onAvatarClick,
-                ),
-            )
-            Spacer(Modifier.width(dimens.bubbleAvatarGap - dimens.bubbleTailWidth))
-        } else {
-            Spacer(Modifier.width(dimens.bubbleOppositeMinGap - dimens.chatAvatarEdge))
-            if (message.status == MessageStatus.FAILED) {
-                FailedMark(Modifier.align(Alignment.CenterVertically)) { actions.onFailedClick(message) }
-                Spacer(Modifier.width(8.dp))
-            }
-        }
-
-        Column(
-            Modifier.weight(1f, fill = false).widthIn(max = maxBubbleWidth),
-            horizontalAlignment = if (sent) Alignment.End else Alignment.Start,
+    Box(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = dimens.chatAvatarEdge, vertical = dimens.messageSpacing / 2),
+            verticalAlignment = Alignment.Top,
         ) {
-            if (!sent && !message.reasoning.isNullOrBlank()) {
-                ThinkingBlock(message.reasoning, message.reasoningMillis)
-                Spacer(Modifier.size(4.dp))
+            // 多选（0.9.0）：最左边一列勾选圈，和头像的中线对齐
+            if (selection != null) {
+                isomeria.aichat.ui.components.SelectCircle(
+                    selected = selection.selected,
+                    enabled = selection.selectable,
+                    modifier = Modifier.padding(top = (dimens.chatAvatar - 22.dp) / 2),
+                )
+                Spacer(Modifier.width(dimens.chatAvatarEdge))
             }
-            Box {
-                when (message.type) {
-                    MessageType.TEXT -> TextBubble(
-                        text = message.content,
-                        sent = sent,
-                        onLongClick = { menuOpen = true },
+            Row(
+                Modifier.weight(1f),
+                horizontalArrangement = if (sent) Arrangement.End else Arrangement.Start,
+                verticalAlignment = Alignment.Top,
+            ) {
+                if (!sent) {
+                    Avatar(
+                        contactAvatarPath,
+                        contactName,
+                        contactAvatarColor,
+                        dimens.chatAvatar,
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = actions.onAvatarClick,
+                        ),
                     )
-                    MessageType.IMAGE -> ImageMessage(
-                        message = message,
-                        sent = sent,
-                        onClick = { message.imagePath?.let(actions.onImageClick) },
-                        onLongClick = { menuOpen = true },
-                    )
-                    MessageType.VOICE -> VoiceMessage(
-                        message = message,
-                        sent = sent,
-                        playing = playing,
-                        onClick = { actions.onVoiceClick(message) },
-                        onLongClick = { menuOpen = true },
-                        onToText = { actions.onVoiceShowText(message, true) },
-                    )
-                    MessageType.CALL -> isomeria.aichat.ui.components.CallBubble(
-                        message = message,
-                        sent = sent,
-                        onClick = { actions.onCallClick(message) },
-                        onLongClick = { menuOpen = true },
-                    )
+                    Spacer(Modifier.width(dimens.bubbleAvatarGap - dimens.bubbleTailWidth))
+                } else {
+                    Spacer(Modifier.width(dimens.bubbleOppositeMinGap - dimens.chatAvatarEdge))
+                    if (message.status == MessageStatus.FAILED) {
+                        FailedMark(Modifier.align(Alignment.CenterVertically)) { actions.onFailedClick(message) }
+                        Spacer(Modifier.width(8.dp))
+                    }
                 }
-                if (menuOpen) WeBubbleMenu(menuItems) { menuOpen = false }
-            }
-            if (voice) VoiceTranscript(message, sent) { menuOpen = true }
-        }
 
-        if (sent) {
-            Spacer(Modifier.width(dimens.bubbleAvatarGap - dimens.bubbleTailWidth))
-            Avatar(myAvatarPath, myName, myAvatarColor, dimens.chatAvatar)
-        } else {
-            Spacer(Modifier.width(dimens.bubbleOppositeMinGap - dimens.chatAvatarEdge))
+                Column(
+                    Modifier.weight(1f, fill = false).widthIn(max = maxBubbleWidth),
+                    horizontalAlignment = if (sent) Alignment.End else Alignment.Start,
+                ) {
+                    if (!sent && !message.reasoning.isNullOrBlank()) {
+                        ThinkingBlock(message.reasoning, message.reasoningMillis)
+                        Spacer(Modifier.size(4.dp))
+                    }
+                    Box {
+                        when (message.type) {
+                            MessageType.TEXT -> TextBubble(
+                                text = message.content,
+                                sent = sent,
+                                onLongClick = { menuOpen = true },
+                            )
+                            MessageType.IMAGE -> ImageMessage(
+                                message = message,
+                                sent = sent,
+                                onClick = { message.imagePath?.let(actions.onImageClick) },
+                                onLongClick = { menuOpen = true },
+                            )
+                            MessageType.VOICE -> VoiceMessage(
+                                message = message,
+                                sent = sent,
+                                playing = playing,
+                                onClick = { actions.onVoiceClick(message) },
+                                onLongClick = { menuOpen = true },
+                                onToText = { actions.onVoiceShowText(message, true) },
+                            )
+                            MessageType.CALL -> isomeria.aichat.ui.components.CallBubble(
+                                message = message,
+                                sent = sent,
+                                onClick = { actions.onCallClick(message) },
+                                onLongClick = { menuOpen = true },
+                            )
+                        }
+                        if (menuOpen) WeBubbleMenu(menuItems) { menuOpen = false }
+                    }
+                    if (voice) VoiceTranscript(message, sent) { menuOpen = true }
+                }
+
+                if (sent) {
+                    Spacer(Modifier.width(dimens.bubbleAvatarGap - dimens.bubbleTailWidth))
+                    Avatar(myAvatarPath, myName, myAvatarColor, dimens.chatAvatar)
+                } else {
+                    Spacer(Modifier.width(dimens.bubbleOppositeMinGap - dimens.chatAvatarEdge))
+                }
+            }
+        }
+        // 多选（0.9.0）：盖在整行上面，点哪里都是切换选中；下面的气泡、头像、语音条收不到点击
+        if (selection != null) {
+            val label = stringResource(R.string.chat_select_desc, selectionLabel(message))
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .then(
+                        if (selection.selectable) {
+                            Modifier.toggleable(
+                                value = selection.selected,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                role = androidx.compose.ui.semantics.Role.Checkbox,
+                                onValueChange = { selection.onToggle() },
+                            )
+                        } else {
+                            // 不能选的（等待回复中、正在进行的通话）：点了没反应，也点不到下面的气泡
+                            Modifier.pointerInput(Unit) {
+                                awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } }
+                            }
+                        },
+                    )
+                    // 单独成一个节点：不能选的那条没有点击动作，不这样会并进消息列表的节点里
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = label
+                        if (!selection.selectable) disabled()
+                    },
+            )
         }
     }
+}
+
+/** 多选时读屏念的这条消息：文字和语音的转写念内容，其余念类型 */
+@Composable
+private fun selectionLabel(message: Message): String = when (message.type) {
+    MessageType.TEXT -> message.content
+    MessageType.VOICE -> message.content.ifBlank { stringResource(R.string.preview_voice) }
+    MessageType.IMAGE -> stringResource(R.string.preview_image)
+    MessageType.CALL -> isomeria.aichat.data.repo.callPreview(androidx.compose.ui.platform.LocalContext.current, message)
 }
 
 /**

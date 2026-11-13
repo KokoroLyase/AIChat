@@ -349,6 +349,10 @@ interface MessageDao {
     @Query("SELECT * FROM message WHERE id = :id")
     suspend fun get(id: Long): Message?
 
+    /** 多选（0.9.0）用：调用方每次最多传几百个 id */
+    @Query("SELECT * FROM message WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<Long>): List<Message>
+
     /** 通话详情页（0.8.0）看着这一条：通话中时长、挂断后的原因会变 */
     @Query("SELECT * FROM message WHERE id = :id")
     fun observe(id: Long): Flow<Message?>
@@ -386,6 +390,10 @@ interface MessageDao {
 
     @Query("DELETE FROM message WHERE id = :id")
     suspend fun delete(id: Long)
+
+    /** 多选删除（0.9.0）：调用方每次最多传几百个 id */
+    @Query("DELETE FROM message WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
 
     @Query("DELETE FROM message WHERE replyGroup = :group")
     suspend fun deleteGroup(group: String)

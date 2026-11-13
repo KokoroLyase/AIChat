@@ -138,6 +138,25 @@ fun TopBarIcon(
     }
 }
 
+/** 顶栏里的文字按钮（0.9.0 多选的“取消”）：普通字色，点击区至少 48dp */
+@Composable
+fun TopBarTextAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .heightIn(min = WeTheme.dimens.topBarIconTouch)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.Text(text, style = WeTheme.typography.listTitle, color = WeTheme.colors.textPrimary)
+    }
+}
+
 data class TabItem(
     val label: String,
     val icon: ImageVector,
