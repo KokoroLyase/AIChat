@@ -241,17 +241,18 @@ private fun UsageRows(rows: List<UsageRowItem>, onOpen: ((UsageRowItem) -> Unit)
     }
 }
 
+/** 输入、输出，再列出其中记忆、主动聊天、翻译（0.9.0）各用了多少 */
 @Composable
-private fun usageDetail(total: UsageTotal): String {
+internal fun usageDetail(total: UsageTotal): String {
     val input = number(total.promptTokens)
     val output = number(total.completionTokens)
-    return when {
-        total.memoryTokens > 0 && total.proactiveTokens > 0 ->
-            stringResource(R.string.usage_detail_memory_proactive, input, output, number(total.memoryTokens), number(total.proactiveTokens))
-        total.memoryTokens > 0 -> stringResource(R.string.usage_detail_memory, input, output, number(total.memoryTokens))
-        total.proactiveTokens > 0 -> stringResource(R.string.usage_detail_proactive, input, output, number(total.proactiveTokens))
-        else -> stringResource(R.string.usage_detail, input, output)
+    val parts = buildList {
+        if (total.memoryTokens > 0) add(stringResource(R.string.usage_part_memory, number(total.memoryTokens)))
+        if (total.proactiveTokens > 0) add(stringResource(R.string.usage_part_proactive, number(total.proactiveTokens)))
+        if (total.translateTokens > 0) add(stringResource(R.string.usage_part_translate, number(total.translateTokens)))
     }
+    if (parts.isEmpty()) return stringResource(R.string.usage_detail, input, output)
+    return stringResource(R.string.usage_detail_parts, input, output, parts.joinToString(stringResource(R.string.usage_part_separator)))
 }
 
 /** 语音合成和识别（0.7.0）：服务商按字数或时长计费，单独一行，不算进 token */

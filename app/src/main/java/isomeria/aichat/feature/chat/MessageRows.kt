@@ -145,6 +145,9 @@ data class MessageActions(
     val onQuote: ((Message) -> Unit)? = null,
     /** 点气泡下面的引用块（0.9.0）：跳到原消息 */
     val onOpenQuote: (Message) -> Unit = {},
+    /** 翻译（0.9.0）：长按“翻译”、失败后点一下重试 */
+    val onTranslate: (Message) -> Unit = {},
+    val onHideTranslation: (Message) -> Unit = {},
 )
 
 /**
@@ -174,6 +177,8 @@ fun MessageRow(
     menuInitiallyOpen: Boolean = false,
     /** 多选（0.9.0）时不为 null */
     selection: RowSelection? = null,
+    /** 这条正在翻译或翻译失败（0.9.0） */
+    translating: TranslationUi? = null,
 ) {
     val dimens = WeTheme.dimens
     val sent = message.role == Role.USER
@@ -195,6 +200,14 @@ fun MessageRow(
         // 收藏（0.9.0）：文字、语音（含没有转写的）、打完的通话；图片、等待回复中的不能
         if (isomeria.aichat.data.repo.FavoriteRepository.canFavorite(message)) {
             add(MenuItem(stringResource(R.string.chat_menu_favorite), WeIcons.Star) { actions.onFavorite(message) })
+        }
+        // 翻译（0.9.0）：文字和有转写的语音，里面要有字；正在显示译文时换成“隐藏翻译”
+        if (isomeria.aichat.data.repo.TranslationRepository.canTranslate(message)) {
+            if (message.translationShown && message.translation != null) {
+                add(MenuItem(stringResource(R.string.chat_menu_hide_translation), WeIcons.Translate) { actions.onHideTranslation(message) })
+            } else {
+                add(MenuItem(stringResource(R.string.chat_menu_translate), WeIcons.Translate) { actions.onTranslate(message) })
+            }
         }
         // 引用（0.9.0）：文字和有转写的语音；通话中没有
         val quote = actions.onQuote
@@ -309,6 +322,28 @@ fun MessageRow(
                         if (menuOpen) WeBubbleMenu(menuItems) { menuOpen = false }
                     }
                     if (voice) VoiceTranscript(message, sent) { menuOpen = true }
+                    // 翻译（0.9.0）：译文、正在翻译、失败（点一下重试），和转文字同样的位置
+                    val side = Modifier.padding(
+                        top = 4.dp,
+                        start = if (sent) 0.dp else dimens.bubbleTailWidth,
+                        end = if (sent) dimens.bubbleTailWidth else 0.dp,
+                    )
+                    val translation = message.translation
+                    when {
+                        translating == TranslationUi.Loading -> isomeria.aichat.ui.components.TranslationLoading(side)
+                        translating is TranslationUi.Failed -> isomeria.aichat.ui.components.TranslationFailed(
+                            reason = stringResource(failReasonText(translating.reason)),
+                            onRetry = { actions.onTranslate(message) },
+                            modifier = side,
+                        )
+                        message.translationShown && translation != null -> isomeria.aichat.ui.components.TranslationBlock(
+                            text = translation,
+                            sent = sent,
+                            onCopy = { actions.onCopy(translation) },
+                            onHide = { actions.onHideTranslation(message) },
+                            modifier = side,
+                        )
+                    }
                     // 引用（0.9.0）：气泡下面的灰色块，和气泡主体对齐（不算尖角）
                     val quoted = message.quoteText
                     if (quoted != null) {

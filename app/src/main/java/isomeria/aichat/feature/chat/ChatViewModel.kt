@@ -119,6 +119,7 @@ class ChatViewModel @Inject constructor(
     private val playback: isomeria.aichat.data.voice.VoicePlayback,
     callEngine: isomeria.aichat.data.call.CallEngine,
     private val favorites: isomeria.aichat.data.repo.FavoriteRepository,
+    private val translations: isomeria.aichat.data.repo.TranslationRepository,
 ) : ViewModel() {
     private val route = savedState.toRoute<ChatRoute>()
     val contactId: Long = route.contactId
@@ -252,6 +253,20 @@ class ChatViewModel @Inject constructor(
 
     fun saveDraft(text: String) {
         appScope.launch { chats.saveDraft(contactId, text) }
+    }
+
+    // ---------- 翻译（0.9.0） ----------
+
+    private val translationStates = TranslationStates(appScope) { id -> translations.translate(id) }
+    /** 正在翻译、翻译失败的消息；翻好的译文在消息上 */
+    val translating: StateFlow<Map<Long, TranslationUi>> = translationStates.state
+
+    /** “翻译”，或失败后点一下重试 */
+    fun translate(message: Message) = translationStates.start(message.id)
+
+    fun hideTranslation(message: Message) {
+        translationStates.clear(message.id)
+        appScope.launch { translations.hide(message.id) }
     }
 
     // ---------- 引用（0.9.0） ----------

@@ -303,15 +303,23 @@ class ProviderRepository @Inject constructor(
 
     fun memoryModel(contact: Contact, config: ProviderConfig): String = contact.memoryModel ?: config.defaultModel.ifBlank { contact.model }
 
-    /** 原子读取全部配置，Key 只在内存中；网络等待不占数据库事务。 */
-    suspend fun snapshot(contactId: Long, memory: Boolean): ModelSnapshot = db.withTransaction {
+    /**
+     * 原子读取全部配置，Key 只在内存中；网络等待不占数据库事务。
+     * [thinkingOff]（0.9.0 翻译）：用聊天模型和联系人的温度，模型能关思考就关，不能关时按联系人的思考设置
+     */
+    suspend fun snapshot(contactId: Long, memory: Boolean, thinkingOff: Boolean = false): ModelSnapshot = db.withTransaction {
         val contact = db.contactDao().get(contactId) ?: throw LlmException(LlmError.CONFIGURATION)
         val config = dao.get(contact.providerId) ?: throw LlmException(LlmError.CONFIGURATION)
         val endpoint = endpoint(config) ?: throw LlmException(LlmError.AUTH)
         val modelId = if (memory) memoryModel(contact, config) else contact.model
         val model = dao.model(config.id, modelId)
-        val option = if (memory) contact.memoryThinkingOption else contact.thinkingOption ?: ModelRules.legacyOption(contact.thinking)
         val temperature = if (memory) 0.3f else contact.temperature
+        val chatOption = contact.thinkingOption ?: ModelRules.legacyOption(contact.thinking)
+        val option = when {
+            memory -> contact.memoryThinkingOption
+            thinkingOff && ModelRules.validate(config, model, isomeria.aichat.data.llm.ThinkingRule.OFF, temperature) == null -> isomeria.aichat.data.llm.ThinkingRule.OFF
+            else -> chatOption
+        }
         val parameters = ModelRules.parameters(config, model, option, temperature)
         val legacyThinking = if (parameters == null) {
             ModelRules.legacyThinking(option, memory || ModelRules.legacySupportsThinking(config, model)) ?: throw LlmException(LlmError.CONFIGURATION)

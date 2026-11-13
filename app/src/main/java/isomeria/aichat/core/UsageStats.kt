@@ -22,6 +22,8 @@ data class UsageTotal(
     val requests: Int = 0,
     /** 其中主动聊天用掉的 token（0.6.0；含模型决定不发的那些请求） */
     val proactiveTokens: Long = 0,
+    /** 其中翻译用掉的 token（0.9.0） */
+    val translateTokens: Long = 0,
     /** 语音合成的字数和合成出的秒数、语音识别的秒数（0.7.0）：按字数或时长计费，不算进 token */
     val ttsChars: Long = 0,
     val ttsSeconds: Long = 0,
@@ -67,6 +69,7 @@ object UsageStats {
             memoryTokens = rows.filter { it.purpose == UsagePurpose.MEMORY }.sumOf { it.promptTokens + it.completionTokens },
             requests = rows.sumOf { it.requests },
             proactiveTokens = rows.filter { it.purpose == UsagePurpose.PROACTIVE }.sumOf { it.promptTokens + it.completionTokens },
+            translateTokens = rows.filter { it.purpose == UsagePurpose.TRANSLATE }.sumOf { it.promptTokens + it.completionTokens },
             ttsChars = tts.sumOf { it.promptTokens },
             ttsSeconds = tts.sumOf { it.completionTokens },
             asrSeconds = all.filter { it.purpose == UsagePurpose.ASR }.sumOf { it.promptTokens },

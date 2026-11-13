@@ -298,6 +298,54 @@ class ReplyRequestGoldenTest {
         )
     }
 
+    // ---------- 0.9.0：翻译。译文不进聊天请求；翻译请求只有提示和这条文字 ----------
+
+    private val translator by lazy {
+        isomeria.aichat.data.repo.TranslationRepository(
+            db, harness.providers, UsageRepository(db.usageDao()),
+            isomeria.aichat.data.repo.TranslateLabels(TRANSLATE_ENGLISH, TRANSLATE_CHINESE),
+        )
+    }
+
+    /** 翻译一条消息，返回真实请求构造器拼出的请求体 */
+    private fun translateBody(contactId: Long, content: String): String = runBlocking {
+        val id = db.messageDao().insert(text(contactId, Role.ASSISTANT, content, now - 70_000))
+        translator.translate(id)
+        val request = harness.provider.requests.last()
+        val body = if (harness.provider.lastProtocol == ProviderProtocol.DEEPSEEK) DeepSeekRequestBuilder.build(request) else OpenAiRequestBuilder.build(request)
+        db.messageDao().delete(id)
+        body.toString()
+    }
+
+    @Test
+    fun translateLabels_matchStringsXml() {
+        assertEquals(TRANSLATE_ENGLISH, context.getString(isomeria.aichat.R.string.prompt_translate_english))
+        assertEquals(TRANSLATE_CHINESE, context.getString(isomeria.aichat.R.string.prompt_translate_chinese))
+    }
+
+    @Test
+    fun translate_generic_chatModelAndTemperature_onlyPromptAndText() {
+        assertEquals(TRANSLATE_GENERIC, translateBody(2, "周末去爬山吗"))
+    }
+
+    @Test
+    fun translate_deepSeek_thinkingTurnedOff_toChinese() {
+        assertEquals(TRANSLATE_DEEPSEEK, translateBody(1, "Are you free?"))
+    }
+
+    @Test
+    fun translationsOnMessages_doNotChangeChatRequests() = runBlocking {
+        for (id in listOf(1L, 2L, 3L)) {
+            for (message in db.messageDao().listByContact(id)) db.messageDao().setTranslation(message.id, "TRANSLATED", shown = true)
+        }
+        harness.allOff(1)
+        harness.allOff(2)
+        harness.allOff(3)
+        assertEquals(GOLDEN_DEEPSEEK, requestBody(1))
+        assertEquals(GOLDEN_GENERIC, requestBody(2))
+        assertEquals(GOLDEN_EMPTY, requestBody(3))
+    }
+
     /** 全局记忆远超上下文上限：聊天记录被挤掉，但这次等待回复的消息一定带上，回复照常写入 */
     @Test
     fun hugeGlobalMemory_chatStillSendsWaitingMessage() = runBlocking {
@@ -313,6 +361,10 @@ class ReplyRequestGoldenTest {
     companion object {
         const val GOLDEN_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"你是小雨，正在用微信和对方聊天。\n想分几条发时，用空行隔开。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"在吗"},{"role":"assistant","content":"在呀\n\n怎么啦"},{"role":"user","content":"[图片]\n看看这张"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"enabled"},"reasoning_effort":"high"}"""
         const val GOLDEN_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"早"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""
+        const val TRANSLATE_ENGLISH = "把用户发来的这条聊天消息翻译成英语。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。"
+        const val TRANSLATE_CHINESE = "把用户发来的这条聊天消息翻译成简体中文。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。"
+        const val TRANSLATE_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"把用户发来的这条聊天消息翻译成英语。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。"},{"role":"user","content":"周末去爬山吗"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""
+        const val TRANSLATE_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"把用户发来的这条聊天消息翻译成简体中文。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。"},{"role":"user","content":"Are you free?"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"disabled"},"temperature":1.3}"""
         const val GOLDEN_EMPTY = """{"model":"gpt-x","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"temperature":1.3}"""
         const val GOLDEN_050_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n你是小雨，正在用微信和对方聊天。\n想分几条发时，用空行隔开。\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"在吗"},{"role":"assistant","content":"在呀\n怎么啦"},{"role":"user","content":"[图片]\n看看这张"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"enabled"},"reasoning_effort":"high"}"""
         const val GOLDEN_050_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"早"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""

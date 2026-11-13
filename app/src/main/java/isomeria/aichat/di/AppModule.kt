@@ -111,6 +111,14 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun translateLabels(@ApplicationContext context: Context): isomeria.aichat.data.repo.TranslateLabels =
+        isomeria.aichat.data.repo.TranslateLabels(
+            toEnglish = context.getString(R.string.prompt_translate_english),
+            toChinese = context.getString(R.string.prompt_translate_chinese),
+        )
+
+    @Provides
+    @Singleton
     fun contextBuilder(@ApplicationContext context: Context): ContextBuilder {
         val res = context.resources
         return ContextBuilder(

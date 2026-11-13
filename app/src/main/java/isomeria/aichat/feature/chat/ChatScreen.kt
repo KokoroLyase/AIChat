@@ -178,6 +178,7 @@ fun ChatScreen(
     // 多选（0.9.0）
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     val quote by viewModel.quote.collectAsStateWithLifecycle()
+    val translating by viewModel.translating.collectAsStateWithLifecycle()
     var deleteSelectedDialog by remember { mutableStateOf<Int?>(null) }
     var showAsrSetup by remember { mutableStateOf(false) }
     var voiceIntroName by remember { mutableStateOf<String?>(null) }
@@ -522,6 +523,8 @@ fun ChatScreen(
                     keyboard?.show()
                 }
             },
+            onTranslate = viewModel::translate,
+            onHideTranslation = viewModel::hideTranslation,
             onOpenQuote = { message ->
                 val target = message.quoteId
                 val index = if (target == null) -1 else pagedRows.itemSnapshotList.items.indexOfFirst { it is ChatRow.Item && it.message.id == target }
@@ -561,6 +564,7 @@ fun ChatScreen(
             highlightAlpha = { highlight.value },
             selection = selection,
             onToggleSelection = viewModel::toggleSelection,
+            translating = translating,
             modifier = Modifier.fillMaxSize(),
         )
         }
@@ -847,6 +851,8 @@ fun ChatMessageList(
     /** 多选（0.9.0）时选中的消息 id；不在多选时为 null */
     selection: Set<Long>? = null,
     onToggleSelection: (Message) -> Unit = {},
+    /** 正在翻译、翻译失败的消息（0.9.0） */
+    translating: Map<Long, TranslationUi> = emptyMap(),
 ) {
     val defaultName = stringResource(R.string.default_nickname)
     val highlightColor = WeTheme.colors.messageHighlight
@@ -893,6 +899,7 @@ fun ChatMessageList(
                         actions = actions,
                         playing = row.message.id == playingId,
                         menuInitiallyOpen = row.message.id == menuOpenId,
+                        translating = translating[row.message.id],
                         selection = selection?.let { ids ->
                             RowSelection(
                                 selected = row.message.id in ids,

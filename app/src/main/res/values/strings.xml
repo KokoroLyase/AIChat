@@ -57,6 +57,14 @@
     <string name="quote_jump">查看原消息</string>
     <string name="quote_cancel">取消引用</string>
     <string name="quote_missing">原消息已删除</string>
+    <!-- 翻译（0.9.0） -->
+    <string name="chat_menu_translate">翻译</string>
+    <string name="chat_menu_hide_translation">隐藏翻译</string>
+    <string name="translation_label">翻译</string>
+    <string name="translation_desc">译文：%1$s</string>
+    <string name="translation_loading">正在翻译…</string>
+    <string name="translation_failed">翻译失败：%1$s。点一下重试</string>
+    <string name="translation_retry">重试翻译</string>
     <!-- 0.9.0 收藏 -->
     <string name="me_favorites">收藏</string>
     <string name="chat_menu_favorite">收藏</string>
@@ -468,7 +476,11 @@
     <string name="usage_by_contact">按联系人</string>
     <string name="usage_total_tokens">%1$s token</string>
     <string name="usage_detail">输入 %1$s · 输出 %2$s</string>
-    <string name="usage_detail_memory">输入 %1$s · 输出 %2$s · 其中记忆 %3$s</string>
+    <string name="usage_detail_parts">输入 %1$s · 输出 %2$s · 其中%3$s</string>
+    <string name="usage_part_memory">记忆 %1$s</string>
+    <string name="usage_part_proactive">主动聊天 %1$s</string>
+    <string name="usage_part_translate">翻译 %1$s</string>
+    <string name="usage_part_separator">、</string>
     <string name="usage_deleted_contact">已删除的联系人</string>
     <string name="usage_empty">这段时间没有用量</string>
     <string name="usage_hint">数字来自服务商返回的用量；服务商没有返回时是估算值。语音合成按字数、语音识别按秒数单独统计，不算进 token。清空聊天记录不影响统计。</string>
@@ -777,8 +789,6 @@
     <string name="proactive_state_in_call">正在通话</string>
     <string name="proactive_state_no_key">无法运行：没有可用的 API Key</string>
     <string name="proactive_state_invalid">无法运行：模型配置无效</string>
-    <string name="usage_detail_proactive">输入 %1$s · 输出 %2$s · 其中主动聊天 %3$s</string>
-    <string name="usage_detail_memory_proactive">输入 %1$s · 输出 %2$s · 其中记忆 %3$s、主动聊天 %4$s</string>
 
     <!-- 0.6.0 主动聊天：发给模型的文字 -->
     <!-- 约定标记的关键词：App 按「[关键词 年-月-日 时:分 事由]」解析，必须和下面 prompt_reminder_hint 里教模型写的一致 -->
@@ -788,6 +798,9 @@
     <string name="prompt_call_hint">现在你们正在语音通话：对方说的话是语音识别转成的文字，可能有错字或断句不对，按意思理解；你的回复会被合成成语音读给对方听。请像打电话一样说话：口语、简短，一般一两句；不要用表情符号、括号里的动作或神态描写、列表和 Markdown。</string>
     <!-- 引用（0.9.0）：引用了别的消息的用户消息，在请求里前面加的一行。参数：被引用的文字（超过 100 字截断） -->
     <string name="prompt_quote_other">（回复你之前说的“%1$s”）</string>
+    <!-- 翻译（0.9.0）的系统提示：汉字超过一半翻成英语，否则翻成中文；要翻译的文字作为用户消息单独发 -->
+    <string name="prompt_translate_english">把用户发来的这条聊天消息翻译成英语。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。</string>
+    <string name="prompt_translate_chinese">把用户发来的这条聊天消息翻译成简体中文。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。</string>
     <string name="prompt_quote_self">（接着我之前说的“%1$s”）</string>
     <string name="prompt_reminder_hint" tools:ignore="TypographyDashes">约定时间：如果对方让你在某个时间叫他、提醒他或联系他，在回复的最后另起一行写 [提醒 年-月-日 时:分 事由]，例如 [提醒 2026-11-11 07:00 叫他起床]，时间用 24 小时制。这一行对方看不到，到时间后你会收到提示，再主动给对方发消息。没有这类约定时不要写。</string>
     <!-- 主动请求末尾只在这一次请求里的 user 指令，不存库。参数：现在的时间、距上一条消息多久 -->
