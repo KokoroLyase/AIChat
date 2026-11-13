@@ -42,10 +42,7 @@ class StorageRepository @Inject constructor(
         if (db.restoreInProgress.get() > 0 || db.messageDao().hasAnySending()) throw StorageBusyException()
     }
 
-    private suspend fun references(): Set<String> = mediaReferences(
-        db.contactDao().avatarPaths(), db.messageDao().allImagePaths(), settings.avatarPath.value,
-        db.conversationDao().backgroundPaths(), db.messageDao().allVoicePaths(),
-    )
+    private suspend fun references(): Set<String> = mediaReferencesOf(db, settings.avatarPath.value)
 
     suspend fun previewOrphans(): OrphanPreview = withContext(Dispatchers.IO) {
         StorageOperations.gate.clean {
@@ -80,6 +77,12 @@ class StorageRepository @Inject constructor(
 }
 
 /** Coil keeps an empty journal after clear(); count its entries, not maintenance metadata. */
+/** 孤立文件检查时算作“在用”的媒体文件：联系人头像、消息图片、自己的头像、聊天背景、语音和通话音频 */
+internal suspend fun mediaReferencesOf(db: AppDatabase, ownAvatar: String?): Set<String> = mediaReferences(
+    db.contactDao().avatarPaths(), db.messageDao().allImagePaths(), ownAvatar,
+    db.conversationDao().backgroundPaths(), db.messageDao().allVoicePaths(),
+)
+
 internal fun cacheContentBytes(root: File, imageDirectory: File?, imageBytes: Long): Long {
     val rootPath = root.canonicalPath + File.separator
     val imagePath = imageDirectory?.canonicalPath?.takeIf { it.startsWith(rootPath) }?.plus(File.separator)

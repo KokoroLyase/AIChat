@@ -40,7 +40,6 @@ class VoiceRecordingTest {
         override fun elapsedMillis() = elapsed
         override fun stop(): Long { stopped++; return elapsed }
         override fun cancel() { cancelled++; started?.delete() }
-        override var pcmListener: ((ShortArray, Int) -> Unit)? = null
     }
 
     private val recorder = FakeRecorder()

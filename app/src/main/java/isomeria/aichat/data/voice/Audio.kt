@@ -21,11 +21,6 @@ interface VoiceRecorder {
 
     /** 停止并删掉这段录音 */
     fun cancel()
-
-    /**
-     * 每读到一段 PCM 就回调一次（在录音线程上）。0.7.0 不用；给 0.8.0 语音通话判断“一段话说完了没有”留的接口
-     */
-    var pcmListener: ((ShortArray, Int) -> Unit)?
 }
 
 /** 音频文件的编码和信息；真实实现用 MediaCodec / MediaMetadataRetriever，JVM 测试换成假实现。 */

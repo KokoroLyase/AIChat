@@ -34,7 +34,6 @@ class AndroidVoiceRecorder @Inject constructor(@ApplicationContext private val c
     @Volatile private var currentLevel = 0f
     @Volatile private var bytesWritten = 0L
     private var file: File? = null
-    override var pcmListener: ((ShortArray, Int) -> Unit)? = null
 
     @SuppressLint("MissingPermission") // 调用方先检查并申请 RECORD_AUDIO
     override fun start(file: File) {
@@ -68,7 +67,6 @@ class AndroidVoiceRecorder @Inject constructor(@ApplicationContext private val c
                     out.write(bytes.array(), 0, count * 2)
                     bytesWritten += count * 2L
                     currentLevel = (sqrt(sum / count) / 6000.0).coerceIn(0.0, 1.0).toFloat()
-                    pcmListener?.invoke(buffer, count)
                 }
             }
         } finally {

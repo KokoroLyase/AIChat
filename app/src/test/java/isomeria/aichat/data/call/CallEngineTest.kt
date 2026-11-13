@@ -35,6 +35,7 @@ import isomeria.aichat.data.repo.MessagePreviewer
 import isomeria.aichat.data.repo.StorageOperations
 import isomeria.aichat.data.repo.UsageRepository
 import isomeria.aichat.data.repo.VoiceRepository
+import isomeria.aichat.data.repo.mediaReferencesOf
 import isomeria.aichat.data.voice.AsrRequest
 import isomeria.aichat.data.voice.AsrResult
 import isomeria.aichat.data.voice.AudioCodec
@@ -446,6 +447,35 @@ class CallEngineTest {
         assertEquals(CallNotice.TTS_FAILED, engine.state.value!!.notice)
         // 文件也删掉了：目录里只剩记录引用的
         await("音频删掉") { callsDir().listFiles().orEmpty().map { it.canonicalPath }.toSet() == all.mapNotNull { it.audioPath }.map { File(it).canonicalPath }.toSet() }
+    }
+
+    /**
+     * 0.8.0 发布后报告过“通话中清理孤立文件会删掉还没写进记录的音频”，复核不是问题：通话文件创建时就固定，
+     * 写进 call_turn 后才解除，孤立文件检查跳过固定着的文件。这里把这个行为锁住：对方在说第一句、第二句已经合成好排着队时，
+     * 跑一遍和「存储空间 → 清理孤立文件」一样的预览和清理，排队的句子不会被列出、也不会被删，之后照常放完、写进记录。
+     */
+    @Test
+    fun orphanCleanupDuringCall_keepsQueuedSentences() {
+        startCall()
+        h.provider.reply = "第一句。第二句。"
+        speaker.hold = true
+        mic.say()
+        await("第一句在放、第二句已合成") { phase() == CallPhase.SPEAKING && speaker.pending != null && api.tts.size == 2 }
+        val queued = callsDir().listFiles().orEmpty().map { it.canonicalPath }.toSet()
+        val recorded = turns().mapNotNull { it.audioPath }.map { File(it).canonicalPath }.toSet()
+        assertTrue("有还没写进记录的句子", (queued - recorded).isNotEmpty())
+
+        val files = FileStorage(context)
+        val references = runBlocking { mediaReferencesOf(db, null) }
+        val preview = files.unreferenced(references)
+        assertTrue("预览里没有通话的文件：$preview", preview.none { it.parentFile!!.name == FileStorage.CALLS_DIR })
+        files.deleteUnreferenced(runBlocking { mediaReferencesOf(db, null) })
+        assertTrue("清理后通话的文件都还在", queued.all { File(it).isFile })
+
+        speaker.hold = false
+        speaker.pending?.invoke(true)
+        await("两句都放完、写进记录") { turns().size == 3 && phase() == CallPhase.LISTENING }
+        assertTrue(turns().all { it.audioPath != null && File(it.audioPath!!).isFile })
     }
 
     @Test

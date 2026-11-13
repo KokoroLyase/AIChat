@@ -452,7 +452,7 @@
 **扩展接口**
 
 - LlmProvider：拉取模型列表、发起流式对话；兼容 OpenAI 格式的服务商不用写新实现，直接在设置里添加
-- 语音服务（0.7.0）：`VoiceService` 接口，`VoiceApi` 实现两种通用格式（0.7.2 起另有各家的格式），见下面「语音的请求（0.7.0）」；0.7.2 起 `VoiceCatalog` 列音色（内置列表和从服务商取）、`VoicePreview` 试听，`AsrSplitter` 给智谱识别分段，`PcmAudio` 把 OpenRouter 的 pcm 包成 WAV；录音、编码、播放都抽成接口（`VoiceRecorder`、`AudioCodec`、`VoicePlayer`），JVM 测试换假实现。录音接口留了逐段回调 PCM 的口子（`pcmListener`），0.8.0 的语音通话最后没有用它，另写了逐帧采集的 `CallMicrophone`（见「语音通话的流程与请求」）。来源用字符串 `provider:{id}`，0.7.1 的本机来源写成 `local:system-tts`、`local:offline-asr`，没有改表和备份；合成只认系统语音、识别只认离线识别，认不出的本机来源按没有选处理
+- 语音服务（0.7.0）：`VoiceService` 接口，`VoiceApi` 实现两种通用格式（0.7.2 起另有各家的格式），见下面「语音的请求（0.7.0）」；0.7.2 起 `VoiceCatalog` 列音色（内置列表和从服务商取）、`VoicePreview` 试听，`AsrSplitter` 给智谱识别分段，`PcmAudio` 把 OpenRouter 的 pcm 包成 WAV；录音、编码、播放都抽成接口（`VoiceRecorder`、`AudioCodec`、`VoicePlayer`），JVM 测试换假实现。0.8.0 的语音通话另写了逐帧采集的 `CallMicrophone`（见「语音通话的流程与请求」）；录音接口原来留的逐段回调 PCM 的口子（`pcmListener`）没有人用，0.9.0 删掉。来源用字符串 `provider:{id}`，0.7.1 的本机来源写成 `local:system-tts`、`local:offline-asr`，没有改表和备份；合成只认系统语音、识别只认离线识别，认不出的本机来源按没有选处理
 - 本机语音（0.7.1）：系统语音合成是 `SystemTts` 接口，`AndroidSystemTts` 用 `TextToSpeech`（清单 `<queries>` 声明 `TTS_SERVICE`）：引擎连接一次后留着，同一时间合成一段，`synthesizeToFile` 写到 `cache/voice-temp` 再读回、删掉，最多等 60 秒；只用语言是中文（zh、cmn、yue）、不需要联网、已装好的音色，参数里要求不用联网合成。离线识别是 `OfflineAsrEngine` 接口，`SherpaOfflineAsrEngine` 用 sherpa-onnx 的 `OfflineRecognizer`（SenseVoice，语言自动、开启逆文本规整，2 个线程，CPU）：在后台线程识别，模型加载后留 2 分钟再释放；`supported()` 要求设备支持 arm64-v8a 且原生库能加载。模型文件由 `OfflineModelStore` 管理，下载由 `ModelDownloader`（OkHttp）和 WorkManager 前台任务 `ModelDownloadWorker` 完成，见下面「离线识别模型的下载（0.7.1）」。JVM 测试用假引擎和本机模拟服务器，真实识别和合成只能在真机验证
 
 ### 语音的请求（0.7.0）
