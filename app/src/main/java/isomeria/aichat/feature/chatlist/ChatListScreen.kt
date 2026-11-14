@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import isomeria.aichat.ui.components.StickToTop
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -132,9 +134,14 @@ fun ChatListContent(
         when {
             items == null -> Unit
             items.isEmpty() -> EmptyChats(onGoContacts)
-            else -> LazyColumn(Modifier.fillMaxSize().background(colors.listBackground)) {
+            else -> {
+                // 0.9.1 审计：会话排到第一位时还停在最顶上；会话换位置、删除时滑动和淡出，和收藏、聊天消息一样
+                val listState = rememberLazyListState()
+                StickToTop(listState, items.first().contactId)
+                LazyColumn(Modifier.fillMaxSize().background(colors.listBackground), state = listState) {
                 itemsIndexed(items, key = { _, item -> item.contactId }) { index, item ->
                     ConversationRow(
+                        modifier = Modifier.animateItem(),
                         item = item,
                         showDivider = index != items.lastIndex,
                         onClick = { onOpenChat(item.contactId) },
@@ -142,6 +149,7 @@ fun ChatListContent(
                         onToggleUnread = { onToggleUnread(item) },
                         onDelete = { onDelete(item) },
                     )
+                }
                 }
             }
         }
@@ -157,12 +165,13 @@ private fun ConversationRow(
     onTogglePin: () -> Unit,
     onToggleUnread: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     var pressAt by remember { mutableStateOf(Offset.Zero) }
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
-    Box {
+    Box(modifier) {
         Row(
             Modifier
                 .fillMaxWidth()

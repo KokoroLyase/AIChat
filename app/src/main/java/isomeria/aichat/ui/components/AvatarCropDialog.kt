@@ -58,6 +58,7 @@ fun AvatarCropDialog(source: Bitmap, onDismiss: () -> Unit, onCropped: (Bitmap) 
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
+        val close = LocalDialogClose.current
         Column(Modifier.fillMaxSize().background(Color.Black)) {
             Text(
                 stringResource(R.string.crop_title),
@@ -115,14 +116,17 @@ fun AvatarCropDialog(source: Bitmap, onDismiss: () -> Unit, onCropped: (Bitmap) 
                     stringResource(R.string.action_cancel),
                     color = Color.White,
                     style = WeTheme.typography.listTitle,
-                    modifier = Modifier.clickable(onClick = onDismiss).padding(16.dp),
+                    modifier = Modifier.clickable { close(onDismiss) }.padding(16.dp),
                 )
                 Spacer(Modifier.weight(1f))
                 WeButton(
                     text = stringResource(R.string.action_done),
                     onClick = {
                         val frame = frameSize
-                        if (frame > 0f) onCropped(crop(source, frame, zoom, offset))
+                        if (frame > 0f) {
+                            val cropped = crop(source, frame, zoom, offset)
+                            close { onCropped(cropped) }
+                        }
                     },
                     modifier = Modifier.padding(end = 8.dp),
                 )

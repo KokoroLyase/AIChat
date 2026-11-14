@@ -138,22 +138,29 @@ fun ContactEditScreen(
     fun tryBack() {
         if (state.dirty) showDiscard = true else onBack()
     }
-    // 0.7.2 选音色页：盖住整页，返回时回到编辑页
-    if (picker.open) {
-        BackHandler { viewModel.picker.close() }
-        isomeria.aichat.feature.voice.VoicePickerContent(
-            picker, viewModel.picker::setQuery, viewModel.picker::search, viewModel::pickVoice, viewModel.picker::preview, viewModel.picker::close,
-        )
-        return
+    // 0.7.2 选音色页、联系人的回复偏好（改动跟着联系人的「保存」）：盖住整页，返回时回到编辑页。
+    // 0.9.1 审计：像二级页面一样推入、滑出；回来时编辑页还停在原来的位置
+    val subPage: Any? = when {
+        picker.open -> picker
+        showReplyPreferences && state.loaded -> REPLY_PREFERENCES_PAGE
+        else -> null
     }
-    // 0.7.2 联系人的回复偏好：同样盖住整页，改动跟着联系人的「保存」
-    if (showReplyPreferences && state.loaded) {
-        BackHandler { showReplyPreferences = false }
-        ContactReplyPreferencesContent(
-            form, globalReplyPreferences, viewModel::setReplyMode, viewModel::updateReplyPreferences, onBack = { showReplyPreferences = false },
-        )
-        return
-    }
+    isomeria.aichat.navigation.SubPageHost(
+        subPage,
+        subPage = { page ->
+            if (page is isomeria.aichat.feature.voice.VoicePickerState) {
+                BackHandler { viewModel.picker.close() }
+                isomeria.aichat.feature.voice.VoicePickerContent(
+                    page, viewModel.picker::setQuery, viewModel.picker::search, viewModel::pickVoice, viewModel.picker::preview, viewModel.picker::close,
+                )
+            } else {
+                BackHandler { showReplyPreferences = false }
+                ContactReplyPreferencesContent(
+                    form, globalReplyPreferences, viewModel::setReplyMode, viewModel::updateReplyPreferences, onBack = { showReplyPreferences = false },
+                )
+            }
+        },
+    ) {
     BackHandler(enabled = state.dirty) { showDiscard = true }
     ImeBackHandler()
 
@@ -360,7 +367,11 @@ fun ContactEditScreen(
             },
         )
     }
+    }
 }
+
+/** 联系人编辑页里「回复偏好」子页面的标记 */
+private object REPLY_PREFERENCES_PAGE
 
 /**
  * 0.5.0 的两个开关和分条显示：「使用全局记忆」「使用回复偏好」默认开启；

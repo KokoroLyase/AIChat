@@ -1,7 +1,6 @@
 package isomeria.aichat.feature.chat
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -348,21 +347,29 @@ fun MessageRow(
                         start = if (sent) 0.dp else dimens.bubbleTailWidth,
                         end = if (sent) dimens.bubbleTailWidth else 0.dp,
                     )
+                    // 0.9.1 审计：展开、收起和换成译文时有动画，以前一下子出现、消失
                     val translation = message.translation
-                    when {
-                        translating == TranslationUi.Loading -> isomeria.aichat.ui.components.TranslationLoading(side)
-                        translating is TranslationUi.Failed -> isomeria.aichat.ui.components.TranslationFailed(
-                            reason = stringResource(failReasonText(translating.reason)),
-                            onRetry = { actions.onTranslate(message) },
-                            modifier = side,
-                        )
-                        message.translationShown && translation != null -> isomeria.aichat.ui.components.TranslationBlock(
-                            text = translation,
-                            sent = sent,
-                            onCopy = { actions.onCopy(translation) },
-                            onHide = { actions.onHideTranslation(message) },
-                            modifier = side,
-                        )
+                    val translationSlot: Any? = when {
+                        translating != null -> translating
+                        message.translationShown && translation != null -> translation
+                        else -> null
+                    }
+                    isomeria.aichat.ui.components.WeExpand(translationSlot, growFrom = if (sent) Alignment.TopEnd else Alignment.TopStart) { slot ->
+                        when (slot) {
+                            is TranslationUi.Failed -> isomeria.aichat.ui.components.TranslationFailed(
+                                reason = stringResource(failReasonText(slot.reason)),
+                                onRetry = { actions.onTranslate(message) },
+                                modifier = side,
+                            )
+                            is String -> isomeria.aichat.ui.components.TranslationBlock(
+                                text = slot,
+                                sent = sent,
+                                onCopy = { actions.onCopy(slot) },
+                                onHide = { actions.onHideTranslation(message) },
+                                modifier = side,
+                            )
+                            else -> isomeria.aichat.ui.components.TranslationLoading(side)
+                        }
                     }
                     // 引用（0.9.0）：气泡下面的灰色块，和气泡主体对齐（不算尖角）
                     val quoted = message.quoteText
@@ -508,11 +515,18 @@ private fun VoiceTranscript(message: Message, sent: Boolean, onLongClick: () -> 
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     val side = Modifier.padding(start = if (sent) 0.dp else dimens.bubbleTailWidth, end = if (sent) dimens.bubbleTailWidth else 0.dp, top = 4.dp)
-    when {
-        message.voiceShowText && message.content.isNotBlank() -> {
-            val description = stringResource(R.string.voice_text_desc, message.content)
+    // 0.9.1 审计：转文字展开、收起有动画（和思考过程一样），以前一下子出现、消失
+    val shown: Any? = when {
+        message.voiceShowText && message.content.isNotBlank() -> message.content
+        sent && message.content.isBlank() && message.status == MessageStatus.SENDING -> VoiceTranscribing
+        else -> null
+    }
+    isomeria.aichat.ui.components.WeExpand(shown, growFrom = if (sent) Alignment.TopEnd else Alignment.TopStart) { slot ->
+    when (slot) {
+        is String -> {
+            val description = stringResource(R.string.voice_text_desc, slot)
             Text(
-                message.content,
+                slot,
                 style = WeTheme.typography.message,
                 color = if (sent) colors.bubbleSentText else colors.bubbleReceivedText,
                 modifier = side
@@ -523,11 +537,15 @@ private fun VoiceTranscript(message: Message, sent: Boolean, onLongClick: () -> 
                     .padding(horizontal = dimens.bubblePaddingHorizontal, vertical = dimens.bubblePaddingVertical),
             )
         }
-        sent && message.content.isBlank() && message.status == MessageStatus.SENDING -> {
+        else -> {
             Text(stringResource(R.string.voice_transcribing), style = WeTheme.typography.small, color = colors.textSecondary, modifier = side)
         }
     }
+    }
 }
+
+/** 自己的语音正在识别（转文字的位置显示“正在转文字”） */
+private object VoiceTranscribing
 
 /** 发送失败的红色感叹号，点击重试 */
 @Composable
@@ -561,8 +579,7 @@ private fun ThinkingBlock(reasoning: String, millis: Long) {
             .background(colors.thinkingBackground)
             .clickable(role = androidx.compose.ui.semantics.Role.Button) { expanded = !expanded }
             .semantics { stateDescription = expandedText }
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-            .animateContentSize(),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -577,7 +594,8 @@ private fun ThinkingBlock(reasoning: String, millis: Long) {
                 modifier = Modifier.padding(start = 2.dp).size(16.dp),
             )
         }
-        if (expanded) {
+        // 0.9.1 审计：和转文字、译文同一套展开参数（宽、高一起展开，收起时淡出）
+        isomeria.aichat.ui.components.WeExpand(expanded, growFrom = Alignment.TopStart) {
             Text(
                 reasoning,
                 style = WeTheme.typography.thinking,

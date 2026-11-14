@@ -37,7 +37,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,26 +74,79 @@ import kotlinx.coroutines.launch
  * 所有弹窗都走这里，和页面用同一个字号。
  *
  * 0.9.1：[scaleIn] 为 true 时内容淡入加轻微缩放（对话框）；底部菜单自己做滑出，传 false。
+ *
+ * 0.9.1 审计后补上关闭动画：以前只有出现动画，点按钮、返回、点外面时对话框和背后的变暗一下子消失。
+ * 现在关闭时先淡出、缩小，背后的变暗也跟着渐变，再执行按钮的操作。弹窗里的按钮用 [LocalDialogClose] 关闭。
+ * 由调用方决定什么时候消失的（加载提示）传 [visible]：变成 false 时先淡出再移除。
  */
 @Composable
 fun WeDialogWindow(
     onDismissRequest: () -> Unit,
     properties: DialogProperties = DialogProperties(),
     scaleIn: Boolean = true,
+    visible: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
-    Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-        CompositionLocalProvider(LocalDensity provides density) {
-            if (scaleIn) {
-                val enter = rememberEnterProgress(WeMotion.DIALOG_ENTER)
-                Box(Modifier.scaleFadeIn(enter, WeMotion.DIALOG_START_SCALE), propagateMinConstraints = true) { content() }
-            } else {
-                content()
+    if (!scaleIn) {
+        if (!visible) return
+        Dialog(onDismissRequest = onDismissRequest, properties = properties) {
+            CompositionLocalProvider(LocalDensity provides density, content = content)
+        }
+        return
+    }
+    val shown = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val leaving = remember { mutableStateOf(false) }
+    val close: (() -> Unit) -> Unit = remember {
+        { then ->
+            if (!leaving.value) {
+                leaving.value = true
+                scope.launch {
+                    shown.animateTo(0f, tween(WeMotion.DIALOG_EXIT, easing = FastOutLinearInEasing))
+                    then()
+                    // 调用方没把对话框关掉（比如输入为空不能确定）：过两帧还在就重新显示
+                    repeat(2) { withFrameNanos { } }
+                    leaving.value = false
+                    shown.animateTo(1f, tween(WeMotion.DIALOG_ENTER, easing = WeMotion.Decelerate))
+                }
             }
         }
     }
+    // [visible] 变成 false 后接着显示到淡出结束
+    val everShown = remember { booleanArrayOf(false) }
+    var exited by remember { mutableStateOf(false) }
+    if (visible) everShown[0] = true
+    LaunchedEffect(visible) {
+        if (visible) {
+            exited = false
+            shown.animateTo(1f, tween(WeMotion.DIALOG_ENTER, easing = WeMotion.Decelerate))
+        } else if (everShown[0]) {
+            shown.animateTo(0f, tween(WeMotion.DIALOG_EXIT, easing = FastOutLinearInEasing))
+            exited = true
+        }
+    }
+    if (!visible && (!everShown[0] || exited)) return
+    val latestDismiss by rememberUpdatedState(onDismissRequest)
+    Dialog(onDismissRequest = { close { latestDismiss() } }, properties = properties) {
+        CompositionLocalProvider(LocalDensity provides density, LocalDialogClose provides close) {
+            // 背后的变暗跟着淡入淡出：窗口自带的变暗一下子出现、消失，改成按进度设置深浅（第一帧之前就设好）
+            val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+            val dim = remember(window) { window?.attributes?.dimAmount?.takeIf { it > 0f } ?: DEFAULT_SCRIM }
+            SideEffect { window?.setDimAmount(dim * shown.value) }
+            LaunchedEffect(window) {
+                if (window == null) return@LaunchedEffect
+                snapshotFlow { shown.value }.collect { window.setDimAmount(dim * it) }
+            }
+            Box(Modifier.scaleFadeIn(shown.asState(), WeMotion.DIALOG_START_SCALE), propagateMinConstraints = true) { content() }
+        }
+    }
 }
+
+/**
+ * 弹窗里的按钮用它关闭：先播放关闭动画，再执行传进来的操作（0.9.1 审计）。不在 [WeDialogWindow] 里时直接执行。
+ */
+val LocalDialogClose = staticCompositionLocalOf<(() -> Unit) -> Unit> { { it() } }
 
 /**
  * 微信式对话框：上面是标题和说明，下面是左右两个按钮，确认按钮为绿色（危险操作为红色）。
@@ -104,11 +161,14 @@ fun WeDialog(
     confirmText: String = stringResource(R.string.action_ok),
     dismissText: String? = stringResource(R.string.action_cancel),
     destructive: Boolean = false,
+    /** 为 false 时点确认按钮不关闭、不执行（比如名称还是空的） */
+    canConfirm: Boolean = true,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     WeDialogWindow(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val close = LocalDialogClose.current
         Column(
             Modifier
                 .padding(horizontal = 40.dp, vertical = 24.dp)
@@ -142,7 +202,7 @@ fun WeDialog(
             WeDivider(Modifier.background(colors.dialogBackground))
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                 if (dismissText != null) {
-                    DialogButton(dismissText, colors.textPrimary, onDismiss, Modifier.weight(1f))
+                    DialogButton(dismissText, colors.textPrimary, { close(onDismiss) }, Modifier.weight(1f))
                     Box(
                         Modifier
                             .width(dimens.dividerThickness)
@@ -153,7 +213,7 @@ fun WeDialog(
                 DialogButton(
                     confirmText,
                     if (destructive) colors.danger else colors.brand,
-                    onConfirm,
+                    { if (canConfirm) close(onConfirm) },
                     Modifier.weight(1f),
                     bold = true,
                 )
@@ -349,13 +409,17 @@ fun WeActionSheet(
 /** 窗口没有给出变暗程度时用的背景暗度 */
 private const val DEFAULT_SCRIM = 0.6f
 
-/** 加载提示：屏幕中间一块深色圆角方块，转圈加一行字；不能点掉。 */
+/**
+ * 加载提示：屏幕中间一块深色圆角方块，转圈加一行字；不能点掉。
+ * 0.9.1 审计：用 [visible] 控制显示，做完时淡出（以前由调用方直接移除，一下子消失）。
+ */
 @Composable
-fun WeLoading(text: String) {
+fun WeLoading(text: String, visible: Boolean = true) {
     val colors = WeTheme.colors
     WeDialogWindow(
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+        visible = visible,
     ) {
         Column(
             Modifier

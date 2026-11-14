@@ -90,6 +90,7 @@ class ModelEditUiTest {
         compose.setContent { AIChatTheme(darkTheme = false) { ConflictDialog(refs, {}) { confirmed = true } } }
         compose.onNodeWithText("取消").assertIsDisplayed()
         compose.onNodeWithText("仍然保存").assertIsDisplayed().performClick()
+        compose.waitForIdle() // 对话框先淡出再执行（0.9.1 审计）
         assertTrue(confirmed)
         // 同一联系人合成一行，名单末尾滚动后能看到
         compose.onNodeWithText("联系人60：聊天、记忆").performScrollTo().assertIsDisplayed()
@@ -138,6 +139,7 @@ class ModelEditUiTest {
         compose.onNodeWithContentDescription("返回").performClick()
         assertEquals(1, backs)
         compose.onNodeWithText("放弃").performClick()
+        compose.waitForIdle() // 对话框先淡出再执行（0.9.1 审计）
         assertEquals(2, backs)
     }
 
@@ -170,6 +172,7 @@ class ModelEditUiTest {
         assertEquals(0, removes)
         compose.onNodeWithText("移除模型").performScrollTo().performClick()
         compose.onAllNodesWithText("移除").onLast().performClick()
+        compose.waitForIdle() // 对话框先淡出再执行（0.9.1 审计）
         assertEquals(1, removes)
     }
 

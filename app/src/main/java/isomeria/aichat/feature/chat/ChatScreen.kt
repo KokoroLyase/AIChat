@@ -118,6 +118,8 @@ import isomeria.aichat.ui.components.WeIcons
 import isomeria.aichat.ui.components.WeTopBar
 import isomeria.aichat.ui.components.FootnoteText
 import isomeria.aichat.ui.components.WeListRow
+import isomeria.aichat.ui.components.WeExpand
+import isomeria.aichat.ui.components.FadeScaleVisibility
 import isomeria.aichat.ui.theme.SelfAvatarColor
 import isomeria.aichat.ui.theme.WeTheme
 import kotlinx.coroutines.delay
@@ -478,7 +480,8 @@ fun ChatScreen(
     }
 
     Column(Modifier.fillMaxSize().background(colors.pageBackground)) {
-        val selected = selection
+        // 0.9.1 审计：进出多选时顶栏也和底栏一样交叉淡变（以前只有底栏有）
+        isomeria.aichat.ui.components.SelectionCrossfade(selection) { selected ->
         if (selected != null) {
             // 多选（0.9.0）：顶栏换成“已选 N 条”和“取消”
             WeTopBar(
@@ -493,6 +496,7 @@ fun ChatScreen(
                     TopBarIcon(WeIcons.More, stringResource(R.string.chat_info), { onOpenChatInfo(contact.id) })
                 }
             }
+        }
         }
 
         val waiting = state.waitingReply
@@ -585,17 +589,34 @@ fun ChatScreen(
                 showArrow = false,
             )
         }
-        if (newMessageCount > 0 && !atBottom && focusDone) {
-            NewMessagesButton(newMessageCount, viewModel::goToLatest, Modifier.align(Alignment.BottomEnd))
+        // 0.9.1 审计：「N 条新消息」浮标淡入、缩放出现，回到底部时淡出（以前一下子出现、消失）
+        FadeScaleVisibility(newMessageCount > 0 && !atBottom && focusDone, Modifier.align(Alignment.BottomEnd)) {
+            val lastCount = remember { intArrayOf(1) }
+            if (newMessageCount > 0) lastCount[0] = newMessageCount
+            NewMessagesButton(lastCount[0], viewModel::goToLatest)
         }
-        recording?.let { rec ->
-            RecordingOverlay(
-                state = rec,
-                maxMillis = MAX_RECORD_MILLIS,
-                onCancel = voiceActions.onCancel,
-                onToText = voiceActions.onToText,
-                onFinish = { viewModel.finishRecording(RecordZone.SEND) },
-            )
+        // 0.9.1 审计：录音浮层淡入淡出（以前一下子盖上、一下子消失）
+        val lastRecording = remember { arrayOfNulls<isomeria.aichat.ui.components.RecordingUi>(1) }
+        recording?.let { lastRecording[0] = it }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = recording != null,
+            modifier = Modifier.matchParentSize(),
+            enter = androidx.compose.animation.fadeIn(tween(WeMotion.OVERLAY_FADE)),
+            exit = androidx.compose.animation.fadeOut(tween(WeMotion.OVERLAY_FADE)),
+            label = "recordingOverlay",
+        ) {
+            val rec = recording ?: lastRecording[0]
+            if (rec != null) {
+                Box(Modifier.fillMaxSize()) {
+                    RecordingOverlay(
+                        state = rec,
+                        maxMillis = MAX_RECORD_MILLIS,
+                        onCancel = voiceActions.onCancel,
+                        onToText = voiceActions.onToText,
+                        onFinish = { viewModel.finishRecording(RecordZone.SEND) },
+                    )
+                }
+            }
         }
         }
 
@@ -624,7 +645,8 @@ fun ChatScreen(
             // 0.8.0：正在和这个联系人通话，不从这里发消息
             InCallBar(callStartedAt) { onCall(contact.id) }
         } else if (contact != null) {
-            quote?.let { quoted ->
+            // 0.9.1 审计：引用条展开、收起，输入栏和消息列表跟着平滑移动（以前一下子跳）
+            WeExpand(quote) { quoted ->
                 val name = if (quoted.role == isomeria.aichat.data.db.Role.USER) state.myName.ifBlank { stringResource(R.string.default_nickname) } else contact.name
                 isomeria.aichat.ui.components.QuoteBar(
                     label = isomeria.aichat.ui.components.quoteLabel(name, quoted.type, quoted.content),
@@ -971,17 +993,12 @@ fun NewMessagesButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modi
 }
 
 /**
- * 输入栏下面的区域：高度取「键盘」「导航栏」「面板（[reserve]）+ 导航栏」中最高的。
- * 面板和键盘一样高时，两者切换的过程中这块区域高度不变，输入栏就不会跳动。
- * 高度在布局阶段按窗口边衬计算，键盘动画时不会让整页重组。
- */
-/**
  * 输入栏下面的区域：键盘、表情或更多面板、导航栏，取最高的那个。
  *
  * 面板（0.9.1 真机反馈后改）：打开时像键盘一样从下往上升起，关上（返回手势、点聊天区域、切到语音）时落下，
  * 输入栏和消息列表跟着走；落下的过程中仍画着刚才的面板。和键盘互相切换时从键盘当前的高度接着走，输入栏不跳。
  * [open] 时留出 [height]（不含导航栏）；[panel] 是面板内容，null 表示只留位置（从面板切回键盘、等键盘升起时）。
- * [ime] 是键盘的位置，测试里可以指定。
+ * 高度在布局阶段按窗口边衬计算，键盘动画时不会让整页重组。[ime] 是键盘的位置，测试里可以指定。
  */
 @Composable
 internal fun ChatBottomArea(

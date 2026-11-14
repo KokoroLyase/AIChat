@@ -42,9 +42,22 @@ object WeMotion {
     const val MENU_ENTER = 150
     const val MENU_START_SCALE = 0.85f
 
-    /** 对话框：淡入加轻微缩放 */
+    /** 长按菜单、「+」菜单关闭：淡出、缩回去（0.9.1 审计补上，以前一下子消失） */
+    const val MENU_EXIT = 120
+
+    /** 对话框：淡入加轻微缩放；关闭时淡出、缩小，背后的变暗跟着渐变（关闭动画 0.9.1 审计补上） */
     const val DIALOG_ENTER = 180
+    const val DIALOG_EXIT = 150
     const val DIALOG_START_SCALE = 0.92f
+
+    /** 录音浮层出现、消失：淡入淡出（0.9.1 审计补上） */
+    const val OVERLAY_FADE = 150
+
+    /**
+     * 展开、收起：气泡下面的转文字和译文、思考过程、设置页的「高级」、输入栏上面的引用条、「N 条新消息」浮标。
+     * 高度跟着变、内容淡入淡出（0.9.1 审计：以前只有思考过程有动画，其他一下子出现、消失）
+     */
+    const val EXPAND = 200
 
     /** 底部菜单：从下往上滑出，背景渐暗 */
     const val SHEET_ENTER = 220

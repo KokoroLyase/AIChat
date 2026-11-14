@@ -79,9 +79,10 @@ fun UpdateDialog(
                     Text(release.notes, style = WeTheme.typography.small, color = colors.textPrimary)
                 }
             }
-            UpdateButton(stringResource(R.string.update_now), colors.brand, onUpdate, bold = true)
-            UpdateButton(stringResource(R.string.update_later), colors.textPrimary, onLater)
-            UpdateButton(stringResource(R.string.update_ignore), colors.textTertiary, onIgnore)
+            val close = LocalDialogClose.current
+            UpdateButton(stringResource(R.string.update_now), colors.brand, { close(onUpdate) }, bold = true)
+            UpdateButton(stringResource(R.string.update_later), colors.textPrimary, { close(onLater) })
+            UpdateButton(stringResource(R.string.update_ignore), colors.textTertiary, { close(onIgnore) })
         }
     }
 }

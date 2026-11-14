@@ -104,6 +104,7 @@ class GlobalFeaturesUiTest {
         compose.onNodeWithText("删除类别「个人信息」？其中的 2 个主题和 3 条记忆会一起删除，无法撤销。").assertExists()
         assertTrue(deleted.isEmpty())
         compose.onNodeWithText(text(R.string.action_delete)).performClick()
+        compose.waitForIdle() // 对话框先淡出再执行（0.9.1 审计）
         assertEquals(listOf(1L), deleted)
     }
 
@@ -136,6 +137,7 @@ class GlobalFeaturesUiTest {
         compose.onNodeWithText(text(R.string.global_memory_item_delete)).performClick()
         compose.onNodeWithText(text(R.string.global_memory_item_delete_confirm)).assertExists()
         compose.onNodeWithText(text(R.string.action_delete)).performClick()
+        compose.waitForIdle() // 对话框先淡出再执行（0.9.1 审计）
         assertEquals(listOf(100L), deleted)
         compose.onNodeWithText(text(R.string.global_memory_item_add)).performClick()
         assertEquals(listOf(100L, -1L), opened)

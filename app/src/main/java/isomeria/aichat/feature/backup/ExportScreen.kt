@@ -261,7 +261,7 @@ fun ExportContent(state: ExportUiState, onBack: () -> Unit, onIncludeKey: (Boole
         }
     }
 
-    if (state.running) WeLoading(stringResource(R.string.export_running))
+    WeLoading(stringResource(R.string.export_running), visible = state.running)
     state.result?.let { result ->
         WeDialog(
             title = stringResource(R.string.export_done_title),

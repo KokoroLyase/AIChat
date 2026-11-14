@@ -280,7 +280,7 @@ fun SettingsSectionScreen(
             },
         )
     }
-    if (checkingUpdate) WeLoading(stringResource(R.string.update_checking))
+    WeLoading(stringResource(R.string.update_checking), visible = checkingUpdate)
     if (updateFailed) {
         WeDialog(
             title = stringResource(R.string.update_failed_title),

@@ -81,7 +81,8 @@ fun UpdateProgressDialog(state: UpdateInstallState.Downloading, onCancel: () -> 
                     )
                 }
             }
-            UpdateButton(stringResource(R.string.action_cancel), colors.textPrimary, onCancel)
+            val close = LocalDialogClose.current
+            UpdateButton(stringResource(R.string.action_cancel), colors.textPrimary, { close(onCancel) })
         }
     }
 }

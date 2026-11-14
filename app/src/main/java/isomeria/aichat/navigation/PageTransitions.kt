@@ -1,7 +1,10 @@
 package isomeria.aichat.navigation
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -88,6 +91,44 @@ internal fun PageFrame(
     ) { state -> if (state == EnterExitState.Visible) SHADOW_ALPHA_COVERING else SHADOW_ALPHA_AWAY }
     Box(Modifier.fillMaxSize().edgeShadow(WeTheme.dimens.pageEdgeShadow) { shadowAlpha.value }) {
         content()
+    }
+}
+
+/**
+ * 页面里盖住整页的子页面（选音色、联系人的回复偏好、崩溃日志详情）：[sub] 不为 null 时显示 [subPage]。
+ * 0.9.1 审计后改：以前是直接换掉，没有动画；现在和打开、返回二级页面一样推入、滑出，左边缘带阴影。
+ * 下层页面 [base] 的可保存状态（滚动位置等）保留，返回时还在原处（以前回来会回到页面顶部）。
+ * 子页面滑出的过程中 [sub] 已经是 null，接着画最后一次的内容。
+ */
+@Composable
+fun <T : Any> SubPageHost(sub: T?, subPage: @Composable (T) -> Unit, base: @Composable () -> Unit) {
+    val holder = rememberSaveableStateHolder()
+    AnimatedContent(
+        targetState = sub,
+        contentKey = { it != null },
+        transitionSpec = {
+            if (targetState != null) {
+                slideInHorizontally(tween(PUSH_DURATION, easing = FastOutSlowInEasing)) { it } togetherWith
+                    slideOutHorizontally(tween(PUSH_DURATION, easing = FastOutSlowInEasing)) { -(it * PUSH_UNDER_OFFSET).roundToInt() }
+            } else {
+                // 返回：子页面在上面滑走
+                (slideInHorizontally(tween(POP_UNDER_DURATION, easing = DecelerateQuad)) { -(it * POP_UNDER_OFFSET).roundToInt() } togetherWith
+                    slideOutHorizontally(tween(POP_TOP_DURATION, easing = DecelerateCubic)) { it }).apply { targetContentZIndex = -1f }
+            }
+        },
+        label = "subPage",
+    ) { shown ->
+        if (shown == null) {
+            holder.SaveableStateProvider("base") { base() }
+        } else {
+            val shadowAlpha = transition.animateFloat(
+                transitionSpec = {
+                    if (targetState == EnterExitState.PostExit) tween(POP_TOP_DURATION, easing = DecelerateCubic) else tween(PUSH_DURATION, easing = FastOutSlowInEasing)
+                },
+                label = "subPageShadow",
+            ) { state -> if (state == EnterExitState.Visible) SHADOW_ALPHA_COVERING else SHADOW_ALPHA_AWAY }
+            Box(Modifier.fillMaxSize().edgeShadow(WeTheme.dimens.pageEdgeShadow) { shadowAlpha.value }) { subPage(shown) }
+        }
     }
 }
 

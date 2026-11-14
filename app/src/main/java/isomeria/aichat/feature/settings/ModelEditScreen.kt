@@ -213,7 +213,8 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
             FootnoteText(stringResource(R.string.model_config_source_note))
             var advanced by rememberSaveable { mutableStateOf(false) }
             WeListRow(stringResource(R.string.model_advanced), onClick = { advanced = !advanced }, expanded = advanced, showDivider = advanced)
-            if (advanced) {
+            // 0.9.1 审计：展开、收起有动画（和思考过程同一套）
+            isomeria.aichat.ui.components.WeExpand(advanced) { androidx.compose.foundation.layout.Column {
                 val override = ModelRules.override(model.compatibilityOverride)
                 val inherited = state.provider?.let { ModelRules.encoding(it, model.copy(compatibilityOverride = null)) } ?: Compatibility.GENERIC.encoding
                 fun set(value: CompatibilityOverride) = onChange(model.copy(compatibilityOverride = ModelRules.encode(value)))
@@ -226,7 +227,7 @@ fun ModelEditContent(state: ModelEditState, onBack: () -> Unit, onChange: (Provi
                 // 这是一个动作，不进入下一页；没有覆盖时没什么可恢复的
                 WeActionRow(stringResource(R.string.rule_restore_inheritance), onClick = { onChange(model.copy(compatibilityOverride = null)) }, enabled = model.compatibilityOverride != null)
                 FootnoteText(stringResource(R.string.model_advanced_note))
-            }
+            } }
             Spacer(Modifier.height(8.dp))
             WeActionRow(stringResource(R.string.model_remove), onClick = { confirmRemove = true }, danger = true)
             Spacer(Modifier.height(d.horizontalPadding))

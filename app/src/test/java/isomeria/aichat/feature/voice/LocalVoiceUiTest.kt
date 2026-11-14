@@ -49,6 +49,7 @@ class LocalVoiceUiTest {
         compose.onNodeWithText("下载模型").performClick()
         assertEquals("点了还没确认，不下载", emptyList<String>(), calls)
         compose.onNodeWithText("下载").performClick()
+        compose.waitForIdle() // 对话框先淡出再执行（0.9.1 审计）
         assertEquals(listOf("download"), calls)
         assertEquals(0, compose.onAllNodesWithTextCount("删除模型") + compose.onAllNodesWithTextCount("删除已下载的部分"))
     }
@@ -76,6 +77,7 @@ class LocalVoiceUiTest {
         compose.onNodeWithText("下载").performClick()
         compose.onNodeWithText("删除已下载的部分").performClick()
         compose.onNodeWithText("删除").performClick()
+        compose.waitForIdle() // 对话框先淡出再执行（0.9.1 审计）
         assertEquals(listOf("download", "delete"), calls)
     }
 
@@ -86,6 +88,7 @@ class LocalVoiceUiTest {
         compose.onNodeWithText("删除模型").performClick()
         assertEquals(listOf("use:true"), calls)
         compose.onNodeWithText("删除").performClick()
+        compose.waitForIdle() // 对话框先淡出再执行（0.9.1 审计）
         assertEquals(listOf("use:true", "delete"), calls)
     }
 

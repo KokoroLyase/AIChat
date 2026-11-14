@@ -526,11 +526,14 @@ fun VoiceProviderEditScreen(onBack: () -> Unit, viewModel: VoiceProviderEditView
         }
     }
     val picker by viewModel.picker.state.collectAsStateWithLifecycle()
-    if (picker.open) {
-        BackHandler { viewModel.picker.close() }
-        VoicePickerContent(picker, viewModel.picker::setQuery, viewModel.picker::search, viewModel::pickVoice, viewModel.picker::preview, viewModel.picker::close)
-        return
-    }
+    // 选音色页盖住整页。0.9.1 审计：像二级页面一样推入、滑出，回来时编辑页还停在原来的位置
+    isomeria.aichat.navigation.SubPageHost(
+        picker.takeIf { it.open },
+        subPage = { shown ->
+            BackHandler { viewModel.picker.close() }
+            VoicePickerContent(shown, viewModel.picker::setQuery, viewModel.picker::search, viewModel::pickVoice, viewModel.picker::preview, viewModel.picker::close)
+        },
+    ) {
     BackHandler(enabled = state.dirty) { confirmDiscard = true }
     ImeBackHandler()
     VoiceProviderEditContent(
@@ -554,6 +557,7 @@ fun VoiceProviderEditScreen(onBack: () -> Unit, viewModel: VoiceProviderEditView
                 onBack()
             },
         )
+    }
     }
 }
 

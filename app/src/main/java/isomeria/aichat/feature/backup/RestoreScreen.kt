@@ -378,8 +378,8 @@ fun RestoreContent(state: RestoreUiState, onBack: () -> Unit, onPick: () -> Unit
         }
     }
 
-    if (state.reading) WeLoading(stringResource(R.string.restore_reading))
-    if (state.restoring) WeLoading(stringResource(R.string.restore_running))
+    WeLoading(stringResource(R.string.restore_reading), visible = state.reading)
+    WeLoading(stringResource(R.string.restore_running), visible = state.restoring)
     if (state.confirmOverwrite) {
         val selected = state.selectedModules
         val names = BackupModule.entries.filter { it in selected }.map { stringResource(moduleTitle(it)) }.joinToString("、")

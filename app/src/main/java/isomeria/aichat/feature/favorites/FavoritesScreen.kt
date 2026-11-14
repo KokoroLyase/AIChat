@@ -202,7 +202,9 @@ fun FavoritesContent(
 ) {
     val colors = WeTheme.colors
     Column(Modifier.fillMaxSize().background(colors.pageBackground)) {
-        if (searching) {
+        // 0.9.1 审计：顶栏和搜索框交叉淡变（以前一下子换掉）
+        androidx.compose.animation.Crossfade(searching, animationSpec = androidx.compose.animation.core.tween(isomeria.aichat.ui.theme.WeMotion.SELECTION), label = "favoritesSearch") { searchingNow ->
+        if (searchingNow) {
             val focus = remember { FocusRequester() }
             WeSearchBar(query, onQueryChange, onCancelSearch, focus, hint = stringResource(R.string.favorites_search_hint))
             LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -210,6 +212,7 @@ fun FavoritesContent(
             WeTopBar(stringResource(R.string.favorites_title), onBack = onBack, showLine = true) {
                 TopBarIcon(WeIcons.Search, stringResource(R.string.favorites_search_hint), onStartSearch)
             }
+        }
         }
         when {
             entries == null -> Unit

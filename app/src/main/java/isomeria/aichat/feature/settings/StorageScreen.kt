@@ -137,5 +137,5 @@ fun StorageContent(state: StorageState, onBack: () -> Unit, onRefresh: () -> Uni
             confirmText = stringResource(R.string.action_clean),
         )
     }
-    if (state.working && !state.loading) WeLoading(stringResource(R.string.local_working))
+    WeLoading(stringResource(R.string.local_working), visible = state.working && !state.loading)
 }

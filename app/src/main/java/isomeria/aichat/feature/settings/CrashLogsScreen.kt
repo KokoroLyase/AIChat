@@ -152,20 +152,37 @@ fun CrashLogsContent(
     val colors = WeTheme.colors
     // 系统返回和顶栏返回一致：详情先回到列表
     BackHandler(enabled = state.selected != null) { onSelect(null) }
-    Column(Modifier.fillMaxSize().background(colors.pageBackground)) {
-        WeTopBar(
-            stringResource(if (state.selected != null) R.string.crash_detail_title else R.string.crash_title),
-            onBack = { if (state.selected != null) onSelect(null) else onBack() },
-        )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
-            GroupSpacer()
+    // 列表和下面的说明；详情页也用（说明、读取失败）
+    @Composable
+    fun page(title: Int, back: () -> Unit, content: @Composable () -> Unit) {
+        Column(Modifier.fillMaxSize().background(colors.pageBackground)) {
+            WeTopBar(stringResource(title), onBack = back)
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
+                GroupSpacer()
+                content()
+                if (state.failed) {
+                    ErrorNote(stringResource(R.string.local_failed))
+                    WeListRow(stringResource(R.string.local_refresh), onClick = onRefresh, enabled = !state.busy, showArrow = false)
+                }
+                if (state.completed) FootnoteText(stringResource(R.string.crash_cleared))
+                FootnoteText(stringResource(R.string.crash_notice))
+            }
+        }
+    }
+    // 0.9.1 审计：详情像二级页面一样推入、滑出（以前是原地换内容）；回到列表时还停在原来的位置
+    isomeria.aichat.navigation.SubPageHost(
+        state.detail.takeIf { !state.loading },
+        subPage = { detail ->
+            page(R.string.crash_detail_title, back = { onSelect(null) }) {
+                CrashLogDetail(detail)
+                GroupSpacer()
+                WeListRow(stringResource(R.string.crash_export), enabled = !state.busy, onClick = onExport, showArrow = false)
+            }
+        },
+    ) {
+        page(R.string.crash_title, back = onBack) {
             when {
                 state.loading -> FootnoteText(stringResource(R.string.local_loading))
-                state.detail != null -> {
-                    CrashLogDetail(state.detail)
-                    GroupSpacer()
-                    WeListRow(stringResource(R.string.crash_export), enabled = !state.busy, onClick = onExport, showArrow = false)
-                }
                 else -> {
                     if (state.names.isEmpty() && !state.failed && !state.completed) FootnoteText(stringResource(R.string.crash_empty))
                     state.names.forEachIndexed { index, name ->
@@ -177,12 +194,6 @@ fun CrashLogsContent(
                     }
                 }
             }
-            if (state.failed) {
-                ErrorNote(stringResource(R.string.local_failed))
-                WeListRow(stringResource(R.string.local_refresh), onClick = onRefresh, enabled = !state.busy, showArrow = false)
-            }
-            if (state.completed) FootnoteText(stringResource(R.string.crash_cleared))
-            FootnoteText(stringResource(R.string.crash_notice))
         }
     }
     if (confirm) {
@@ -194,5 +205,5 @@ fun CrashLogsContent(
             destructive = true,
         )
     }
-    if (state.busy && !state.loading && !state.quiet) WeLoading(stringResource(R.string.local_working))
+    WeLoading(stringResource(R.string.local_working), visible = state.busy && !state.loading && !state.quiet)
 }

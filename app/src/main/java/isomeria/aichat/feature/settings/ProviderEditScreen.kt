@@ -73,6 +73,7 @@ import isomeria.aichat.feature.chat.failReasonText
 import isomeria.aichat.navigation.NEW_PROVIDER
 import isomeria.aichat.navigation.ProviderEditRoute
 import isomeria.aichat.ui.components.FootnoteText
+import isomeria.aichat.ui.components.WeExpand
 import isomeria.aichat.ui.components.FormRow
 import isomeria.aichat.ui.components.GroupSpacer
 import isomeria.aichat.ui.components.ImeBackHandler
@@ -584,7 +585,8 @@ fun ProviderEditContent(
             }
             var advanced by rememberSaveable { mutableStateOf(false) }
             WeListRow(stringResource(R.string.provider_advanced), onClick = { advanced = !advanced }, expanded = advanced)
-            if (advanced) {
+            // 0.9.1 审计：展开、收起有动画（和思考过程同一套）
+            WeExpand(advanced) { Column {
                 WeDivider(startIndent = dimens.horizontalPadding)
                 ChoiceRow(
                     stringResource(R.string.provider_compatibility),
@@ -594,7 +596,7 @@ fun ProviderEditContent(
                 )
                 if (state.savedForm.compatibility == Compatibility.LEGACY.name) FootnoteText(stringResource(R.string.compat_legacy_note))
                 FootnoteText(stringResource(R.string.provider_protocol))
-            }
+            } }
 
             GroupSpacer()
             val keyLabel = stringResource(R.string.llm_api_key)

@@ -792,6 +792,8 @@ internal fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, o
         title = title,
         message = "",
         onDismiss = onDismiss,
+        // 名称是空的：点确定没反应，对话框也不播关闭动画
+        canConfirm = text.isNotBlank(),
         onConfirm = {
             if (text.isNotBlank()) {
                 onDismiss()
