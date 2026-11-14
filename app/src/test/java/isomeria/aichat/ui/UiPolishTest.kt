@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -41,6 +42,7 @@ import isomeria.aichat.feature.call.CallPlayerUi
 import isomeria.aichat.feature.call.CallUi
 import isomeria.aichat.feature.call.isTurnPlaceholder
 import isomeria.aichat.feature.chat.ChatPageSample
+import isomeria.aichat.feature.chat.longVoiceRows
 import isomeria.aichat.feature.chat.selectRows
 import isomeria.aichat.feature.chat.sampleContact
 import isomeria.aichat.feature.chatinfo.ChatInfoContent
@@ -59,6 +61,7 @@ import isomeria.aichat.ui.components.TOP_BAR_MIN_TITLE_SCALE
 import isomeria.aichat.ui.components.TitleSlot
 import isomeria.aichat.ui.components.TopBarIcon
 import isomeria.aichat.ui.components.VoiceBubble
+import isomeria.aichat.ui.components.voiceRowBubbleWidth
 import isomeria.aichat.ui.components.WeActionRow
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeIcon
@@ -348,6 +351,93 @@ class UiPolishTest {
         assertTrue("秒数被裁掉", fullyShown("10″"))
     }
 
+    // ---------- 第 11 条（真机验证时补）：长语音旁边的「转文字」 ----------
+    // 真机（411dp 宽、系统字体 1.1 × App 特大）上没听过的 60 秒语音旁边「转文字」折成两行，多选时一字一行；
+    // 窄屏时整行比屏幕宽、居中摆放，语音条的尾巴和「转文字」都看不见。改成先缩短语音条，最短到秒数放得下一行
+
+    @Test
+    fun voiceRowBubbleWidth_shrinksBubbleBeforeToText() {
+        // 放得下：按秒数的宽度
+        assertEquals(200, voiceRowBubbleWidth(available = 400, desired = 200, minimum = 90, besides = 80))
+        // 放不下：语音条缩短，旁边拿到要的宽度
+        assertEquals(220, voiceRowBubbleWidth(available = 300, desired = 250, minimum = 90, besides = 80))
+        // 最短到声波和秒数放得下一行
+        assertEquals(90, voiceRowBubbleWidth(available = 150, desired = 250, minimum = 90, besides = 80))
+        // 特大字体的短语音：秒数比按秒数的宽度还宽时放宽
+        assertEquals(120, voiceRowBubbleWidth(available = 400, desired = 80, minimum = 120, besides = 80))
+        // 不超过整行
+        assertEquals(60, voiceRowBubbleWidth(available = 60, desired = 250, minimum = 90, besides = 80))
+    }
+
+    @Test @Config(qualifiers = "w411dp-h860dp-xxhdpi")
+    fun longVoice_phoneLarge_toTextOnOneLine() {
+        show(PHONE_LARGE) { ChatPageSample(rows = longVoiceRows) }
+        assertVoiceRowsFit(toTextOneLine = true)
+    }
+
+    @Test @Config(qualifiers = "w411dp-h860dp-xxhdpi")
+    fun longVoice_phoneLargeSelecting_toTextOnOneLine() {
+        show(PHONE_LARGE) { ChatPageSample(rows = longVoiceRows, selection = setOf(61L)) }
+        assertVoiceRowsFit(toTextOneLine = true)
+    }
+
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi")
+    fun longVoice_narrowLarge_rowInsideScreen() {
+        show(PHONE_LARGE) { ChatPageSample(rows = longVoiceRows) }
+        assertVoiceRowsFit(toTextOneLine = true)
+    }
+
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi")
+    fun longVoice_narrowLargestSelecting_rowInsideScreen() {
+        show { ChatPageSample(rows = longVoiceRows, selection = setOf(61L)) }
+        assertVoiceRowsFit(toTextOneLine = false)
+    }
+
+    /**
+     * 每条长语音：语音条在屏幕里、秒数一行不被裁；两条对方的语音左边对齐（整行没有被居中挤歪）；
+     * 显示出来的「转文字」完整、不压语音条
+     */
+    private fun assertVoiceRowsFit(toTextOneLine: Boolean) {
+        val width = rootWidth()
+        val bubbles = listOf("语音，60 秒", "语音，42 秒").flatMap { desc ->
+            compose.onAllNodesWithContentDescription(desc, useUnmergedTree = true).fetchSemanticsNodes().map { node ->
+                with(compose.density) { node.boundsInRoot.let { DpRect(it.left.toDp(), it.top.toDp(), it.right.toDp(), it.bottom.toDp()) } }
+            }
+        }
+        assertEquals("应有三条长语音", 3, bubbles.size)
+        bubbles.forEach { b -> assertTrue("语音条超出屏幕 $b / $width", b.left >= 0.dp && b.right <= width + 0.5.dp) }
+        val received = bubbles.sortedBy { it.top }.take(2)
+        assertTrue("两条对方的语音没有左对齐：$received", kotlin.math.abs((received[0].left - received[1].left).value) < 1f)
+        listOf("60″", "42″").forEach { seconds ->
+            compose.onAllNodesWithText(seconds, useUnmergedTree = true).fetchSemanticsNodes().forEach { node ->
+                val layout = textLayout(node)
+                assertEquals("$seconds 折行", 1, layout.lineCount)
+                assertFalse("$seconds 被裁", layout.cut())
+            }
+        }
+        // 极窄时连一个字都放不下的「转文字」不显示（不放到屏幕上），只看显示出来的
+        val labels = compose.onAllNodesWithText("转文字", useUnmergedTree = true).fetchSemanticsNodes().filter { it.layoutInfo.isPlaced }
+        if (toTextOneLine) assertEquals("「转文字」应该三个都显示", 3, labels.size)
+        labels.forEach { node ->
+            val layout = textLayout(node)
+            val shown = node.boundsInRoot
+            assertTrue("「转文字」没有完整显示 ${shown.width}x${shown.height} / ${layout.size}", shown.width >= layout.size.width - 1f && shown.height >= layout.size.height - 1f)
+            assertFalse("「转文字」的字比文字框宽，被裁掉", layout.cut())
+            if (toTextOneLine) assertEquals("「转文字」折行", 1, layout.lineCount)
+            val box = with(compose.density) { DpRect(shown.left.toDp(), shown.top.toDp(), shown.right.toDp(), shown.bottom.toDp()) }
+            assertTrue("「转文字」超出屏幕 $box", box.left >= 0.dp && box.right <= width + 0.5.dp)
+            bubbles.filter { it.top < box.bottom && box.top < it.bottom }.forEach { b ->
+                assertTrue("「转文字」$box 压到语音条 $b", box.left >= b.right - 0.5.dp || box.right <= b.left + 0.5.dp)
+            }
+        }
+    }
+
+    private fun textLayout(node: androidx.compose.ui.semantics.SemanticsNode): TextLayoutResult {
+        val out = mutableListOf<TextLayoutResult>()
+        node.config[SemanticsActions.GetTextLayoutResult].action!!.invoke(out)
+        return out.first()
+    }
+
     // ---------- ① 窄屏大字体：列表行和下一行不重叠 ----------
     // 0.9.0 截图里「选择音色」和「语气和风格」叠在一起，查下来是截图样例的问题：样例的 Column 不能滚动，
     // 内容比屏幕高时最后几行被压缩、居中摆放，和上一行重叠。真实页面可以滚动，不会这样。这里按真实页面放在可滚动的列里，
@@ -455,5 +545,8 @@ class UiPolishTest {
 
     private companion object {
         const val LARGEST = 2.5f
+
+        /** 测试手机上的设置：系统字体 1.1 × App「特大」1.25 */
+        const val PHONE_LARGE = 1.1f * 1.25f
     }
 }

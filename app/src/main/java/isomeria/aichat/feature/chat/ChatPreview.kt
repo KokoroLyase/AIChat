@@ -112,6 +112,14 @@ internal val selectRows: List<ChatRow> = listOf(
     ChatRow.Item(msg(35, Role.USER, "那就这么定了", status = MessageStatus.SENDING)),
 )
 
+/** 长语音（0.9.1 真机验证时补）：没听过的 60 秒（红点和「转文字」）、听过的 42 秒、自己发的 60 秒，看大字体和窄屏时一行放不放得下 */
+internal val longVoiceRows: List<ChatRow> = listOf(
+    ChatRow.TimeBar("21:30", "t0"),
+    ChatRow.Item(voice(61, Role.ASSISTANT, 60, "这是一段比较长的语音", played = false)),
+    ChatRow.Item(voice(62, Role.ASSISTANT, 42, "听过的长语音")),
+    ChatRow.Item(voice(63, Role.USER, 60, "我也说一段长的")),
+)
+
 /** 引用（0.9.0）：引用对方的文字、引用自己的语音，下面是引用块 */
 internal val quoteRows: List<ChatRow> = listOf(
     ChatRow.TimeBar("21:30", "t0"),

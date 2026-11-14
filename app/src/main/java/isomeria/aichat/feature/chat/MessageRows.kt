@@ -40,6 +40,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -58,6 +61,10 @@ import isomeria.aichat.ui.components.MenuItem
 import isomeria.aichat.ui.components.TextBubble
 import isomeria.aichat.ui.components.UnplayedDot
 import isomeria.aichat.ui.components.VoiceBubble
+import isomeria.aichat.ui.components.voiceBubbleMinWidth
+import isomeria.aichat.ui.components.voiceBubbleWidth
+import isomeria.aichat.ui.components.voiceRowBubbleWidth
+import isomeria.aichat.ui.components.voiceSeconds
 import isomeria.aichat.data.voice.PlayMode
 import isomeria.aichat.ui.components.WeBubbleMenu
 import isomeria.aichat.ui.components.WeIcon
@@ -443,28 +450,56 @@ private fun VoiceMessage(message: Message, sent: Boolean, playing: Boolean, onCl
             )
         }
     }
-    // 0.9.1：语音条先量（宽度按秒数，字体大时跟着变宽），「转文字」用剩下的宽度，放不下时换行；
-    // 以前反过来，窄屏多选时语音条被挤得放不下秒数
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (sent) toText(Modifier.weight(1f, fill = false))
-        VoiceBubble(
-            millis = message.voiceMillis,
-            sent = sent,
-            playing = playing,
-            unplayed = unplayed,
-            onClick = onClick,
-            onLongClick = onLongClick,
-            held = held,
-        )
-        if (!sent) {
-            if (unplayed) {
-                Spacer(Modifier.width(6.dp))
-                UnplayedDot()
+    // 0.9.1：一行放不下时先缩短语音条（最短到声波和秒数放得下一行），再让「转文字」变窄、换行（见 voiceRowBubbleWidth）。
+    // 0.9.0 是「转文字」先量，窄屏多选时语音条被挤得放不下秒数；0.9.1 开发时改成语音条按秒数定宽先量，
+    // 真机验证发现大字体时「转文字」被挤成一字一行，窄屏时整行比屏幕宽、尾巴和「转文字」都看不见
+    val seconds = voiceSeconds(message.voiceMillis)
+    val desired = voiceBubbleWidth(seconds) + WeTheme.dimens.bubbleTailWidth
+    val minimum = voiceBubbleMinWidth(seconds)
+    Layout(
+        content = {
+            VoiceBubble(
+                millis = message.voiceMillis,
+                sent = sent,
+                playing = playing,
+                unplayed = unplayed,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                held = held,
+                modifier = Modifier.layoutId(VOICE_BUBBLE),
+            )
+            if (unplayed) Box(Modifier.layoutId(VOICE_DOT).padding(start = 6.dp)) { UnplayedDot() }
+            toText(Modifier.layoutId(VOICE_TO_TEXT))
+        },
+    ) { measurables, constraints ->
+        val bubbleSlot = measurables.first { it.layoutId == VOICE_BUBBLE }
+        val dotSlot = measurables.firstOrNull { it.layoutId == VOICE_DOT }
+        val textSlot = measurables.firstOrNull { it.layoutId == VOICE_TO_TEXT }
+        val height = constraints.maxHeight
+        val besides = (dotSlot?.maxIntrinsicWidth(height) ?: 0) + (textSlot?.maxIntrinsicWidth(height) ?: 0)
+        val available = if (constraints.hasBoundedWidth) constraints.maxWidth else desired.roundToPx() + besides
+        val bubbleWidth = voiceRowBubbleWidth(available, desired.roundToPx(), minimum.roundToPx(), besides)
+        val bubble = bubbleSlot.measure(Constraints(minWidth = bubbleWidth, maxWidth = bubbleWidth, maxHeight = height))
+        val dot = dotSlot?.measure(Constraints(maxHeight = height))
+        val dotWidth = dot?.width ?: 0
+        // 剩下的宽度连一个字都放不下（窄屏、系统大字体叠 App 特大、多选时）就不显示「转文字」，免得字被裁掉一半；长按菜单里也有「转文字」
+        val textWidth = (available - bubbleWidth - dotWidth).coerceAtLeast(0)
+        val text = textSlot?.takeIf { it.minIntrinsicWidth(height) <= textWidth }?.measure(Constraints(maxWidth = textWidth, maxHeight = height))
+        val rowHeight = maxOf(bubble.height, dot?.height ?: 0, text?.height ?: 0)
+        val order = if (sent) listOfNotNull(text, bubble) else listOfNotNull(bubble, dot, text)
+        layout(order.sumOf { it.width }, rowHeight) {
+            var x = 0
+            order.forEach {
+                it.place(x, (rowHeight - it.height) / 2)
+                x += it.width
             }
-            toText(Modifier.weight(1f, fill = false))
         }
     }
 }
+
+private const val VOICE_BUBBLE = "bubble"
+private const val VOICE_DOT = "dot"
+private const val VOICE_TO_TEXT = "toText"
 
 /** 语音下面：展开的转写文字，或自己的语音正在识别 */
 @OptIn(ExperimentalFoundationApi::class)

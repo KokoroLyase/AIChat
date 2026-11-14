@@ -38,6 +38,8 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import isomeria.aichat.R
@@ -52,6 +54,35 @@ fun voiceBubbleWidth(seconds: Int, min: Dp = 72.dp, max: Dp = 200.dp): Dp {
     val fraction = sqrt((seconds.coerceIn(1, 60) - 1) / 59f)
     return min + (max - min) * fraction
 }
+
+/** 声波图标的大小（随字体放大前）和它与秒数的间距 */
+private val VOICE_WAVE_SIZE = 20.dp
+private val VOICE_ICON_GAP = 8.dp
+
+/**
+ * 语音条最窄能到多宽（0.9.1）：两边留白、尾巴、声波和秒数刚好放得下一行。
+ * 聊天里旁边还有「转文字」时，语音条先缩短这一截以外的长度（见 [voiceRowBubbleWidth]）。
+ */
+@Composable
+internal fun voiceBubbleMinWidth(seconds: Int): Dp {
+    val dimens = WeTheme.dimens
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val text = stringResource(R.string.voice_seconds, seconds)
+    val style = WeTheme.typography.message
+    val textWidth = remember(text, style, density, measurer) { measurer.measure(text, style).size.width }
+    val iconScale = LocalIconScale.current
+    return dimens.bubblePaddingHorizontal * 2 + dimens.bubbleTailWidth + VOICE_WAVE_SIZE * iconScale + VOICE_ICON_GAP +
+        with(density) { (textWidth + 1).toDp() }
+}
+
+/**
+ * 聊天里语音条的宽度（像素，0.9.1 真机验证时改）：按秒数的宽度 [desired]，旁边的红点和「转文字」（[besides]）放不下时缩短，
+ * 最短到 [minimum]（声波和秒数放得下一行）；秒数比按秒数的宽度还宽（特大字体的短语音）时放宽到 [minimum]；不超过 [available]。
+ * 以前语音条按秒数定宽、先量，大字体或窄屏时「转文字」被挤成一字一行，窄屏时整行比屏幕宽、居中后语音条的尾巴和「转文字」都看不见。
+ */
+internal fun voiceRowBubbleWidth(available: Int, desired: Int, minimum: Int, besides: Int): Int =
+    (available - besides).coerceIn(minimum, maxOf(desired, minimum)).coerceAtMost(available)
 
 /**
  * 语音消息的气泡（0.7.0）：和文字气泡同样的形状和颜色，宽度随时长变化，里面是声波图标和秒数。
@@ -117,7 +148,7 @@ fun VoiceBubble(
             ),
         contentAlignment = if (sent) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(VOICE_ICON_GAP)) {
             val text = @Composable { Text(stringResource(R.string.voice_seconds, seconds), style = WeTheme.typography.message, color = content) }
             if (sent) {
                 text()
@@ -132,7 +163,7 @@ fun VoiceBubble(
 
 /** 声波图标：一个点和两道弧，[visible] 是亮着几格（1～3）；0.8.0 起通话详情页也用 */
 @Composable
-internal fun SoundWaves(color: Color, visible: Int, pointingRight: Boolean, size: Dp = 20.dp) {
+internal fun SoundWaves(color: Color, visible: Int, pointingRight: Boolean, size: Dp = VOICE_WAVE_SIZE) {
     // 和其他图标一样随 App 字体大小放大（0.9.1）
     Canvas(Modifier.size(size * LocalIconScale.current)) {
         scale(scaleX = if (pointingRight) 1f else -1f, scaleY = 1f) {

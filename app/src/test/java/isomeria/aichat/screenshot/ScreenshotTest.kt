@@ -1049,6 +1049,22 @@ class ScreenshotTest {
     @Test fun voiceBubblesLarge() = large("74-chat-voice-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.voiceRows, playingId = 13) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun voiceBubblesNarrow() = shot("74-chat-voice-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.voiceRows, playingId = 13) }
 
+    // 0.9.1 真机验证时补：长语音旁边的红点和「转文字」。phone 是测试手机的宽度和字体（411dp，系统 1.1 × App 特大）
+    private fun phoneScale(name: String, dark: Boolean, content: @Composable () -> Unit) {
+        compose.setContent {
+            AIChatTheme(darkTheme = dark, fontScale = 1.1f * 1.25f) {
+                Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) { content() }
+            }
+        }
+        compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+    }
+
+    @Test fun longVoiceLight() = shot("94-chat-long-voice", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.longVoiceRows) }
+    @Test @Config(qualifiers = "w411dp-h860dp-xxhdpi") fun longVoicePhone() = phoneScale("94-chat-long-voice-phone", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.longVoiceRows) }
+    @Test @Config(qualifiers = "w411dp-h860dp-xxhdpi") fun longVoicePhoneSelect() = phoneScale("94-chat-long-voice-phone-select", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.longVoiceRows, selection = setOf(61L)) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun longVoiceNarrow() = phoneScale("94-chat-long-voice-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.longVoiceRows) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun longVoiceNarrowLargeSelect() = large("94-chat-long-voice-narrow-select-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.longVoiceRows, selection = setOf(61L)) }
+
     private fun voiceMenuShot(name: String, dark: Boolean, scale: Float = 1f, id: Long = 13) {
         compose.setContent {
             AIChatTheme(darkTheme = dark, fontScale = scale) {
