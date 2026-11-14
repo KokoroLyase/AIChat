@@ -310,7 +310,7 @@ class ContactEditViewModel @Inject constructor(
             replyStyle = if (form.useReplyPreferences) form.replyPreferences ?: prefs else null,
             reminderHint = form.proactiveEnabled,
         )
-        val prompt = contextBuilder.systemPrompt(contact, nickname, clock.now(), chosen, promptGlobals)
+        val prompt = contextBuilder.systemPrompt(contact, nickname, chosen, promptGlobals)
         PromptUsage(prompt?.let(estimator::text) ?: 0, form.contextTokens)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 

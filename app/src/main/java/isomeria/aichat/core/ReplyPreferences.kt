@@ -66,6 +66,16 @@ fun interface ReplyPreferencesSource {
     fun replyPreferences(): ReplyPreferences
 }
 
+/** 设置里的“发送时附带时间信息”（0.9.2），默认开；单元测试里换成固定值 */
+fun interface PromptMetaSource {
+    fun promptMetaEnabled(): Boolean
+
+    companion object {
+        val ON = PromptMetaSource { true }
+        val OFF = PromptMetaSource { false }
+    }
+}
+
 /**
  * 这个联系人这次回复用的偏好（0.7.2）：关了「使用回复偏好」时为 null（按分条显示的旧行为）；
  * 单独设置了就用自己的一整套，否则用全局的。回复、主动聊天、语音回复和提示词都经过这里取

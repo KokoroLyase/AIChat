@@ -17,8 +17,6 @@ data class ContextLabels(
     val namePlaceholder: String,
     /** 模板里「在这里写人设」那一行的开头，用户没改时整行去掉 */
     val personaPlaceholderPrefix: String,
-    /** 参数：年、月、日、星期、时、分 */
-    val timeLine: String,
     /** 参数：昵称 */
     val nicknameLine: String,
     /** 星期一到星期日 */
@@ -50,6 +48,26 @@ data class ContextLabels(
     /** 引用（0.9.0）：用户消息引用了联系人说的话、自己说的话时，前面加的一行。参数：被引用的文字（过长时截断） */
     val quoteOther: String = "",
     val quoteSelf: String = "",
+    /**
+     * 用户元信息的附注（0.9.2）：只在这次请求里，加在最新一条用户消息的开头。参数：现在的时间（[metaTime]）、和上一条消息的间隔（[metaSinceMinutes] 等）
+     */
+    val metaNote: String = "",
+    /** 附注里的时间。参数：年、月、日、星期、时、分 */
+    val metaTime: String = "",
+    /** 间隔不到 1 分钟。参数：谁发的（[metaSelf] 或 [metaOther]） */
+    val metaSinceNow: String = "",
+    /** 参数：谁发的、分钟数 */
+    val metaSinceMinutes: String = "",
+    /** 参数：谁发的、小时数 */
+    val metaSinceHours: String = "",
+    /** 参数：谁发的、天数 */
+    val metaSinceDays: String = "",
+    /** 之前没有消息 */
+    val metaFirst: String = "",
+    /** 上一条是联系人（也就是模型）自己发的：你 */
+    val metaSelf: String = "",
+    /** 上一条是用户发的：对方 */
+    val metaOther: String = "",
 )
 
 /** 全局记忆里要发出去的一条：已启用、所在的类别和主题。 */
@@ -69,6 +87,8 @@ data class PromptGlobals(
     val reminderHint: Boolean = false,
     /** 通话中的请求（0.8.0）：加一段“现在是语音通话”；不在通话时为 false，请求和 0.7.2 一样 */
     val callHint: Boolean = false,
+    /** 发送时附带时间信息（0.9.2，设置里的开关，默认开）：普通回复和通话的请求在最新的用户消息前加附注（[ContextBuilder.metaNote]） */
+    val metaNote: Boolean = false,
 ) {
     companion object {
         val NONE = PromptGlobals()
@@ -80,7 +100,9 @@ data class PromptGlobals(
  *
  * - 系统提示词里的 {名称} 换成联系人名称；模板里没改过的人设占位行去掉；人设、记忆、全局内容都为空时不发送
  * - 顺序：全局记忆 → 人设 → 长期记忆 → 回复偏好要求 → 约定时间的写法（开启主动聊天时） → 现在是语音通话（通话中，0.8.0） →
- *   当前日期、星期、时间和自己的昵称
+ *   自己的昵称
+ * - 0.9.2 起系统提示词不带时间：开了“发送时附带时间信息”时，现在的日期、星期、时间和距上一条消息的间隔写成一段附注，
+ *   加在最新一条用户消息的开头（[metaNote]、[prependNote]），只在这次请求里；系统提示词不再每分钟变，服务商的缓存更容易命中
  * - 历史回复里的思考内容不回传
  * - 只有最近 [MAX_IMAGES] 张图片带原图，更早的替换为「[图片]」；模型不支持图片时全部替换
  * - 连续同一角色的消息合并成一条（文字和图片作为同一条消息的不同部分）
@@ -104,9 +126,10 @@ class ContextBuilder(
         memories: List<Memory> = emptyList(),
         loadImage: (String) -> String?,
         globals: PromptGlobals = PromptGlobals.NONE,
+        note: String? = null,
     ): List<ChatMessage> {
         val result = mutableListOf<ChatMessage>()
-        systemPrompt(contact, nickname, now, memories, globals)?.let { result += ChatMessage(ChatRole.SYSTEM, it) }
+        systemPrompt(contact, nickname, memories, globals)?.let { result += ChatMessage(ChatRole.SYSTEM, it) }
 
         val imagesWithData = if (supportsImage) ContextWindow.imagesWithData(history) else emptySet()
 
@@ -148,7 +171,44 @@ class ContextBuilder(
             }
         }
         flush()
-        return result
+        return if (note.isNullOrEmpty()) result else prependNote(result, note)
+    }
+
+    /**
+     * 用户元信息的附注（0.9.2）：现在的日期、星期、时间，以及这一轮第一条消息（[sentAt]）距上一条消息（[previousAt]、[previousRole]，
+     * 这一轮之前会话里的最后一条，不管是谁发的）过了多久。间隔的分档和主动聊天一样：不到 1 小时按分钟，不到 48 小时按小时，再往后按天
+     */
+    fun metaNote(now: Long, sentAt: Long, previousAt: Long?, previousRole: Role?): String {
+        if (labels.metaNote.isEmpty()) return ""
+        val time = Instant.ofEpochMilli(now).atZone(zone)
+        val timeText = labels.metaTime.format(
+            time.year, time.monthValue, time.dayOfMonth, labels.weekdays[time.dayOfWeek.value - 1], time.hour, time.minute,
+        )
+        val since = if (previousAt == null) labels.metaFirst else {
+            // 上一条是联系人发的就是“你”（模型自己），是用户发的就是“对方”
+            val who = if (previousRole == Role.ASSISTANT) labels.metaSelf else labels.metaOther
+            val minutes = ((sentAt - previousAt).coerceAtLeast(0) / 60_000).toInt()
+            when {
+                minutes < 1 -> labels.metaSinceNow.format(who)
+                minutes < 60 -> labels.metaSinceMinutes.format(who, minutes)
+                minutes < 48 * 60 -> labels.metaSinceHours.format(who, minutes / 60)
+                else -> labels.metaSinceDays.format(who, minutes / (24 * 60))
+            }
+        }
+        return labels.metaNote.format(timeText, since)
+    }
+
+    /**
+     * 把附注加在最后一条用户消息的开头（0.9.2），只在这次请求里：开头是文字时并进去（换行隔开），是图片时单独放在前面。
+     * 没有用户消息时原样返回
+     */
+    fun prependNote(messages: List<ChatMessage>, note: String): List<ChatMessage> {
+        val index = messages.indexOfLast { it.role == ChatRole.USER }
+        if (index < 0 || note.isEmpty()) return messages
+        val parts = messages[index].parts.toMutableList()
+        val head = parts.firstOrNull()
+        if (head is ChatPart.Text) parts[0] = ChatPart.Text(note + "\n" + head.text) else parts.add(0, ChatPart.Text(note))
+        return messages.toMutableList().also { it[index] = ChatMessage(ChatRole.USER, parts) }
     }
 
     /**
@@ -172,7 +232,6 @@ class ContextBuilder(
     fun systemPrompt(
         contact: Contact,
         nickname: String,
-        now: Long,
         memories: List<Memory> = emptyList(),
         globals: PromptGlobals = PromptGlobals.NONE,
     ): String? {
@@ -182,20 +241,8 @@ class ContextBuilder(
         val reminder = if (globals.reminderHint) labels.reminderHint else ""
         val call = if (globals.callHint) labels.callHint else ""
         if (prompt.isBlank() && memories.isEmpty() && global.isEmpty() && style.isEmpty() && reminder.isEmpty() && call.isEmpty()) return null
-        val time = Instant.ofEpochMilli(now).atZone(zone)
-        val extra = buildString {
-            append(
-                labels.timeLine.format(
-                    time.year,
-                    time.monthValue,
-                    time.dayOfMonth,
-                    labels.weekdays[time.dayOfWeek.value - 1],
-                    time.hour,
-                    time.minute,
-                ),
-            )
-            if (nickname.isNotBlank()) append(labels.nicknameLine.format(nickname.trim()))
-        }
+        // 0.9.2 起时间不在这里（见 [metaNote]），只剩昵称
+        val extra = if (nickname.isNotBlank()) labels.nicknameLine.format(nickname.trim()) else ""
         return listOf(global, prompt, memoryBlock(memories), style, reminder, call, extra).filter { it.isNotEmpty() }.joinToString("\n\n")
     }
 

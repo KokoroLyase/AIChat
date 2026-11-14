@@ -1060,6 +1060,7 @@ class BackupManager @Inject constructor(
                 notifyEnabled = dto.notifyEnabled ?: current.notifyEnabled,
                 notifyPreview = dto.notifyPreview ?: current.notifyPreview,
                 autoCheckUpdate = dto.autoCheckUpdate ?: current.autoCheckUpdate,
+                promptMeta = dto.promptMeta ?: current.promptMeta,
                 replyPreferences = dto.replyPreferences?.toModel() ?: current.replyPreferences,
                 proactive = dto.proactive?.toModel() ?: current.proactive,
                 // 备份里没有语音设置时保留本机的（本机的语音服务商换了 id，来源跟着换）
@@ -1297,6 +1298,7 @@ class BackupManager @Inject constructor(
     private fun AppSettingsSnapshot.toDto(avatar: String?) = SettingsDto(
         themeMode = themeMode.name, fontSize = fontSize.name, nickname = nickname, avatar = avatar,
         notifyEnabled = notifyEnabled, notifyPreview = notifyPreview, autoCheckUpdate = autoCheckUpdate,
+        promptMeta = promptMeta,
         replyPreferences = replyPreferences.toDto(),
         proactive = proactive.toDto(),
         voice = VoiceSettingsDto(voice.replyType, voice.ttsSource, voice.asrSource),

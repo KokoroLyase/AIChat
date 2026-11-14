@@ -289,7 +289,7 @@ class ProactiveEngine @Inject constructor(
             estimator,
         )
         val globals = promptGlobals.forContact(contact)
-        val system = contextBuilder.systemPrompt(contact, nickname, startedAt, memories, globals).orEmpty()
+        val system = contextBuilder.systemPrompt(contact, nickname, memories, globals).orEmpty()
         val instruction = instruction(startedAt, messages.latestVisible(contactId)?.createdAt, reminder)
         val historyBudget = contact.contextTokens - estimator.text(system) - estimator.text(instruction) - TokenEstimator.MESSAGE_OVERHEAD
         val history = ContextWindow.select(

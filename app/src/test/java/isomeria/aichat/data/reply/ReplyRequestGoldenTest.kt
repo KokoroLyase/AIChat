@@ -52,6 +52,9 @@ import java.time.ZoneId
  *
  * 期望值是在 0.5.0 改动系统提示词之前，用同一套数据跑当时的代码（等同 0.4.2，0.4.2 没改请求构造）得到的。
  * 时间、昵称、提示词文字都写死，不依赖 strings.xml 里的模板（0.4.2 改过新联系人模板的文字）。
+ *
+ * 0.9.2：系统提示词末尾的“现在是……”移到了最新一条用户消息前的时间附注里（设置里可关，默认开）。各基准去掉了时间这一句，
+ * 其余逐字不变；附注关闭时就是这些基准，附注打开时的基准见“0.9.2”一节。
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], application = Application::class)
@@ -151,13 +154,14 @@ class ReplyRequestGoldenTest {
     }
 
     private suspend fun globalItem(content: String, category: String = "个人信息", topic: String = "基本情况") {
-        val repo = GlobalMemoryRepository(db, { harness.preferences }, Clock { now })
+        val repo = GlobalMemoryRepository(db, { harness.preferences }, Clock { now }, isomeria.aichat.core.PromptMetaSource.OFF)
         val c = db.globalMemoryDao().categories().firstOrNull { it.name == category }?.id ?: repo.addCategory(category)
         val t = db.globalMemoryDao().topicsOf(c).firstOrNull { it.name == topic }?.id ?: repo.addTopic(c, topic)
         repo.addItem(t, content)
     }
 
-    private val time = "现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"
+    /** 系统提示词的最后一句：0.9.2 起时间移到了附注里，只剩昵称 */
+    private val nick = "对方的昵称是「阿哲」。"
     private val style = "回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。"
 
     @Test
@@ -165,7 +169,7 @@ class ReplyRequestGoldenTest {
         globalItem("住在杭州")
         globalItem("关掉的", topic = "其他")
         db.globalMemoryDao().items().first { it.content == "关掉的" }.let { db.globalMemoryDao().updateItems(listOf(it.copy(enabled = false))) }
-        assertEquals("全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n$style\n\n$time", systemOf(3))
+        assertEquals("全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n$style\n\n$nick", systemOf(3))
     }
 
     @Test
@@ -177,8 +181,8 @@ class ReplyRequestGoldenTest {
         db.contactDao().update(contact.copy(useReplyPreferences = false))
         val noStyle = systemOf(2)!!
         val memory = "下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁"
-        assertEquals("$memory\n\n$style\n\n$time", noGlobal)
-        assertEquals("全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n$memory\n\n$time", noStyle)
+        assertEquals("$memory\n\n$style\n\n$nick", noGlobal)
+        assertEquals("全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n$memory\n\n$nick", noStyle)
         harness.allOff(2)
         assertEquals(GOLDEN_GENERIC, requestBody(2))
     }
@@ -208,17 +212,62 @@ class ReplyRequestGoldenTest {
         globalItem("住在杭州")
         for (id in listOf(1L, 2L, 3L)) db.contactDao().update(db.contactDao().get(id)!!.copy(proactiveEnabled = true))
         val hint = ReplyHarness.REMINDER_HINT.replace("\"", "\\\"")
-        fun withHint(golden: String) = golden.replace("\\n\\n现在是 2026年11月1日", "\\n\\n$hint\\n\\n现在是 2026年11月1日")
+        fun withHint(golden: String) = golden.replace("\\n\\n对方的昵称是", "\\n\\n$hint\\n\\n对方的昵称是")
         assertEquals(withHint(GOLDEN_050_DEEPSEEK), requestBody(1))
         assertEquals(withHint(GOLDEN_050_GENERIC), requestBody(2))
         assertEquals(withHint(GOLDEN_050_EMPTY), requestBody(3))
         // 全部 0.5.0 新能力关闭、只开主动聊天：没有人设的联系人也会有系统提示词（提示 + 时间）
         harness.allOff(3)
-        assertEquals("${ReplyHarness.REMINDER_HINT}\n\n$time", systemOf(3))
+        assertEquals("${ReplyHarness.REMINDER_HINT}\n\n$nick", systemOf(3))
         for (id in listOf(1L, 2L, 3L)) db.contactDao().update(db.contactDao().get(id)!!.copy(proactiveEnabled = false))
         assertEquals(GOLDEN_050_DEEPSEEK, requestBody(1))
         assertEquals(GOLDEN_050_GENERIC, requestBody(2))
         assertEquals(GOLDEN_EMPTY, requestBody(3))
+    }
+
+    // ---------- 0.9.2：发送时附带时间信息 ----------
+
+    /** 附注加在最后一条用户消息的开头；上一条是联系人发的“怎么啦”，这一轮第一条在它 47 秒后，所以不到 1 分钟 */
+    @Test
+    fun metaOn_prependsNoteToLatestUserMessage_systemPromptUnchanged() {
+        harness.allOff(1)
+        harness.meta = true
+        val note = "【时间】现在是 2026年11月1日 星期日 23:40，距离你上一条消息不到 1 分钟。"
+        val expected = GOLDEN_DEEPSEEK.replace("\"content\":\"[图片]\\n看看这张\"", "\"content\":\"$note\\n[图片]\\n看看这张\"")
+        assertTrue("基准里要有这一条用户消息", expected != GOLDEN_DEEPSEEK)
+        assertEquals(expected, requestBody(1))
+        harness.meta = false
+        assertEquals("关掉后回到基准", GOLDEN_DEEPSEEK, requestBody(1))
+    }
+
+    @Test
+    fun metaOn_firstMessage_andNoSystemPrompt() {
+        harness.allOff(2)
+        harness.allOff(3)
+        harness.meta = true
+        val first = "【时间】现在是 2026年11月1日 星期日 23:40，这是你们的第一条消息。"
+        assertEquals(GOLDEN_GENERIC.replace("\"content\":\"早\"", "\"content\":\"$first\\n早\""), requestBody(2))
+        // 没有人设和记忆的联系人原来什么时间都不带，现在也有附注；系统提示词照旧不发
+        assertEquals(GOLDEN_EMPTY.replace("\"content\":\"hi\"", "\"content\":\"$first\\nhi\""), requestBody(3))
+    }
+
+    /** 间隔从这一轮第一条算到它前面那一条，不管是谁发的；上一条是用户自己发的写“对方”，按分钟、小时、天分档 */
+    @Test
+    fun metaOn_gapFromPreviousMessage_whoeverSentIt() = runBlocking {
+        harness.allOff(3)
+        harness.meta = true
+        val m = db.messageDao()
+        // 联系人 3 只有一条等待回复的 hi（now - 1 秒）；在它前面插一条用户自己 3 小时前发过、已经回复过的消息
+        m.insert(Message(contactId = 3, role = Role.USER, type = MessageType.TEXT, content = "在吗", status = MessageStatus.SUCCESS, createdAt = now - 1_000 - 3 * 3_600_000L))
+        assertTrue(lastUser(3).startsWith("【时间】现在是 2026年11月1日 星期日 23:40，距离对方上一条消息过了 3 小时。\n"))
+        m.insert(Message(contactId = 3, role = Role.ASSISTANT, type = MessageType.TEXT, content = "嗯", status = MessageStatus.SUCCESS, createdAt = now - 1_000 - 25 * 60_000L))
+        assertTrue(lastUser(3).contains("距离你上一条消息过了 25 分钟"))
+        m.insert(Message(contactId = 3, role = Role.ASSISTANT, type = MessageType.TEXT, content = "旧", status = MessageStatus.SUCCESS, createdAt = now - 1_000 - 3 * 86_400_000L))
+        assertTrue("最近的一条才算", lastUser(3).contains("距离你上一条消息过了 25 分钟"))
+    }
+
+    private fun lastUser(contactId: Long): String = runBlocking {
+        harness.runAndRewind(contactId).messages.last { it.role == isomeria.aichat.data.llm.ChatRole.USER }.plainText()
     }
 
     // ---------- 0.8.0：聊天记录里的通话按每一条话展开；没有通话时和 0.7.2 逐字一致（上面的几项） ----------
@@ -359,16 +408,16 @@ class ReplyRequestGoldenTest {
     }
 
     companion object {
-        const val GOLDEN_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"你是小雨，正在用微信和对方聊天。\n想分几条发时，用空行隔开。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"在吗"},{"role":"assistant","content":"在呀\n\n怎么啦"},{"role":"user","content":"[图片]\n看看这张"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"enabled"},"reasoning_effort":"high"}"""
-        const val GOLDEN_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"早"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""
+        const val GOLDEN_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"你是小雨，正在用微信和对方聊天。\n想分几条发时，用空行隔开。\n\n对方的昵称是「阿哲」。"},{"role":"user","content":"在吗"},{"role":"assistant","content":"在呀\n\n怎么啦"},{"role":"user","content":"[图片]\n看看这张"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"enabled"},"reasoning_effort":"high"}"""
+        const val GOLDEN_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁\n\n对方的昵称是「阿哲」。"},{"role":"user","content":"早"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""
         const val TRANSLATE_ENGLISH = "把用户发来的这条聊天消息翻译成英语。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。"
         const val TRANSLATE_CHINESE = "把用户发来的这条聊天消息翻译成简体中文。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。"
         const val TRANSLATE_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"把用户发来的这条聊天消息翻译成英语。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。"},{"role":"user","content":"周末去爬山吗"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""
         const val TRANSLATE_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"把用户发来的这条聊天消息翻译成简体中文。只输出译文，不要解释，不要加引号或前缀；保留原来的换行、表情和语气。"},{"role":"user","content":"Are you free?"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"disabled"},"temperature":1.3}"""
         const val GOLDEN_EMPTY = """{"model":"gpt-x","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"temperature":1.3}"""
-        const val GOLDEN_050_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n你是小雨，正在用微信和对方聊天。\n想分几条发时，用空行隔开。\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"在吗"},{"role":"assistant","content":"在呀\n怎么啦"},{"role":"user","content":"[图片]\n看看这张"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"enabled"},"reasoning_effort":"high"}"""
-        const val GOLDEN_050_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"早"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""
-        const val GOLDEN_050_EMPTY = """{"model":"gpt-x","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。"},{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"temperature":1.3}"""
+        const val GOLDEN_050_DEEPSEEK = """{"model":"deepseek-chat","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n你是小雨，正在用微信和对方聊天。\n想分几条发时，用空行隔开。\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n对方的昵称是「阿哲」。"},{"role":"user","content":"在吗"},{"role":"assistant","content":"在呀\n怎么啦"},{"role":"user","content":"[图片]\n看看这张"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"enabled"},"reasoning_effort":"high"}"""
+        const val GOLDEN_050_GENERIC = """{"model":"gpt-x","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：\n- [2026年11月1日] 喜欢拿铁\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n对方的昵称是「阿哲」。"},{"role":"user","content":"早"}],"stream":true,"stream_options":{"include_usage":true},"temperature":0.7}"""
+        const val GOLDEN_050_EMPTY = """{"model":"gpt-x","messages":[{"role":"system","content":"全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n对方的昵称是「阿哲」。"},{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"temperature":1.3}"""
     }
 }
 
@@ -392,7 +441,6 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         ContextLabels(
             namePlaceholder = "{名称}",
             personaPlaceholderPrefix = "{在这里写人设",
-            timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。",
             nicknameLine = "对方的昵称是「%1\$s」。",
             weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
             imagePlaceholder = "[图片]",
@@ -406,9 +454,21 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             reminderHint = REMINDER_HINT,
             quoteOther = QUOTE_OTHER,
             quoteSelf = QUOTE_SELF,
+            metaNote = "【时间】%1\$s，%2\$s。",
+            metaTime = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d",
+            metaSinceNow = "距离%1\$s上一条消息不到 1 分钟",
+            metaSinceMinutes = "距离%1\$s上一条消息过了 %2\$d 分钟",
+            metaSinceHours = "距离%1\$s上一条消息过了 %2\$d 小时",
+            metaSinceDays = "距离%1\$s上一条消息过了 %2\$d 天",
+            metaFirst = "这是你们的第一条消息",
+            metaSelf = "你",
+            metaOther = "对方",
         ),
         zone,
     )
+
+    /** 设置里的“发送时附带时间信息”（0.9.2）：App 里默认开；这里默认关，老的逐字基准只差系统提示词里移走的时间 */
+    var meta = false
 
     // ---------- 0.6.0 主动聊天 ----------
 
@@ -456,7 +516,7 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             files = FileStorage(context),
             contextBuilder = contextBuilder,
             clock = Clock { now },
-            promptGlobals = GlobalMemoryRepository(db, { preferences }, Clock { now }),
+            promptGlobals = GlobalMemoryRepository(db, { preferences }, Clock { now }, { meta }),
             preferences = { preferences },
             settings = { proactiveSettings },
             random = random,
@@ -499,7 +559,7 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         files = FileStorage(context),
         contextBuilder = contextBuilder,
         clock = Clock { now },
-        promptGlobals = GlobalMemoryRepository(db, { preferences }, Clock { now }),
+        promptGlobals = GlobalMemoryRepository(db, { preferences }, Clock { now }, { meta }),
         preferences = { preferences },
         random = random,
         sleeper = sleeper,

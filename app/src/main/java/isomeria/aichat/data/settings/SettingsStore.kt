@@ -30,7 +30,7 @@ enum class FontSize(val scale: Float) {
  */
 @Singleton
 class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
-    UpdatePrefs, NicknameSource, ReplyPreferencesSource, ProactiveSettingsSource, isomeria.aichat.core.ProactiveResultLog,
+    UpdatePrefs, NicknameSource, ReplyPreferencesSource, isomeria.aichat.core.PromptMetaSource, ProactiveSettingsSource, isomeria.aichat.core.ProactiveResultLog,
     isomeria.aichat.core.VoiceSettingsSource, isomeria.aichat.core.LocalVoicePrefs {
     private val mmkv: MMKV
 
@@ -201,6 +201,17 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
             mmkv.encode(KEY_NOTIFY_ASKED, value)
         }
 
+    // 发送时附带时间信息（0.9.2）：没有这一项时按开处理，所以升级上来的用户也是开的
+    private val _promptMeta = MutableStateFlow(mmkv.decodeBool(KEY_PROMPT_META, true))
+    val promptMeta: StateFlow<Boolean> = _promptMeta.asStateFlow()
+
+    override fun promptMetaEnabled(): Boolean = _promptMeta.value
+
+    fun setPromptMeta(enabled: Boolean) {
+        mmkv.encode(KEY_PROMPT_META, enabled)
+        _promptMeta.value = enabled
+    }
+
     // 检查更新
     private val _autoCheckUpdate = MutableStateFlow(mmkv.decodeBool(KEY_AUTO_UPDATE, true))
     /** 「自动检查更新」开关，默认开 */
@@ -278,6 +289,7 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) :
         const val KEY_NOTIFY_PREVIEW = "notify_preview"
         const val KEY_NOTIFY_ASKED = "notify_permission_asked"
         const val KEY_AUTO_UPDATE = "auto_check_update"
+        const val KEY_PROMPT_META = "prompt_meta_enabled"
         const val KEY_LAST_UPDATE_CHECK = "last_update_check"
         const val KEY_IGNORED_VERSION = "ignored_version"
         const val KEY_RECENT_EMOJI = "recent_emoji"

@@ -90,6 +90,7 @@ class SettingsViewModel @Inject constructor(
     val fontSize = settings.fontSize
     val notifyEnabled = settings.notifyEnabled
     val notifyPreview = settings.notifyPreview
+    val promptMeta = settings.promptMeta
     val hasApiKey: StateFlow<Boolean> = providers.hasApiKey
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
@@ -105,6 +106,7 @@ class SettingsViewModel @Inject constructor(
     fun setNotifyEnabled(enabled: Boolean) = settings.setNotifyEnabled(enabled)
     fun setNotifyPreview(enabled: Boolean) = settings.setNotifyPreview(enabled)
     fun setAutoCheckUpdate(enabled: Boolean) = settings.setAutoCheckUpdate(enabled)
+    fun setPromptMeta(enabled: Boolean) = settings.setPromptMeta(enabled)
 
     /** 手动检查更新；有新版本时由全局的更新弹窗提示 */
     suspend fun checkUpdate(): UpdateCheckResult = updates.manualCheck()
@@ -144,6 +146,8 @@ data class SettingsUiState(
     val notifyPreview: Boolean = true,
     val canNotify: Boolean = true,
     val autoCheckUpdate: Boolean = true,
+    /** 发送时附带时间信息（0.9.2），默认开 */
+    val promptMeta: Boolean = true,
     /** 已知有新版本时的版本号，「检查更新」旁显示红点 */
     val newerVersion: String? = null,
     val versionName: String = BuildConfig.VERSION_NAME,
@@ -164,6 +168,7 @@ data class SettingsActions(
     val onClearAll: () -> Unit = {},
     val onCheckUpdate: () -> Unit = {},
     val onAutoCheckUpdate: (Boolean) -> Unit = {},
+    val onPromptMeta: (Boolean) -> Unit = {},
     val onGithub: () -> Unit = {},
 )
 
@@ -186,6 +191,7 @@ fun SettingsSectionScreen(
     val canNotify by viewModel.canNotify.collectAsStateWithLifecycle()
     val hasKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
     val autoCheckUpdate by viewModel.autoCheckUpdate.collectAsStateWithLifecycle()
+    val promptMeta by viewModel.promptMeta.collectAsStateWithLifecycle()
     val newerRelease by viewModel.newerRelease.collectAsStateWithLifecycle()
     val voiceSources by viewModel.voiceSources.collectAsStateWithLifecycle()
     var showTheme by remember { mutableStateOf(false) }
@@ -223,6 +229,7 @@ fun SettingsSectionScreen(
             notifyPreview = notifyPreview,
             canNotify = canNotify,
             autoCheckUpdate = autoCheckUpdate,
+            promptMeta = promptMeta,
             newerVersion = newerRelease?.version,
             ttsName = voiceSources.first?.let { isomeria.aichat.feature.voice.voiceSourceName(it.selectedName(), it.local) },
             asrName = voiceSources.second?.let { isomeria.aichat.feature.voice.voiceSourceName(it.selectedName(), it.local) },
@@ -255,6 +262,7 @@ fun SettingsSectionScreen(
                 }
             },
             onAutoCheckUpdate = viewModel::setAutoCheckUpdate,
+            onPromptMeta = viewModel::setPromptMeta,
             onGithub = { open(Intent(Intent.ACTION_VIEW, "https://github.com/${BuildConfig.GITHUB_REPO}".toUri())) },
         ),
     )
@@ -392,6 +400,15 @@ fun SettingsSectionList(section: SettingsSection, state: SettingsUiState, naviga
             }
             WeListRow(titleMaxLines = 2, title = stringResource(R.string.settings_battery), onClick = actions.onBattery)
             FootnoteText(stringResource(R.string.settings_battery_hint))
+            // 0.9.2：发送时附带时间信息，单独一组，说明写在下面
+            GroupSpacer()
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.settings_prompt_meta),
+                showArrow = false,
+                trailing = { WeSwitch(state.promptMeta, actions.onPromptMeta, label = stringResource(R.string.settings_prompt_meta)) },
+            )
+            FootnoteText(stringResource(R.string.settings_prompt_meta_hint))
         }
         SettingsSection.DATA -> {
             WeListRow(titleMaxLines = 2, title = stringResource(R.string.storage_title), onClick = navigation.onOpenStorage, showDivider = true)

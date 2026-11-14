@@ -451,4 +451,6 @@ data class SettingsDto(
     val proactive: ProactiveSettingsDto? = null,
     /** 语音消息的全局设置（v7 起）；没有时恢复保留本机的 */
     val voice: VoiceSettingsDto? = null,
+    /** 发送时附带时间信息（0.9.2 起）；没有时恢复保留本机的 */
+    val promptMeta: Boolean? = null,
 )

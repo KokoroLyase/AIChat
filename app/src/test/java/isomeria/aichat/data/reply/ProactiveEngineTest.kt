@@ -110,7 +110,7 @@ class ProactiveEngineTest {
     private suspend fun contact(transform: (Contact) -> Contact) = db.contactDao().update(transform(db.contactDao().get(id)!!))
 
     private val instruction = "【主动】现在是 2026年11月10日 星期二 15:00，上一条消息在 4 小时前。不想找对方只输出 [SKIP]。"
-    private val system = "人设\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n${ReplyHarness.REMINDER_HINT}\n\n现在是 2026年11月10日 星期二 15:00。对方的昵称是「阿哲」。"
+    private val system = "人设\n\n回复方式：每次 1～5 条，每条 14 字左右，用换行分隔。\n\n${ReplyHarness.REMINDER_HINT}\n\n对方的昵称是「阿哲」。"
 
     // ---------- 请求内容 ----------
 

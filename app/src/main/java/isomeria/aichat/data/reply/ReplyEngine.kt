@@ -90,6 +90,17 @@ class ReplyEngine @Inject constructor(
         isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
     }
 
+    /**
+     * 这一轮的时间附注（0.9.2）：间隔从这一轮第一条消息算到它之前会话里的最后一条（不管谁发的；还没送达的回复不算，
+     * 通话按每一句算）
+     */
+    private suspend fun metaNote(contactId: Long, waiting: List<Long>, now: Long): String {
+        val waitingIds = waiting.toHashSet()
+        val sentAt = waiting.mapNotNull { messageDao.get(it)?.createdAt }.minOrNull() ?: now
+        val previous = calls.before(contactId, sentAt, META_LOOKBACK).lastOrNull { it.status != MessageStatus.PENDING && it.id !in waitingIds }
+        return contextBuilder.metaNote(now, sentAt, previous?.createdAt, previous?.role)
+    }
+
     /** 识别这一轮的语音；失败时把等待回复的消息都标为失败（可以点击重试，会重新识别），返回 false */
     private suspend fun transcribe(contactId: Long): Boolean {
         val pipeline = voice ?: return true
@@ -135,8 +146,9 @@ class ReplyEngine @Inject constructor(
             estimator,
         )
         val globals = promptGlobals.forContact(contact)
-        val system = contextBuilder.systemPrompt(contact, nickname, startedAt, memories, globals).orEmpty()
-        val historyBudget = contact.contextTokens - estimator.text(system)
+        val system = contextBuilder.systemPrompt(contact, nickname, memories, globals).orEmpty()
+        val note = if (globals.metaNote) metaNote(contactId, waiting, startedAt) else null
+        val historyBudget = contact.contextTokens - estimator.text(system) - (note?.let(estimator::text) ?: 0)
         val selected = ContextWindow.select(
             calls.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING },
             historyBudget,
@@ -155,6 +167,7 @@ class ReplyEngine @Inject constructor(
             memories = memories,
             globals = globals,
             loadImage = files::readAsDataUrl,
+            note = note,
         )
         val request = snapshot.request(messages)
 
@@ -262,5 +275,8 @@ class ReplyEngine @Inject constructor(
 
     private companion object {
         const val TAG = "ReplyEngine"
+
+        /** 找“上一条消息”时往前看几条（跳过还没送达的回复） */
+        const val META_LOOKBACK = 20
     }
 }

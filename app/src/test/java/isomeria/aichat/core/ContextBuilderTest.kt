@@ -22,7 +22,6 @@ class ContextBuilderTest {
         ContextLabels(
             namePlaceholder = "{名称}",
             personaPlaceholderPrefix = "{在这里写人设",
-            timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。",
             nicknameLine = "对方的昵称是「%1\$s」。",
             weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
             imagePlaceholder = "[图片]",
@@ -79,9 +78,9 @@ class ContextBuilderTest {
 
     @Test
     fun systemPrompt_replacesName_dropsUntouchedPersonaLine_appendsTimeAndNickname() {
-        val prompt = builder.systemPrompt(contact(), "阿哲", now)!!
+        val prompt = builder.systemPrompt(contact(), "阿哲")!!
         assertEquals(
-            "你是小雨，正在用微信和对方聊天。\n不使用 Markdown。\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。",
+            "你是小雨，正在用微信和对方聊天。\n不使用 Markdown。\n\n对方的昵称是「阿哲」。",
             prompt,
         )
     }
@@ -89,14 +88,14 @@ class ContextBuilderTest {
     @Test
     fun systemPrompt_keepsEditedPersona() {
         val edited = template.replace("{在这里写人设：性格、和对方的关系、说话习惯、是否使用 emoji}", "性格温柔，爱用 emoji")
-        val prompt = builder.systemPrompt(contact(edited), "", now)!!
+        val prompt = builder.systemPrompt(contact(edited), "")!!
         assertTrue(prompt.contains("性格温柔，爱用 emoji"))
         assertFalse("没有昵称时不附带昵称", prompt.contains("昵称"))
     }
 
     @Test
     fun emptyPrompt_sendsNoSystemMessage() {
-        assertNull(builder.systemPrompt(contact(""), "阿哲", now))
+        assertNull(builder.systemPrompt(contact(""), "阿哲"))
         val messages = builder.build(contact("  "), listOf(text(Role.USER, "hi")), true, "阿哲", now, loadImage = loader)
         assertEquals(1, messages.size)
         assertEquals(ChatRole.USER, messages[0].role)
@@ -108,9 +107,9 @@ class ContextBuilderTest {
 
     @Test
     fun memories_comeAfterPersona_beforeTime() {
-        val prompt = builder.systemPrompt(contact("人设"), "", now, listOf(memory("喜欢拿铁"), memory("养了猫")))!!
+        val prompt = builder.systemPrompt(contact("人设"), "", listOf(memory("喜欢拿铁"), memory("养了猫")))!!
         assertEquals(
-            "人设\n\n下面是记忆：\n- [2026年11月1日] 喜欢拿铁\n- [2026年11月1日] 养了猫\n\n现在是 2026年11月1日 星期日 23:40。",
+            "人设\n\n下面是记忆：\n- [2026年11月1日] 喜欢拿铁\n- [2026年11月1日] 养了猫",
             prompt,
         )
     }
@@ -121,7 +120,7 @@ class ContextBuilderTest {
         val labeled = ContextBuilder(
             ContextLabels(
                 namePlaceholder = "{名称}", personaPlaceholderPrefix = "{在这里写人设",
-                timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。", nicknameLine = "对方的昵称是「%1\$s」。",
+                nicknameLine = "对方的昵称是「%1\$s」。",
                 weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"), imagePlaceholder = "[图片]",
                 memoryHeader = "下面是记忆：", memoryItem = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
                 memoryCore = "[一直记着的事]\n%1\$s", memoryRecentHeader = "[最近的事]",
@@ -129,19 +128,19 @@ class ContextBuilderTest {
             java.time.ZoneId.of("Asia/Shanghai"),
         )
         val core = memory("  学设计\n喜欢猫  ").copy(core = true)
-        val prompt = labeled.systemPrompt(contact(""), "", now, listOf(core, memory("养了猫")))!!
+        val prompt = labeled.systemPrompt(contact(""), "", listOf(core, memory("养了猫")))!!
         assertEquals(
-            "下面是记忆：\n[一直记着的事]\n学设计\n喜欢猫\n[最近的事]\n- [2026年11月1日] 养了猫\n\n现在是 2026年11月1日 星期日 23:40。",
+            "下面是记忆：\n[一直记着的事]\n学设计\n喜欢猫\n[最近的事]\n- [2026年11月1日] 养了猫",
             prompt,
         )
-        val onlyCore = labeled.systemPrompt(contact(""), "", now, listOf(core))!!
-        assertEquals("下面是记忆：\n[一直记着的事]\n学设计\n喜欢猫\n\n现在是 2026年11月1日 星期日 23:40。", onlyCore)
+        val onlyCore = labeled.systemPrompt(contact(""), "", listOf(core))!!
+        assertEquals("下面是记忆：\n[一直记着的事]\n学设计\n喜欢猫", onlyCore)
     }
 
     @Test
     fun emptyPersonaWithMemories_stillSendsSystemMessage() {
-        val prompt = builder.systemPrompt(contact(""), "", now, listOf(memory("喜欢拿铁")))!!
-        assertEquals("下面是记忆：\n- [2026年11月1日] 喜欢拿铁\n\n现在是 2026年11月1日 星期日 23:40。", prompt)
+        val prompt = builder.systemPrompt(contact(""), "", listOf(memory("喜欢拿铁")))!!
+        assertEquals("下面是记忆：\n- [2026年11月1日] 喜欢拿铁", prompt)
     }
 
     @Test
@@ -210,7 +209,6 @@ class ContextBuilderTest {
         ContextLabels(
             namePlaceholder = "{名称}",
             personaPlaceholderPrefix = "{在这里写人设",
-            timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。",
             nicknameLine = "对方的昵称是「%1\$s」。",
             weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
             imagePlaceholder = "[图片]",
@@ -235,43 +233,44 @@ class ContextBuilderTest {
 
     @Test
     fun globals_orderIsGlobalMemory_persona_memories_replyStyle_time() {
-        val prompt = full.systemPrompt(contact("人设"), "阿哲", now, listOf(memory("喜欢拿铁")), PromptGlobals(entries, ReplyPreferences()))!!
+        val prompt = full.systemPrompt(contact("人设"), "阿哲", listOf(memory("喜欢拿铁")), PromptGlobals(entries, ReplyPreferences()))!!
         assertEquals(
             "全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n- 养了一只猫\n[个人信息 / 饮食]\n- 不吃香菜\n[工作 / 职业]\n- 后端开发" +
                 "\n\n人设" +
                 "\n\n下面是记忆：\n- [2026年11月1日] 喜欢拿铁" +
                 "\n\n回复方式：每次 1～3 条，每条 16 字左右，用换行分隔。" +
-                "\n\n现在是 2026年11月1日 星期日 23:40。对方的昵称是「阿哲」。",
+                "\n\n对方的昵称是「阿哲」。",
             prompt,
         )
     }
 
     @Test
     fun globalsNone_isExactlyTheOldPrompt() {
-        val old = builder.systemPrompt(contact(), "阿哲", now, listOf(memory("喜欢拿铁")))
-        assertEquals(old, full.systemPrompt(contact(), "阿哲", now, listOf(memory("喜欢拿铁")), PromptGlobals.NONE))
-        assertNull(full.systemPrompt(contact(""), "阿哲", now, emptyList(), PromptGlobals(emptyList(), null)))
+        val old = builder.systemPrompt(contact(), "阿哲", listOf(memory("喜欢拿铁")))
+        assertEquals(old, full.systemPrompt(contact(), "阿哲", listOf(memory("喜欢拿铁")), PromptGlobals.NONE))
+        assertNull(full.systemPrompt(contact(""), "阿哲", emptyList(), PromptGlobals(emptyList(), null)))
         // 只有空白条目的全局记忆不算内容
-        assertNull(full.systemPrompt(contact(""), "", now, emptyList(), PromptGlobals(listOf(GlobalMemoryEntry("a", "b", "  ")), null)))
+        assertNull(full.systemPrompt(contact(""), "", emptyList(), PromptGlobals(listOf(GlobalMemoryEntry("a", "b", "  ")), null)))
     }
 
     @Test
     fun newContactWithoutPersona_stillGetsGlobalMemory() {
-        val prompt = full.systemPrompt(contact(""), "", now, emptyList(), PromptGlobals(entries.take(1), null))!!
-        assertEquals("全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州\n\n现在是 2026年11月1日 星期日 23:40。", prompt)
+        val prompt = full.systemPrompt(contact(""), "", emptyList(), PromptGlobals(entries.take(1), null))!!
+        assertEquals("全局记忆：\n[个人信息 / 基本情况]\n- 住在杭州", prompt)
         val messages = full.build(contact(""), listOf(text(Role.USER, "hi")), true, "", now, loadImage = loader, globals = PromptGlobals(entries.take(1), null))
         assertEquals(listOf(ChatRole.SYSTEM, ChatRole.USER), messages.map { it.role })
     }
 
     @Test
     fun turningOffOnePart_removesOnlyThatPart() {
-        val both = full.systemPrompt(contact("人设"), "", now, emptyList(), PromptGlobals(entries, ReplyPreferences()))!!
-        val noGlobal = full.systemPrompt(contact("人设"), "", now, emptyList(), PromptGlobals(emptyList(), ReplyPreferences()))!!
-        val noStyle = full.systemPrompt(contact("人设"), "", now, emptyList(), PromptGlobals(entries, null))!!
-        val neither = full.systemPrompt(contact("人设"), "", now, emptyList(), PromptGlobals.NONE)!!
+        val both = full.systemPrompt(contact("人设"), "", emptyList(), PromptGlobals(entries, ReplyPreferences()))!!
+        val noGlobal = full.systemPrompt(contact("人设"), "", emptyList(), PromptGlobals(emptyList(), ReplyPreferences()))!!
+        val noStyle = full.systemPrompt(contact("人设"), "", emptyList(), PromptGlobals(entries, null))!!
+        val neither = full.systemPrompt(contact("人设"), "", emptyList(), PromptGlobals.NONE)!!
         assertEquals(both.replace(full.globalMemoryBlock(entries) + "\n\n", ""), noGlobal)
-        assertEquals(both.replace(full.replyStyleBlock(ReplyPreferences()) + "\n\n", ""), noStyle)
-        assertEquals("人设\n\n现在是 2026年11月1日 星期日 23:40。", neither)
+        // 0.9.2 起回复要求是系统提示词的最后一段（时间移到了附注里）
+        assertEquals(both.removeSuffix("\n\n" + full.replyStyleBlock(ReplyPreferences())), noStyle)
+        assertEquals("人设", neither)
     }
 
     @Test
@@ -287,7 +286,6 @@ class ContextBuilderTest {
         ContextLabels(
             namePlaceholder = "{名称}",
             personaPlaceholderPrefix = "{在这里写人设",
-            timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。",
             nicknameLine = "对方的昵称是「%1\$s」。",
             weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
             imagePlaceholder = "[图片]",
@@ -348,5 +346,72 @@ class ContextBuilderTest {
             estimator.message(withQuote),
         )
         assertEquals(estimator.message(text(Role.ASSISTANT, "早")), estimator.message(quoted(text(Role.ASSISTANT, "早"), Role.USER, "在呀")))
+    }
+
+    // ---------- 0.9.2：发送时附带时间信息 ----------
+
+    private val metaBuilder = ContextBuilder(
+        ContextLabels(
+            namePlaceholder = "{名称}",
+            personaPlaceholderPrefix = "{在这里写人设",
+            nicknameLine = "对方的昵称是「%1\$s」。",
+            weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
+            imagePlaceholder = "[图片]",
+            memoryHeader = "下面是记忆：",
+            memoryItem = "- [%1\$d年%2\$d月%3\$d日] %4\$s",
+            metaNote = "（附注：%1\$s，%2\$s。）",
+            metaTime = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d",
+            metaSinceNow = "距离%1\$s上一条消息不到 1 分钟",
+            metaSinceMinutes = "距离%1\$s上一条消息过了 %2\$d 分钟",
+            metaSinceHours = "距离%1\$s上一条消息过了 %2\$d 小时",
+            metaSinceDays = "距离%1\$s上一条消息过了 %2\$d 天",
+            metaFirst = "这是你们的第一条消息",
+            metaSelf = "你",
+            metaOther = "对方",
+        ),
+        zone,
+    )
+
+    @Test
+    fun metaNote_timeAndGapBuckets_likeProactive() {
+        val minute = 60_000L
+        fun gap(millis: Long, role: Role = Role.ASSISTANT) = metaBuilder.metaNote(now, now, now - millis, role)
+        assertEquals("（附注：现在是 2026年11月1日 星期日 23:40，这是你们的第一条消息。）", metaBuilder.metaNote(now, now, null, null))
+        assertEquals("（附注：现在是 2026年11月1日 星期日 23:40，距离你上一条消息不到 1 分钟。）", gap(59_999))
+        assertEquals("（附注：现在是 2026年11月1日 星期日 23:40，距离对方上一条消息过了 1 分钟。）", gap(minute, Role.USER))
+        assertTrue(gap(59 * minute).endsWith("过了 59 分钟。）"))
+        assertTrue(gap(60 * minute).endsWith("过了 1 小时。）"))
+        assertTrue(gap(48 * 60 * minute - 1).endsWith("过了 47 小时。）"))
+        assertTrue(gap(48 * 60 * minute).endsWith("过了 2 天。）"))
+        assertTrue("时间倒着（改过手机时间）按不到 1 分钟", gap(-5 * minute).contains("不到 1 分钟"))
+        // 间隔按这一轮第一条消息发出的时间算，“现在”是请求的时间
+        val later = now + 3 * 60 * minute
+        assertEquals("（附注：现在是 2026年11月2日 星期一 02:40，距离你上一条消息过了 10 分钟。）", metaBuilder.metaNote(later, now, now - 10 * minute, Role.ASSISTANT))
+        assertEquals("没配附注的文字时什么都不加", "", builder.metaNote(now, now, null, null))
+    }
+
+    @Test
+    fun prependNote_goesBeforeTheLatestUserMessageOnly() {
+        val history = listOf(text(Role.USER, "早"), text(Role.ASSISTANT, "早呀"), text(Role.USER, "吃了吗"), text(Role.USER, "我刚起"))
+        val plain = metaBuilder.build(contact(""), history, false, "", now, loadImage = { null })
+        val noted = metaBuilder.build(contact(""), history, false, "", now, loadImage = { null }, note = "【附注】")
+        assertEquals(plain.dropLast(1), noted.dropLast(1))
+        assertEquals("【附注】\n吃了吗\n我刚起", noted.last().plainText())
+        assertEquals("空附注不改请求", plain, metaBuilder.build(contact(""), history, false, "", now, loadImage = { null }, note = ""))
+        // 开头是图片时，附注单独放在前面
+        val image = Message(id = nextId++, contactId = 1, role = Role.USER, type = MessageType.IMAGE, imagePath = "a.jpg", status = MessageStatus.SUCCESS, createdAt = 0)
+        val withImage = metaBuilder.build(contact(""), listOf(image, text(Role.USER, "看")), true, "", now, loadImage = { "data:image/jpeg;base64,AA" }, note = "【附注】")
+        val parts = withImage.single().parts
+        assertEquals(ChatPart.Text("【附注】"), parts.first())
+        assertTrue(parts[1] is ChatPart.Image)
+        // 没有用户消息（只有联系人说的话）时不加
+        val onlyAssistant = listOf(text(Role.ASSISTANT, "在吗"))
+        assertEquals(metaBuilder.build(contact(""), onlyAssistant, false, "", now, loadImage = { null }), metaBuilder.build(contact(""), onlyAssistant, false, "", now, loadImage = { null }, note = "【附注】"))
+    }
+
+    @Test
+    fun systemPrompt_hasNoTimeAnyMore_onlyNickname() {
+        assertEquals("你是小雨，正在用微信和对方聊天。\n不使用 Markdown。\n\n对方的昵称是「阿哲」。", metaBuilder.systemPrompt(contact(), "阿哲"))
+        assertEquals("你是小雨，正在用微信和对方聊天。\n不使用 Markdown。", metaBuilder.systemPrompt(contact(), ""))
     }
 }

@@ -242,7 +242,7 @@ class MemoryEngine @Inject constructor(
             estimator,
         )
         val globals = promptGlobals.forContact(contact)
-        val system = contextBuilder.systemPrompt(contact, nickname.nickname(), System.currentTimeMillis(), memories, globals).orEmpty()
+        val system = contextBuilder.systemPrompt(contact, nickname.nickname(), memories, globals).orEmpty()
         return contact.contextTokens - estimator.text(system)
     }
 

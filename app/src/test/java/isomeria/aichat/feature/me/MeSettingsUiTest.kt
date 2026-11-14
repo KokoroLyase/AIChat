@@ -1,8 +1,11 @@
 package isomeria.aichat.feature.me
 
 import android.app.Application
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -40,7 +43,7 @@ class MeSettingsUiTest {
         SettingsSection.MODELS to listOf(R.string.settings_llm, R.string.usage_title, R.string.settings_tts, R.string.settings_asr),
         SettingsSection.GENERAL to listOf(
             R.string.settings_dark_mode, R.string.settings_font_size, R.string.settings_notify, R.string.settings_notify_preview,
-            R.string.settings_notify_permission_off, R.string.settings_battery,
+            R.string.settings_notify_permission_off, R.string.settings_battery, R.string.settings_prompt_meta,
         ),
         SettingsSection.DATA to listOf(R.string.storage_title, R.string.settings_export, R.string.settings_restore, R.string.settings_clear_all),
         SettingsSection.ABOUT to listOf(
@@ -63,6 +66,7 @@ class MeSettingsUiTest {
                     onNotifyPreview = { calls += "preview=$it" }, onNotifyPermission = { calls += "permission" },
                     onBattery = { calls += "battery" }, onClearAll = { calls += "clearAll" }, onCheckUpdate = { calls += "check" },
                     onAutoCheckUpdate = { calls += "auto=$it" }, onGithub = { calls += "github" },
+                    onPromptMeta = { calls += "meta=$it" },
                 ),
             )
         }
@@ -84,9 +88,10 @@ class MeSettingsUiTest {
         assertEquals(listOf("profile"), calls)
     }
 
+    /** 0.9.2 加了“发送时附带时间信息”，一共 21 项 */
     @Test
-    fun allTwentySettingsAreSplitAcrossTheFourPages() {
-        assertEquals(20, items.values.sumOf { it.size })
+    fun allSettingsAreSplitAcrossTheFourPages() {
+        assertEquals(21, items.values.sumOf { it.size })
         assertEquals(SettingsSection.entries.toSet(), items.keys)
     }
 
@@ -124,6 +129,24 @@ class MeSettingsUiTest {
         R.string.crash_title to "crash", R.string.settings_check_update to "check", R.string.settings_licenses to "licenses",
         R.string.settings_github to "github",
     ))
+
+    /** 0.9.2：发送时附带时间信息，默认开，开关单独有读屏说明，下面有说明文字 */
+    @Test
+    fun promptMetaSwitch_defaultOn_togglesAndExplains() {
+        section(SettingsSection.GENERAL)
+        val title = text(R.string.settings_prompt_meta)
+        compose.onNodeWithContentDescription(title).performScrollTo().assertIsOn()
+        compose.onNodeWithText(text(R.string.settings_prompt_meta_hint)).assertExists()
+        calls.clear()
+        compose.onNodeWithContentDescription(title).performClick()
+        assertEquals(listOf("meta=false"), calls)
+    }
+
+    @Test
+    fun promptMetaSwitch_showsOffState() {
+        section(SettingsSection.GENERAL, SettingsUiState(hasKey = true, canNotify = false, promptMeta = false))
+        compose.onNodeWithContentDescription(text(R.string.settings_prompt_meta)).performScrollTo().assertIsOff()
+    }
 
     @Test
     fun voiceRowsAreInert() {

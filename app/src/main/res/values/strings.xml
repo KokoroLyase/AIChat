@@ -233,7 +233,16 @@
     <string name="prompt_name_placeholder">{名称}</string>
     <string name="prompt_persona_placeholder_prefix">{在这里写人设</string>
     <!-- 参数：年、月、日、星期、时、分 -->
-    <string name="prompt_time_line">现在是 %1$d年%2$d月%3$d日 %4$s %5$02d:%6$02d。</string>
+    <!-- 发送时附带时间信息（0.9.2）：只在这次请求里，加在最新一条用户消息的开头；“你”是联系人（模型），“对方”是用户 -->
+    <string name="prompt_meta_note">（App 附上的时间信息，对方看不到，回复时不要提到它：%1$s，%2$s。）</string>
+    <string name="prompt_meta_time">现在是 %1$d年%2$d月%3$d日 %4$s %5$02d:%6$02d</string>
+    <string name="prompt_meta_since_now">距离%1$s上一条消息不到 1 分钟</string>
+    <string name="prompt_meta_since_minutes" tools:ignore="PluralsCandidate">距离%1$s上一条消息过了 %2$d 分钟</string>
+    <string name="prompt_meta_since_hours" tools:ignore="PluralsCandidate">距离%1$s上一条消息过了 %2$d 小时</string>
+    <string name="prompt_meta_since_days" tools:ignore="PluralsCandidate">距离%1$s上一条消息过了 %2$d 天</string>
+    <string name="prompt_meta_first">这是你们的第一条消息</string>
+    <string name="prompt_meta_self">你</string>
+    <string name="prompt_meta_other">对方</string>
     <string name="prompt_nickname_line">对方的昵称是「%1$s」。</string>
     <string name="prompt_memory_header">下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：</string>
     <!-- 参数：年、月、日、内容 -->
@@ -279,6 +288,8 @@
     <string name="settings_notify">新消息通知</string>
     <string name="settings_notify_preview">通知显示消息内容</string>
     <string name="settings_notify_permission_off">系统通知权限已关闭，点这里打开</string>
+    <string name="settings_prompt_meta">发送时附带时间信息</string>
+    <string name="settings_prompt_meta_hint">开启后，每次请求回复时会告诉模型现在的日期、星期、时间，以及距离上一条消息过了多久，让回复更贴合你的情况。这些信息只发给模型，不会显示在聊天里。</string>
     <string name="settings_battery">关闭电池优化</string>
     <string name="settings_battery_hint">部分系统清理后台较激进，可能导致切到后台后收不到回复</string>
     <string name="settings_group_data">数据管理</string>

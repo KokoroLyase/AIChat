@@ -125,7 +125,6 @@ object AppModule {
             ContextLabels(
                 namePlaceholder = res.getString(R.string.prompt_name_placeholder),
                 personaPlaceholderPrefix = res.getString(R.string.prompt_persona_placeholder_prefix),
-                timeLine = res.getString(R.string.prompt_time_line),
                 nicknameLine = res.getString(R.string.prompt_nickname_line),
                 weekdays = res.getStringArray(R.array.weekdays).toList(),
                 imagePlaceholder = res.getString(R.string.preview_image),
@@ -142,6 +141,15 @@ object AppModule {
                 callHint = res.getString(R.string.prompt_call_hint),
                 quoteOther = res.getString(R.string.prompt_quote_other),
                 quoteSelf = res.getString(R.string.prompt_quote_self),
+                metaNote = res.getString(R.string.prompt_meta_note),
+                metaTime = res.getString(R.string.prompt_meta_time),
+                metaSinceNow = res.getString(R.string.prompt_meta_since_now),
+                metaSinceMinutes = res.getString(R.string.prompt_meta_since_minutes),
+                metaSinceHours = res.getString(R.string.prompt_meta_since_hours),
+                metaSinceDays = res.getString(R.string.prompt_meta_since_days),
+                metaFirst = res.getString(R.string.prompt_meta_first),
+                metaSelf = res.getString(R.string.prompt_meta_self),
+                metaOther = res.getString(R.string.prompt_meta_other),
             ),
         )
     }
@@ -227,6 +235,7 @@ abstract class BindingsModule {
     @Binds abstract fun memoryQueue(impl: isomeria.aichat.data.memory.MemoryScheduler): isomeria.aichat.data.memory.MemoryQueue
 
     @Binds abstract fun replyPreferencesSource(impl: SettingsStore): isomeria.aichat.core.ReplyPreferencesSource
+    @Binds abstract fun promptMetaSource(impl: SettingsStore): isomeria.aichat.core.PromptMetaSource
 
     @Binds abstract fun proactiveSettingsSource(impl: SettingsStore): isomeria.aichat.core.ProactiveSettingsSource
 

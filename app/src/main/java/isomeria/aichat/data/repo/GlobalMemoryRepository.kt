@@ -52,13 +52,15 @@ data class GlobalMemoryTree(
 
 /**
  * 「我 → 全局记忆」的增删改、排序，以及每次请求要带的全局内容。
- * 联系人开了「使用全局记忆」才带全局记忆，开了「使用回复偏好」才带回复要求，开了主动聊天才带约定时间的写法。
+ * 联系人开了「使用全局记忆」才带全局记忆，开了「使用回复偏好」才带回复要求，开了主动聊天才带约定时间的写法；
+ * 设置里开了「发送时附带时间信息」（0.9.2）才在请求里加时间附注。
  */
 @Singleton
 class GlobalMemoryRepository @Inject constructor(
     private val db: AppDatabase,
     private val preferences: ReplyPreferencesSource,
     private val clock: Clock,
+    private val meta: isomeria.aichat.core.PromptMetaSource,
 ) : PromptGlobalsSource {
     private val dao get() = db.globalMemoryDao()
 
@@ -71,6 +73,7 @@ class GlobalMemoryRepository @Inject constructor(
         globalMemory = if (contact.useGlobalMemory) snapshot().entries() else emptyList(),
         replyStyle = preferences.forContact(contact),
         reminderHint = contact.proactiveEnabled,
+        metaNote = meta.promptMetaEnabled(),
     )
 
     // ---------- 类别 ----------

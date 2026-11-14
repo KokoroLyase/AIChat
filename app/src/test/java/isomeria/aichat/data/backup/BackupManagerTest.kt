@@ -1272,6 +1272,8 @@ class BackupManagerTest {
             notifyEnabled = true,
             notifyPreview = false,
             autoCheckUpdate = false,
+            // 0.9.2：发送时附带时间信息，默认开；这里关掉，看它跟着备份走
+            promptMeta = false,
             replyPreferences = ReplyPreferences(waitSeconds = 5, targetLength = 20, minCount = 2, maxCount = 4, stripPunctuation = false, minIntervalSeconds = 2, maxIntervalSeconds = 6),
         )
     }
@@ -1313,7 +1315,7 @@ class BackupManagerTest {
         db.globalMemoryDao().deleteCategory(db.globalMemoryDao().categories().first().id)
         db.globalMemoryDao().insertCategory(GlobalMemoryCategory(name = "本机后来的类别", createdAt = 9_000, updatedAt = 9_000))
         db.contactDao().update(db.contactDao().get(1)!!.copy(useGlobalMemory = false))
-        settings.value = settings.value.copy(themeMode = ThemeMode.LIGHT, nickname = "别人", avatarPath = null, replyPreferences = ReplyPreferences())
+        settings.value = settings.value.copy(themeMode = ThemeMode.LIGHT, nickname = "别人", avatarPath = null, replyPreferences = ReplyPreferences(), promptMeta = true)
     }
 
     private fun contact(id: Long, name: String, createdAt: Long) = Contact(

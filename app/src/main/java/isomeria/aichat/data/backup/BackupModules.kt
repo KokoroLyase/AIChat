@@ -55,6 +55,7 @@ fun BackupData.restrictTo(modules: Set<BackupModule>): BackupData {
             notifyEnabled = settings.notifyEnabled.takeIf { profile },
             notifyPreview = settings.notifyPreview.takeIf { profile },
             autoCheckUpdate = settings.autoCheckUpdate.takeIf { profile },
+            promptMeta = settings.promptMeta.takeIf { profile },
             replyPreferences = settings.replyPreferences.takeIf { REPLY_PREFERENCES in selected },
             proactive = settings.proactive.takeIf { PROACTIVE in selected },
             voice = settings.voice.takeIf { VOICE_SETTINGS in selected },

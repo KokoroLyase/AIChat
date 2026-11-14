@@ -58,11 +58,18 @@ class CallReplier @Inject constructor(
         val estimator = TokenEstimator.forProtocol(config.provider)
         val memories = MemoryPolicy.forRequest(db.memoryDao().listByContact(contactId), MemoryPolicy.memoryBudget(contact.contextTokens), estimator)
         val globals = promptGlobals.forContact(contact).copy(callHint = true)
-        val system = contextBuilder.systemPrompt(contact, nickname, startedAt, memories, globals).orEmpty()
-        val historyBudget = contact.contextTokens - estimator.text(system)
-        val rows = calls.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING }
+        val system = contextBuilder.systemPrompt(contact, nickname, memories, globals).orEmpty()
+        val baseBudget = contact.contextTokens - estimator.text(system)
+        val rows = calls.recent(contactId, ContextWindow.maxRows(baseBudget)).filter { it.status != MessageStatus.PENDING }
         // 用户刚说的那句一定带上（和普通回复里等待回复的消息一样，超出预算也带）
         val lastUser = rows.indexOfLast { it.role == Role.USER }
+        // 时间附注（0.9.2）：间隔从用户刚说的这句算到它前面的一句（通话按每一句算）
+        val note = if (!globals.metaNote || lastUser < 0) null else {
+            val sentAt = rows[lastUser].createdAt
+            val previous = calls.before(contactId, sentAt, 3).lastOrNull { it.status != MessageStatus.PENDING }
+            contextBuilder.metaNote(startedAt, sentAt, previous?.createdAt, previous?.role)
+        }
+        val historyBudget = baseBudget - (note?.let(estimator::text) ?: 0)
         val marked = if (lastUser < 0) rows else rows.mapIndexed { index, row -> if (index == lastUser) row.copy(status = MessageStatus.SENDING) else row }
         val history = ContextWindow.select(marked, historyBudget, estimator, snapshot.supportsImage)
         val messages = contextBuilder.build(
@@ -74,6 +81,7 @@ class CallReplier @Inject constructor(
             memories = memories,
             globals = globals,
             loadImage = files::readAsDataUrl,
+            note = note,
         )
         val request = snapshot.request(messages)
 

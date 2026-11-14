@@ -112,7 +112,6 @@ class MemoryEngineTest {
             ContextLabels(
                 namePlaceholder = "{名称}",
                 personaPlaceholderPrefix = "{在这里写人设",
-                timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。",
                 nicknameLine = "对方的昵称是「%1\$s」。",
                 weekdays = listOf("一", "二", "三", "四", "五", "六", "日"),
                 imagePlaceholder = "[图片]",

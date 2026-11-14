@@ -137,7 +137,7 @@ class VoiceReplyTest {
         engine = ReplyEngine(
             db = db, contactDao = db.contactDao(), messageDao = db.messageDao(), conversationDao = db.conversationDao(), memoryDao = db.memoryDao(),
             providers = h.providers, usage = UsageRepository(db.usageDao()), nicknames = { h.nickname }, files = FileStorage(context),
-            contextBuilder = h.contextBuilder, clock = Clock { h.now }, promptGlobals = GlobalMemoryRepository(db, { h.preferences }, Clock { h.now }),
+            contextBuilder = h.contextBuilder, clock = Clock { h.now }, promptGlobals = GlobalMemoryRepository(db, { h.preferences }, Clock { h.now }, isomeria.aichat.core.PromptMetaSource.OFF),
             preferences = { h.preferences }, random = h.random, sleeper = h.sleeper, delivery = h.delivery, queue = h.queue,
             reminders = h.reminders, voice = pipeline,
         )
@@ -361,7 +361,7 @@ class VoiceReplyTest {
     private fun engineWith(pipeline: VoicePipeline) = ReplyEngine(
         db = db, contactDao = db.contactDao(), messageDao = db.messageDao(), conversationDao = db.conversationDao(), memoryDao = db.memoryDao(),
         providers = h.providers, usage = UsageRepository(db.usageDao()), nicknames = { h.nickname }, files = FileStorage(context),
-        contextBuilder = h.contextBuilder, clock = Clock { h.now }, promptGlobals = GlobalMemoryRepository(db, { h.preferences }, Clock { h.now }),
+        contextBuilder = h.contextBuilder, clock = Clock { h.now }, promptGlobals = GlobalMemoryRepository(db, { h.preferences }, Clock { h.now }, isomeria.aichat.core.PromptMetaSource.OFF),
         preferences = { h.preferences }, random = h.random, sleeper = h.sleeper, delivery = h.delivery, queue = h.queue,
         reminders = h.reminders, voice = pipeline,
     )

@@ -218,7 +218,6 @@ class CallEngineTest {
             ContextLabels(
                 namePlaceholder = "{名称}",
                 personaPlaceholderPrefix = "{在这里写人设",
-                timeLine = "现在是 %1\$d年%2\$d月%3\$d日 %4\$s %5\$02d:%6\$02d。",
                 nicknameLine = "对方的昵称是「%1\$s」。",
                 weekdays = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"),
                 imagePlaceholder = "[图片]",
@@ -251,7 +250,7 @@ class CallEngineTest {
         val files = FileStorage(context)
         val replier = CallReplier(
             db, h.providers, UsageRepository(db.usageDao()), { h.nickname }, files, contextBuilder, Clock { h.now },
-            GlobalMemoryRepository(db, { h.preferences }, Clock { h.now }), h.reminders,
+            GlobalMemoryRepository(db, { h.preferences }, Clock { h.now }, isomeria.aichat.core.PromptMetaSource.OFF), h.reminders,
         )
         engine = CallEngine(
             db = db, records = CallRecords(db, MessagePreviewer.PLAIN), voices = voices, providers = h.providers, replier = replier,
@@ -310,9 +309,10 @@ class CallEngineTest {
         // 按句合成、按顺序放
         assertEquals(listOf("好呀。", "去哪座山？"), api.tts.map { it.text })
         assertEquals(all.drop(1).map { File(it.audioPath!!) }, speaker.played.toList())
-        // 请求：系统提示词末尾多了通话说明（在时间之前），最后一条是用户刚说的话
+        // 请求：系统提示词末尾多了通话说明（0.9.2 起时间不在系统提示词里），最后一条是用户刚说的话
         val request = h.provider.requests.single()
-        assertTrue(request.messages.first().plainText().contains("$callHint\n\n现在是 2026年11月1日"))
+        assertTrue(request.messages.first().plainText().contains(callHint))
+        assertTrue(!request.messages.first().plainText().contains("2026年11月1日"))
         assertEquals(ChatRole.USER, request.messages.last().role)
         assertEquals("周末去爬山吧", request.messages.last().plainText())
         assertTrue("又在听了", mic.hearing)

@@ -31,11 +31,12 @@ class GlobalMemoryRepositoryTest {
     private lateinit var repo: GlobalMemoryRepository
     private var prefs = ReplyPreferences(minCount = 2)
     private var now = 1_000L
+    private var meta = false
 
     @Before
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        repo = GlobalMemoryRepository(db, { prefs }, Clock { now++ })
+        repo = GlobalMemoryRepository(db, { prefs }, Clock { now++ }, { meta })
     }
 
     @After
@@ -143,6 +144,16 @@ class GlobalMemoryRepositoryTest {
         repo.forContact(contact(false, true)).let { assertTrue(it.globalMemory.isEmpty()); assertEquals(prefs, it.replyStyle) }
         repo.forContact(contact(true, false)).let { assertEquals(1, it.globalMemory.size); assertNull(it.replyStyle) }
         repo.forContact(contact(false, false)).let { assertTrue(it.globalMemory.isEmpty()); assertNull(it.replyStyle) }
+    }
+
+    /** 0.9.2：时间附注跟着设置里的开关，和联系人无关 */
+    @Test
+    fun forContact_metaNoteFollowsTheSetting() = runBlocking {
+        val contact = Contact(name = "a", avatarColor = 0, providerId = 1, model = "m", createdAt = 0, updatedAt = 0)
+        assertEquals(false, repo.forContact(contact).metaNote)
+        meta = true
+        assertEquals(true, repo.forContact(contact).metaNote)
+        assertEquals(true, repo.forContact(contact.copy(useGlobalMemory = false, useReplyPreferences = false)).metaNote)
     }
 
     @Test
