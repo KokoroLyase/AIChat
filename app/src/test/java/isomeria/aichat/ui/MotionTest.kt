@@ -6,6 +6,14 @@ import androidx.activity.ComponentActivity
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import isomeria.aichat.feature.chat.ChatBottomArea
+import isomeria.aichat.feature.chat.scrollToLatest
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -209,6 +217,109 @@ class MotionTest {
         settle()
         assertEquals(1, picked)
         assertEquals(1, dismissed)
+    }
+
+    // ---------- 表情、更多面板（0.9.1 真机反馈后加） ----------
+
+    private var panelOpen by mutableStateOf(false)
+    private var panelContent by mutableStateOf<(@androidx.compose.runtime.Composable () -> Unit)?>(null)
+    private var keyboardHeight by mutableStateOf(0.dp)
+    private val emojiPanel: @androidx.compose.runtime.Composable () -> Unit = { Box(Modifier.fillMaxWidth().height(300.dp)) { Text("表情面板") } }
+
+    private fun showChatBottom() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            AIChatTheme(darkTheme = false) {
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f))
+                    Text("输入栏")
+                    ChatBottomArea(open = panelOpen, height = 300.dp, panel = panelContent, ime = WindowInsets(bottom = keyboardHeight))
+                }
+            }
+        }
+        frames()
+        settle()
+    }
+
+    @Test fun panelRisesAndFallsLikeKeyboard() {
+        showChatBottom()
+        val closed = bounds("输入栏").top
+        change { panelOpen = true; panelContent = emojiPanel }
+        frames(4)
+        val rising = bounds("输入栏").top
+        settle()
+        val opened = bounds("输入栏").top
+        assertEquals("升到面板高度", 300f, (closed - opened).value, 1f)
+        assertTrue("打开时输入栏应在途中：$closed -> $rising -> $opened", rising < closed - 10.dp && rising > opened + 10.dp)
+
+        // 返回手势、点聊天区域：面板落下，途中还画着面板
+        change { panelOpen = false; panelContent = null }
+        frames(4)
+        val falling = bounds("输入栏").top
+        assertTrue("关上时输入栏应在途中：$opened -> $falling", falling > opened + 10.dp && falling < closed - 10.dp)
+        assertEquals("落下途中还看得到面板", 1, compose.onAllNodesWithText("表情面板").fetchSemanticsNodes().size)
+        settle()
+        assertEquals(closed, bounds("输入栏").top)
+        assertEquals("落下后面板不在了", 0, compose.onAllNodesWithText("表情面板").fetchSemanticsNodes().size)
+    }
+
+    @Test fun switchingBetweenKeyboardAndPanelKeepsInputBarStill() {
+        keyboardHeight = 300.dp
+        showChatBottom()
+        val keyboardTop = bounds("输入栏").top
+
+        // 键盘切到表情面板：键盘收起的同时面板顶上，输入栏不动
+        change { panelOpen = true; panelContent = emojiPanel }
+        frames(1)
+        change { keyboardHeight = 0.dp }
+        repeat(6) {
+            frames(1)
+            assertEquals("键盘换成面板时输入栏不该先掉下去", keyboardTop.value, bounds("输入栏").top.value, 1f)
+        }
+        settle()
+        assertEquals(keyboardTop.value, bounds("输入栏").top.value, 1f)
+
+        // 面板切回键盘：先留着位置，键盘到位后收起，输入栏也不动
+        change { panelContent = null; keyboardHeight = 300.dp }
+        frames(2)
+        change { panelOpen = false }
+        repeat(6) {
+            frames(1)
+            assertEquals("面板换成键盘时输入栏不动", keyboardTop.value, bounds("输入栏").top.value, 1f)
+        }
+    }
+
+    // ---------- 自己发出的消息（0.9.1 真机反馈后加） ----------
+
+    @Test fun sentMessageSlidesListUpInsteadOfJumping() {
+        var rows by mutableStateOf((1..40).map { msg(it.toLong(), "消息 $it", it.toLong()) })
+        var scrollRequest by mutableStateOf(0)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            AIChatTheme(darkTheme = false) {
+                val listState = rememberLazyListState()
+                LaunchedEffect(scrollRequest) { if (scrollRequest > 0) listState.scrollToLatest(animate = true) }
+                ChatMessageList(
+                    rows = rows.map { ChatRow.Item(it) },
+                    contact = contact, myName = "我", myAvatarPath = null, waitingReply = false, actions = noActions,
+                    listState = listState, openedAt = 1_000,
+                )
+            }
+        }
+        frames()
+        settle()
+        val before = bounds("消息 40").top
+
+        change {
+            rows = rows + msg(41, "我刚发的一条比较长的消息，占一行多一点的位置", 2_000, role = Role.USER)
+            scrollRequest++
+        }
+        frames(4)
+        val moving = bounds("消息 40").top
+        settle()
+        val after = bounds("消息 40").top
+        assertTrue("上一条应该往上移：$before -> $after", after < before - 20.dp)
+        assertTrue("应该滑上去，而不是一下跳到位：$before -> $moving -> $after", moving < before - 1.dp && moving > after + 1.dp)
     }
 
     // ---------- 多选 ----------

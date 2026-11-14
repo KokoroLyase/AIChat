@@ -32,8 +32,6 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -41,6 +39,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -78,8 +78,12 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -280,7 +284,8 @@ fun ChatScreen(
     LaunchedEffect(pendingLatest, pagedRows.itemSnapshotList) {
         val target = pendingLatest ?: return@LaunchedEffect
         if (target != 0L && pagedRows.itemSnapshotList.items.none { it is ChatRow.Item && it.message.id == target }) return@LaunchedEffect
-        if (pagedRows.itemCount > 0) listState.scrollToItem(0)
+        // 本来就停在底部（比如刚发了一条）：和收到消息一样滑上去；在看历史时直接跳到底部
+        if (pagedRows.itemCount > 0) listState.scrollToLatest(animate = focusDone && atBottom)
         atBottom = true
         focusDone = true
         pendingLatest = null
@@ -660,9 +665,11 @@ fun ChatScreen(
                 focusRequester = focusRequester,
                 voice = voiceActions,
             )
-            ChatBottomArea(reserve = if (panel != InputPanel.NONE || awaitingKeyboard) panelHeight else null) {
-                when (panel) {
-                    InputPanel.EMOJI -> EmojiPanel(
+            ChatBottomArea(
+                open = panel != InputPanel.NONE || awaitingKeyboard,
+                height = panelHeight,
+                panel = when (panel) {
+                    InputPanel.EMOJI -> { { EmojiPanel(
                         groups = emojiGroups,
                         recent = recentEmoji,
                         canSend = input.text.isNotBlank(),
@@ -678,8 +685,8 @@ fun ChatScreen(
                         },
                         onSend = ::send,
                         modifier = Modifier.height(panelHeight),
-                    )
-                    InputPanel.MORE -> MorePanel(
+                    ) } }
+                    InputPanel.MORE -> { { MorePanel(
                         imageEnabled = state.supportsImage,
                         onAlbum = {
                             if (!state.supportsImage) {
@@ -699,10 +706,10 @@ fun ChatScreen(
                         },
                         modifier = Modifier.height(panelHeight),
                         onCall = { state.contact?.let { onCall(it.id) } },
-                    )
-                    InputPanel.NONE -> Unit
-                }
-            }
+                    ) } }
+                    InputPanel.NONE -> null
+                },
+            )
         } else if (state.loaded) {
             Box(Modifier.fillMaxWidth().navigationBarsPadding(), contentAlignment = Alignment.Center) {
                 Text(stringResource(R.string.chat_contact_missing), color = colors.textTertiary)
@@ -968,23 +975,73 @@ fun NewMessagesButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modi
  * 面板和键盘一样高时，两者切换的过程中这块区域高度不变，输入栏就不会跳动。
  * 高度在布局阶段按窗口边衬计算，键盘动画时不会让整页重组。
  */
+/**
+ * 输入栏下面的区域：键盘、表情或更多面板、导航栏，取最高的那个。
+ *
+ * 面板（0.9.1 真机反馈后改）：打开时像键盘一样从下往上升起，关上（返回手势、点聊天区域、切到语音）时落下，
+ * 输入栏和消息列表跟着走；落下的过程中仍画着刚才的面板。和键盘互相切换时从键盘当前的高度接着走，输入栏不跳。
+ * [open] 时留出 [height]（不含导航栏）；[panel] 是面板内容，null 表示只留位置（从面板切回键盘、等键盘升起时）。
+ * [ime] 是键盘的位置，测试里可以指定。
+ */
 @Composable
-private fun ChatBottomArea(reserve: Dp?, content: @Composable () -> Unit) {
+internal fun ChatBottomArea(
+    open: Boolean,
+    height: Dp,
+    panel: (@Composable () -> Unit)?,
+    ime: WindowInsets = WindowInsets.ime,
+) {
     val density = LocalDensity.current
     val navigationBars = WindowInsets.navigationBars
-    val reserveInsets = if (reserve != null) {
-        WindowInsets(bottom = reserve + with(density) { navigationBars.getBottom(density).toDp() })
-    } else {
-        WindowInsets(0, 0, 0, 0)
+    val target = with(density) { height.roundToPx() }.toFloat()
+    val reserve = remember { Animatable(if (open) target else 0f) }
+    LaunchedEffect(open, target) {
+        val keyboard = (ime.getBottom(density) - navigationBars.getBottom(density)).coerceAtLeast(0).toFloat()
+        if (open) {
+            // 键盘正开着（从键盘切到面板）：从键盘的高度接着走，看起来不动
+            if (keyboard > reserve.value) reserve.snapTo(keyboard.coerceAtMost(target))
+            reserve.animateTo(target, tween(WeMotion.PANEL_OPEN, easing = WeMotion.Panel))
+        } else if (keyboard >= reserve.value - 4f) {
+            // 已经换成键盘、键盘到位：被键盘盖着，直接收起
+            reserve.snapTo(0f)
+        } else {
+            reserve.animateTo(0f, tween(WeMotion.PANEL_CLOSE, easing = WeMotion.Panel))
+        }
     }
-    Box(Modifier.fillMaxWidth().background(WeTheme.colors.barBackground)) {
-        Spacer(
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsBottomHeight(WindowInsets.ime.union(navigationBars).union(reserveInsets)),
-        )
-        content()
+    // 落下的过程中 panel 已经是 null，接着画刚才的面板
+    val lastPanel = remember { mutableStateOf(panel) }
+    SideEffect { if (panel != null) lastPanel.value = panel }
+    val drawn = panel ?: lastPanel.value
+    val showing by remember { derivedStateOf { reserve.value >= 1f } }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(WeTheme.colors.barBackground)
+            .layout { measurable, constraints ->
+                val nav = navigationBars.getBottom(this)
+                val reserved = reserve.value.roundToInt()
+                val h = maxOf(ime.getBottom(this), nav, if (reserved > 0) reserved + nav else 0)
+                val placeable = measurable.measure(constraints.copy(minHeight = h, maxHeight = h))
+                layout(placeable.width, h) { placeable.place(0, 0) }
+            },
+    ) {
+        if (showing && drawn != null) {
+            // 面板按完整高度排版，只露出已经升起的部分（顶部先出来，和键盘一样）
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clipToBounds()
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+                        layout(placeable.width, minOf(reserve.value.roundToInt(), placeable.height)) { placeable.place(0, 0) }
+                    },
+            ) { drawn() }
+        }
     }
+}
+
+/** 回到最新一条：[animate] 时滑过去（和收到新消息一样），否则直接跳到底部 */
+internal suspend fun LazyListState.scrollToLatest(animate: Boolean) {
+    if (animate) animateScrollToItem(0) else scrollToItem(0)
 }
 
 /**

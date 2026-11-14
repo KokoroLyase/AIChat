@@ -53,6 +53,13 @@ object WeMotion {
     /** 多选进出：勾选圈滑入、输入栏和操作栏交叉淡变 */
     const val SELECTION = 200
 
+    /** 聊天页的表情、更多面板：像键盘一样从下往上升起、落下（0.9.1 真机反馈后加） */
+    const val PANEL_OPEN = 250
+    const val PANEL_CLOSE = 200
+
+    /** 面板升降的曲线：和系统键盘动画用的曲线相同（先快后慢） */
+    val Panel = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
     /** 标准减速曲线（Material 的 emphasized decelerate） */
     val Decelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
 }
