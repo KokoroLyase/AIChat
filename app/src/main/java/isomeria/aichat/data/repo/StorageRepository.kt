@@ -35,6 +35,8 @@ class StorageRepository @Inject constructor(
             calls = size(File(context.filesDir, FileStorage.CALLS_DIR)),
             // 0.9.0：收藏的语音和通话音频（复制的一份）
             favorites = size(File(context.filesDir, FileStorage.FAVORITES_DIR)),
+            // 0.9.2：聊天里发的文件和解析出的文字
+            files = size(File(context.filesDir, FileStorage.CHAT_FILES_DIR)) + size(File(context.filesDir, FileStorage.PARSED_DIR)),
             // 0.7.1：离线识别模型（含没下完的部分）；不是可再生缓存，也不参与孤立文件清理，在「离线识别」页单独删除
             asrModels = size(File(context.filesDir, isomeria.aichat.data.voice.OfflineAsrModel.ROOT)),
         )

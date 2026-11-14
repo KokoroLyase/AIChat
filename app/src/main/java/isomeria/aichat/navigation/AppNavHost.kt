@@ -99,6 +99,8 @@ import kotlinx.serialization.Serializable
 @Serializable data object VoiceSettingsRoute
 /** [kind] 是 ProviderKind 的名字：TTS 或 ASR */
 @Serializable data class VoiceProviderListRoute(val kind: String)
+/** 文件解析（0.9.2） */
+@Serializable data object ParserSettingsRoute
 @Serializable data class VoiceProviderEditRoute(val kind: String, val providerId: Long = NEW_PROVIDER)
 /** 0.7.1：系统语音（本机）、离线识别（本机） */
 @Serializable data object SystemTtsRoute
@@ -214,6 +216,7 @@ fun AppNavHost(
             )
         }
         page<VoiceProviderEditRoute>(nav) { isomeria.aichat.feature.voice.VoiceProviderEditScreen(onBack = nav::popBackStackSafely) }
+        page<ParserSettingsRoute>(nav) { isomeria.aichat.feature.settings.ParserSettingsScreen(onBack = nav::popBackStackSafely) }
         page<SystemTtsRoute>(nav) { isomeria.aichat.feature.voice.SystemTtsScreen(onBack = nav::popBackStackSafely) }
         page<OfflineAsrRoute>(nav) { isomeria.aichat.feature.voice.OfflineAsrScreen(onBack = nav::popBackStackSafely) }
         page<SettingsSectionRoute>(nav) { entry ->
@@ -230,6 +233,7 @@ fun AppNavHost(
                     onOpenStorage = { nav.navigate(StorageRoute) },
                     onOpenTts = { nav.navigate(VoiceProviderListRoute(isomeria.aichat.data.db.ProviderKind.TTS.name)) },
                     onOpenAsr = { nav.navigate(VoiceProviderListRoute(isomeria.aichat.data.db.ProviderKind.ASR.name)) },
+                    onOpenParser = { nav.navigate(ParserSettingsRoute) },
                 ),
             )
         }
@@ -243,6 +247,7 @@ fun AppNavHost(
                 onEditContact = { nav.navigate(ContactEditRoute(it)) },
                 onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) },
                 onOpenVoiceSettings = { nav.navigate(VoiceProviderListRoute(isomeria.aichat.data.db.ProviderKind.ASR.name)) },
+                onOpenParserSettings = { nav.navigate(ParserSettingsRoute) },
                 onCall = { nav.navigate(CallRoute(it)) { launchSingleTop = true } },
                 // 正在进行的通话由聊天页判断后走 onCall 回到通话页，这里只看详情
                 onOpenCall = { message -> nav.navigate(CallDetailRoute(message.id)) },

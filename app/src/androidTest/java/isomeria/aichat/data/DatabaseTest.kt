@@ -18,6 +18,7 @@ import isomeria.aichat.data.db.MIGRATION_6_7
 import isomeria.aichat.data.db.MIGRATION_7_8
 import isomeria.aichat.data.db.MIGRATION_8_9
 import isomeria.aichat.data.db.MIGRATION_9_10
+import isomeria.aichat.data.db.MIGRATION_10_11
 import isomeria.aichat.data.db.Message
 import isomeria.aichat.data.db.MessageStatus
 import isomeria.aichat.data.db.MessageType
@@ -310,6 +311,28 @@ class DatabaseTest {
             db.query("SELECT COUNT(*) FROM favorite_turn").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
             db.execSQL("DELETE FROM favorite WHERE id=1")
             db.query("SELECT COUNT(*) FROM favorite_turn").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+        }
+    }
+
+    /** 0.9.2：消息加文件和解析结果的四列，旧消息都为空（大小为 0）；文件消息能写进去（真机 SQLite） */
+    @Test
+    fun migrate10To11_fileColumns() {
+        helper.createDatabase("migration-v10-test", 10).use { db ->
+            db.execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility,voice) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com',NULL,'',1,'deepseek','DEEPSEEK','')")
+            db.execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency,replyType,ttsVoice,ttsStyle,replyPreferences,ttsSource,asrSource) VALUES(7,'甲',0,1,'m','OFF',1.3,'人设',4000,1,1,1,1,'off',1,1,0,'MEDIUM',NULL,NULL,'',NULL,NULL,NULL)")
+            db.execSQL("INSERT INTO message(id,contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,createdAt,origin,voiceMillis,voicePlayed,voiceShowText,translationShown) VALUES(1,7,'USER','TEXT','你好',0,0,0,'SUCCESS',0,0,0,10,'NORMAL',0,0,0,0)")
+        }
+        helper.runMigrationsAndValidate("migration-v10-test", 11, true, MIGRATION_10_11).use { db ->
+            db.query("SELECT content, filePath, fileSize, fileMime, parsedPath FROM message WHERE id=1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("你好", c.getString(0))
+                assertTrue(c.isNull(1))
+                assertEquals(0L, c.getLong(2))
+                assertTrue(c.isNull(3))
+                assertTrue(c.isNull(4))
+            }
+            db.execSQL("INSERT INTO message(contactId,role,type,content,imageWidth,imageHeight,reasoningMillis,status,errorCode,promptTokens,completionTokens,createdAt,origin,voiceMillis,voicePlayed,voiceShowText,translationShown,filePath,fileSize,fileMime,parsedPath) VALUES(7,'USER','FILE','报告.pdf',0,0,0,'SENDING',0,0,0,20,'NORMAL',0,0,0,0,'/f/a.pdf',2048,'application/pdf',NULL)")
+            db.query("SELECT COUNT(*) FROM message WHERE type='FILE' AND fileSize=2048").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
         }
     }
 

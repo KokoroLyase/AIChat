@@ -38,6 +38,8 @@ class TokenEstimator(private val wideCharTokens: Double) {
         MessageType.IMAGE -> if (withImage) IMAGE_TOKENS else IMAGE_PLACEHOLDER_TOKENS
         // 通话（0.8.0）在拼上下文前已经展开成每一条话（CallTranscript），走到这里的通话消息没有内容
         MessageType.CALL -> text(message.content)
+        // 文件（0.9.2）：没换成文字（ContextBuilder.withAttachments）时只有“[文件：名称]”
+        MessageType.FILE -> text(message.content) + IMAGE_PLACEHOLDER_TOKENS
     }
 
     /** 引用（0.9.0）那一行占的 token：被引用的文字（截断后）加上固定说法；没有引用、不是用户消息、语音没转写时为 0 */

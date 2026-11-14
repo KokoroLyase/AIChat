@@ -75,6 +75,8 @@ data class ChatUiState(
     val typing: Boolean = false,
     val waitingReply: Boolean = false,
     val supportsImage: Boolean = false,
+    /** 配好了文件解析（0.9.2）：能发文件；模型不能看图时也能发图片（交给它识别） */
+    val canParse: Boolean = false,
     val hasApiKey: Boolean = true,
     val myAvatarPath: String? = null,
     val myName: String = "",
@@ -84,6 +86,8 @@ data class ChatUiState(
 
 sealed interface ChatEvent {
     data object ImageImportFailed : ChatEvent
+    /** 发文件（0.9.2）时有没发出去的：太大、格式不支持、读不了 */
+    data class FilesSkipped(val tooLarge: Int, val unsupported: Int, val failed: Int) : ChatEvent
     data class ScrollToLatest(val messageId: Long) : ChatEvent
     /** 录音不到 1 秒 */
     data object VoiceTooShort : ChatEvent
@@ -120,6 +124,7 @@ class ChatViewModel @Inject constructor(
     callEngine: isomeria.aichat.data.call.CallEngine,
     private val favorites: isomeria.aichat.data.repo.FavoriteRepository,
     private val translations: isomeria.aichat.data.repo.TranslationRepository,
+    private val parsers: isomeria.aichat.data.parse.ParserRepository,
 ) : ViewModel() {
     private val route = savedState.toRoute<ChatRoute>()
     val contactId: Long = route.contactId
@@ -204,13 +209,19 @@ class ChatViewModel @Inject constructor(
 
     private val me = combine(settings.avatarPath, settings.nickname) { path, name -> path to name }
 
+    /** 模型能不能看图、文件解析能不能用（0.9.2） */
+    private val abilities: Flow<Pair<Boolean, Boolean>> = combine(
+        supportsImage,
+        parsers.observe().map { config -> config != null && config.enabled && !config.apiKeyEncrypted.isNullOrEmpty() },
+    ) { image, parse -> image to parse }
+
     val state: StateFlow<ChatUiState> = combine(
         contactFlow,
         timeline,
-        supportsImage,
+        abilities,
         hasApiKey,
         me,
-    ) { contact, current, image, hasKey, (avatar, nickname) ->
+    ) { contact, current, (image, parse), hasKey, (avatar, nickname) ->
         val typing = current.waiting || current.pending
         ChatUiState(
             loaded = true,
@@ -218,6 +229,7 @@ class ChatViewModel @Inject constructor(
             typing = typing,
             waitingReply = current.waiting,
             supportsImage = image,
+            canParse = parse,
             hasApiKey = hasKey,
             myAvatarPath = avatar,
             myName = nickname,
@@ -309,6 +321,19 @@ class ChatViewModel @Inject constructor(
             } finally { files.finishCamera() }
         }
     }
+
+    /** 发文件（0.9.2） */
+    fun sendFiles(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        appScope.launch {
+            val result = chats.sendFiles(contactId, uris)
+            if (result.sent > 0) requestLatest()
+            if (result.sent < uris.size) events.send(ChatEvent.FilesSkipped(result.tooLarge, result.unsupported, result.failed))
+        }
+    }
+
+    /** 打开文件（0.9.2）用的地址；文件不在本机时为 null */
+    fun fileUri(message: Message): Uri? = files.chatFileUri(message.filePath)
 
     fun newCameraUri(): Uri = files.newCameraUri()
     fun finishCamera() = files.finishCamera()

@@ -44,7 +44,7 @@ data class VoicePreset(
     fun endpoint(kind: ProviderKind): VoicePresetEndpoint? = when (kind) {
         ProviderKind.TTS -> tts
         ProviderKind.ASR -> asr
-        ProviderKind.LLM -> null
+        ProviderKind.LLM, ProviderKind.PARSER -> null
     }
 
     fun supports(kind: ProviderKind): Boolean = endpoint(kind) != null
@@ -188,7 +188,7 @@ object VoicePresets {
     fun forKind(kind: ProviderKind): List<VoicePreset> = when (kind) {
         ProviderKind.TTS -> ttsOrder
         ProviderKind.ASR -> asrOrder
-        ProviderKind.LLM -> emptyList()
+        ProviderKind.LLM, ProviderKind.PARSER -> emptyList()
     }
 
     fun byId(id: String?): VoicePreset? = all.firstOrNull { it.id == id }

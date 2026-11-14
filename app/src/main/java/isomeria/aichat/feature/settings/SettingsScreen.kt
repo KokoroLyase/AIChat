@@ -61,6 +61,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -74,7 +75,13 @@ class SettingsViewModel @Inject constructor(
     @ApplicationScope private val appScope: CoroutineScope,
     providers: ProviderRepository,
     voices: isomeria.aichat.data.repo.VoiceRepository,
+    parsers: isomeria.aichat.data.parse.ParserRepository,
 ) : ViewModel() {
+    /** 文件解析（0.9.2）配好并开着 */
+    val parserReady: StateFlow<Boolean> = parsers.observe()
+        .map { config -> config != null && config.enabled && !config.apiKeyEncrypted.isNullOrEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     /** 正在用的语音合成、识别来源（服务商或 0.7.1 的本机来源） */
     val voiceSources: StateFlow<Pair<isomeria.aichat.data.repo.VoiceProviders?, isomeria.aichat.data.repo.VoiceProviders?>> = kotlinx.coroutines.flow.combine(
         voices.observe(isomeria.aichat.data.db.ProviderKind.TTS, settings.voiceSettings),
@@ -135,6 +142,8 @@ data class SettingsNavigation(
     val onOpenStorage: () -> Unit = {},
     val onOpenTts: () -> Unit = {},
     val onOpenAsr: () -> Unit = {},
+    /** 文件解析（0.9.2） */
+    val onOpenParser: () -> Unit = {},
 )
 
 /** 设置页显示用的状态 */
@@ -155,6 +164,8 @@ data class SettingsUiState(
     /** 正在用的语音合成、识别服务商的名称（0.7.0）；没有选时为 null */
     val ttsName: String? = null,
     val asrName: String? = null,
+    /** 文件解析（0.9.2）配好并开着时为 true */
+    val parserReady: Boolean = false,
 )
 
 /** 设置页里跳转之外的点击和开关 */
@@ -194,6 +205,7 @@ fun SettingsSectionScreen(
     val promptMeta by viewModel.promptMeta.collectAsStateWithLifecycle()
     val newerRelease by viewModel.newerRelease.collectAsStateWithLifecycle()
     val voiceSources by viewModel.voiceSources.collectAsStateWithLifecycle()
+    val parserReady by viewModel.parserReady.collectAsStateWithLifecycle()
     var showTheme by remember { mutableStateOf(false) }
     var showFont by remember { mutableStateOf(false) }
     var confirmClearAll by remember { mutableStateOf(false) }
@@ -233,6 +245,7 @@ fun SettingsSectionScreen(
             newerVersion = newerRelease?.version,
             ttsName = voiceSources.first?.let { isomeria.aichat.feature.voice.voiceSourceName(it.selectedName(), it.local) },
             asrName = voiceSources.second?.let { isomeria.aichat.feature.voice.voiceSourceName(it.selectedName(), it.local) },
+            parserReady = parserReady,
         ),
         onBack = onBack,
         navigation = navigation,
@@ -356,6 +369,13 @@ fun SettingsSectionList(section: SettingsSection, state: SettingsUiState, naviga
                 title = stringResource(R.string.settings_asr),
                 value = state.asrName ?: stringResource(R.string.voice_source_unset),
                 onClick = navigation.onOpenAsr,
+                showDivider = true,
+            )
+            WeListRow(
+                titleMaxLines = 2,
+                title = stringResource(R.string.parser_title),
+                value = stringResource(if (state.parserReady) R.string.parser_ready else R.string.voice_source_unset),
+                onClick = navigation.onOpenParser,
             )
         }
         SettingsSection.GENERAL -> {

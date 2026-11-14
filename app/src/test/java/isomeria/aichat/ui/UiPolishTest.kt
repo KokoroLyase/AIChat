@@ -1,5 +1,10 @@
 package isomeria.aichat.ui
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithText
 import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -526,10 +531,46 @@ class UiPolishTest {
         assertFalse(layoutOf("语音通话").cut())
     }
 
+    /** 0.9.2 多了“文件”：窄屏最大字号下四项都在屏幕里（放不下的换行）、不重叠，标签都是一行 */
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi")
+    fun morePanel_narrowLargest_fourItemsFitWithoutOverlap() {
+        show { MorePanel(imageEnabled = true, onAlbum = {}, onCamera = {}, fileEnabled = true) }
+        val labels = listOf("相册", "拍照", "语音通话", "文件")
+        val boxes = labels.map { bounds(it) }
+        boxes.forEach { assertTrue("超出屏幕：$it", it.left >= 0.dp && it.right <= rootWidth()) }
+        for (i in boxes.indices) for (j in i + 1 until boxes.size) {
+            val a = boxes[i]
+            val b = boxes[j]
+            assertTrue("重叠：$a $b", a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top)
+        }
+        labels.forEach {
+            assertEquals(1, layoutOf(it).lineCount)
+            assertFalse(layoutOf(it).cut())
+        }
+    }
+
+    /** 面板高度固定（和键盘一样高）：窄屏特大字体换到第二行的项放不下时可以滑到，不会被裁掉看不见 */
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi")
+    fun morePanel_narrowLargest_fixedHeight_wrappedItemsReachableByScroll() {
+        show { MorePanel(imageEnabled = true, onAlbum = {}, onCamera = {}, modifier = androidx.compose.ui.Modifier.height(260.dp), fileEnabled = true) }
+        compose.onNodeWithText("文件").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("语音通话").performScrollTo().assertIsDisplayed()
+    }
+
+    /** 文件项点了总是交给页面处理（没配解析时页面提示去设置），置灰只是颜色 */
+    @Test
+    fun morePanel_fileItem_clickReachesCallerEvenWhenDisabled() {
+        var clicks = 0
+        show { MorePanel(imageEnabled = false, onAlbum = {}, onCamera = {}, fileEnabled = false, onFile = { clicks++ }) }
+        compose.onNodeWithText("文件").performClick()
+        assertEquals(1, clicks)
+    }
+
     @Test
     fun morePanel_normalWidthLargest_callLabelKeepsFullSize() {
         show { MorePanel(imageEnabled = true, onAlbum = {}, onCamera = {}) }
         assertEquals(layoutOf("相册").layoutInput.style.fontSize, layoutOf("语音通话").layoutInput.style.fontSize)
+        assertEquals(layoutOf("相册").layoutInput.style.fontSize, layoutOf("文件").layoutInput.style.fontSize)
     }
 
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi")

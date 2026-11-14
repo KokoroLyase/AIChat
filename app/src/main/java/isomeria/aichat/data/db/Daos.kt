@@ -409,11 +409,39 @@ interface MessageDao {
     @Query("DELETE FROM message WHERE contactId = :contactId")
     suspend fun deleteByContact(contactId: Long)
 
-    @Query("SELECT imagePath FROM message WHERE contactId = :contactId AND imagePath IS NOT NULL")
+    /** 这个聊天的图片，0.9.2 起也包括文件和解析结果：删除聊天、清空、删除联系人时一起删 */
+    @Query(
+        """
+        SELECT imagePath FROM message WHERE contactId = :contactId AND imagePath IS NOT NULL
+        UNION ALL
+        SELECT filePath FROM message WHERE contactId = :contactId AND filePath IS NOT NULL
+        UNION ALL
+        SELECT parsedPath FROM message WHERE contactId = :contactId AND parsedPath IS NOT NULL
+        """,
+    )
     suspend fun imagePaths(contactId: Long): List<String>
 
-    @Query("SELECT imagePath FROM message WHERE imagePath IS NOT NULL")
+    /** 所有图片、文件和解析结果（0.9.2）：清空所有聊天记录、孤立文件检查和恢复后的清理都按它算引用 */
+    @Query(
+        """
+        SELECT imagePath FROM message WHERE imagePath IS NOT NULL
+        UNION ALL
+        SELECT filePath FROM message WHERE filePath IS NOT NULL
+        UNION ALL
+        SELECT parsedPath FROM message WHERE parsedPath IS NOT NULL
+        """,
+    )
     suspend fun allImagePaths(): List<String>
+
+    /**
+     * 这一轮等待回复、还没解析的文件和图片（0.9.2），按发送顺序。图片要不要解析由调用方按模型能不能看图决定
+     */
+    @Query("SELECT * FROM message WHERE contactId = :contactId AND status = 'SENDING' AND parsedPath IS NULL AND type IN ('FILE', 'IMAGE') ORDER BY createdAt, id")
+    suspend fun unparsed(contactId: Long): List<Message>
+
+    /** 写入解析结果（0.9.2） */
+    @Query("UPDATE message SET parsedPath = :path WHERE id = :id")
+    suspend fun setParsed(id: Long, path: String)
 
     /** 这个聊天的语音文件，0.8.0 起也包括通话的音频（files/calls/）：删除聊天、清空、删除联系人时一起删 */
     @Query(
@@ -462,7 +490,7 @@ interface MessageDao {
                contact.avatarColor AS contactAvatarColor
         FROM message JOIN contact ON contact.id = message.contactId
         WHERE message.status != 'PENDING' AND (
-            (message.type IN ('TEXT', 'VOICE') AND message.content LIKE '%' || :query || '%' ESCAPE '\')
+            (message.type IN ('TEXT', 'VOICE', 'FILE') AND message.content LIKE '%' || :query || '%' ESCAPE '\')
             OR (message.type = 'CALL' AND EXISTS(SELECT 1 FROM call_turn WHERE call_turn.messageId = message.id AND call_turn.text LIKE '%' || :query || '%' ESCAPE '\'))
         )
         GROUP BY message.contactId
@@ -476,7 +504,7 @@ interface MessageDao {
         """
         SELECT * FROM message
         WHERE contactId = :contactId AND status != 'PENDING' AND (
-            (type IN ('TEXT', 'VOICE') AND content LIKE '%' || :query || '%' ESCAPE '\')
+            (type IN ('TEXT', 'VOICE', 'FILE') AND content LIKE '%' || :query || '%' ESCAPE '\')
             OR (type = 'CALL' AND EXISTS(SELECT 1 FROM call_turn WHERE call_turn.messageId = message.id AND call_turn.text LIKE '%' || :query || '%' ESCAPE '\'))
         )
         ORDER BY createdAt DESC, id DESC LIMIT :limit
@@ -509,8 +537,9 @@ interface ProviderDao {
     @Query("SELECT * FROM provider_config WHERE kind = :kind ORDER BY id")
     suspend fun listByKind(kind: ProviderKind): List<ProviderConfig>
 
-    @Query("DELETE FROM provider_config WHERE kind != 'LLM'")
-    suspend fun deleteAllVoice()
+    /** 删掉这几种用途的服务商：覆盖恢复时换掉语音（TTS、ASR）或文件解析（PARSER，0.9.2） */
+    @Query("DELETE FROM provider_config WHERE kind IN (:kinds)")
+    suspend fun deleteKinds(kinds: List<ProviderKind>)
 
     @Insert
     suspend fun insert(config: ProviderConfig): Long

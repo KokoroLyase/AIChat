@@ -292,8 +292,10 @@ class ProactiveEngine @Inject constructor(
         val system = contextBuilder.systemPrompt(contact, nickname, memories, globals).orEmpty()
         val instruction = instruction(startedAt, messages.latestVisible(contactId)?.createdAt, reminder)
         val historyBudget = contact.contextTokens - estimator.text(system) - estimator.text(instruction) - TokenEstimator.MESSAGE_OVERHEAD
+        val recentRows = calls.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING }
+        // 文件和图片的解析结果（0.9.2）换成文字，和普通回复一样
         val history = ContextWindow.select(
-            calls.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING },
+            contextBuilder.withAttachments(recentRows, snapshot.supportsImage, historyBudget, estimator, files::readParsed),
             historyBudget,
             estimator,
             snapshot.supportsImage,

@@ -10,7 +10,7 @@ import javax.inject.Singleton
 
 /**
  * 聊天列表预览和通知里一条消息显示成什么：文字消息是正文，图片是「[图片]」，语音（0.7.0）是「[语音]」
- * （和微信一样不在预览里露出转写文字），通话（0.8.0）是「[通话]」，挂断后加上时长。
+ * （和微信一样不在预览里露出转写文字），通话（0.8.0）是「[通话]」，挂断后加上时长，文件（0.9.2）是「[文件] 文件名」。
  */
 fun interface MessagePreviewer {
     fun preview(message: Message): String
@@ -23,6 +23,7 @@ fun interface MessagePreviewer {
                 MessageType.IMAGE -> "[IMAGE]"
                 MessageType.VOICE -> "[VOICE]"
                 MessageType.CALL -> if (message.callOngoing) "[CALL]" else "[CALL] " + isomeria.aichat.core.CallDurations.format(message.voiceMillis)
+                MessageType.FILE -> "[FILE] " + message.content
             }
         }
     }
@@ -35,6 +36,7 @@ class ResourceMessagePreviewer @Inject constructor(@ApplicationContext private v
         MessageType.IMAGE -> context.getString(R.string.preview_image)
         MessageType.VOICE -> context.getString(R.string.preview_voice)
         MessageType.CALL -> callPreview(context, message)
+        MessageType.FILE -> context.getString(R.string.preview_file, message.content)
     }
 }
 

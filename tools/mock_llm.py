@@ -14,6 +14,14 @@
 --tts-mode / --asr-mode 可选 ok、fail（500）、empty（200 但没有音频或文字）、timeout（--timeout 秒后才返回）、
 fail-once（第一次 500，之后正常）。/stats 里语音请求只记是/否和数字：kind、api、有没有音色、有没有语气要求、文字字数、音频字节数，
 不记文字和音频内容。
+
+0.9.2：
+- DeepSeek 语音：POST …/tools/tts（JSON，返回 WAV）、POST …/tools/asr（multipart 只有 file，返回 text 和 duration_ms），
+  和上面一样按 --tts-mode / --asr-mode 返回；
+- MinerU 精准解析：POST …/file-urls/batch 给出指回本机的上传地址，PUT /upload/<id> 收文件（只记字节数），
+  GET …/extract-results/batch/<id> 查 --parse-polls 次后 done，结果 zip 在 /result/<id>.zip，里面的 full.md 是 --parse-text；
+  不认识的任务返回 -60012（“测试连接”用）。--parse-mode 可选 ok、fail（state failed）、auth（A0202）、timeout（一直 running）；
+- 聊天请求的 /stats 多记三项是/否：最后一条消息开头有没有时间附注、有没有文件文字（“[文件：”）、有没有图片识别文字（“[图片：”）。
 """
 import argparse
 import base64
@@ -24,6 +32,7 @@ import struct
 import threading
 import time
 import wave
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 parser = argparse.ArgumentParser()
@@ -35,14 +44,19 @@ parser.add_argument('--tts-mode', default='ok', choices=['ok', 'fail', 'empty', 
 parser.add_argument('--asr-mode', default='ok', choices=['ok', 'fail', 'empty', 'timeout', 'fail-once'])
 parser.add_argument('--asr-text', default='这是模拟识别出的文字')
 parser.add_argument('--timeout', type=float, default=150)
+parser.add_argument('--parse-mode', default='ok', choices=['ok', 'fail', 'auth', 'timeout'])
+parser.add_argument('--parse-polls', type=int, default=2)
+parser.add_argument('--parse-text', default='# 模拟解析\n\n这是 MinerU 模拟解析出的文字。\n\n![](images/a.jpg)')
 GLOBAL_HEADER = '下面是对方亲自写下的关于自己的信息'
 STYLE_HEADER = '回复方式：'
 REMINDER_HEADER = '约定时间：'
 PROACTIVE_HEADER = '（这是 App 的提示，不是对方发来的消息'
+META_HEADER = '（App 附上的时间信息'
 args = parser.parse_args()
 records = []
 chat_count = 0
 voice_counts = {'tts': 0, 'asr': 0}
+batches = {}
 lock = threading.Lock()
 
 
@@ -82,7 +96,53 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
 
+    def parse_json(self, data):
+        raw = json.dumps(data, ensure_ascii=False).encode()
+        self.send_body(raw, 'application/json')
+
+    def do_PUT(self):
+        length = int(self.headers.get('Content-Length', '0'))
+        body = self.rfile.read(length)
+        batch = self.path.split('?')[0].rsplit('/', 1)[-1]
+        if not self.path.startswith('/upload/') or batch not in batches:
+            self.send_error(404)
+            return
+        with lock:
+            batches[batch]['uploaded'] = len(body)
+            records.append({'kind': 'parse', 'api': 'upload', 'bytes': len(body),
+                            'has_auth': 'Authorization' in self.headers, 'has_content_type': 'Content-Type' in self.headers})
+        self.send_body(b'', 'text/plain')
+
     def do_GET(self):
+        if '/extract-results/batch/' in self.path:
+            batch = self.path.rsplit('/', 1)[-1]
+            info = batches.get(batch)
+            if info is None:
+                self.parse_json({'code': -60012, 'msg': 'task not found'})
+                return
+            with lock:
+                info['polls'] += 1
+                polls = info['polls']
+                records.append({'kind': 'parse', 'api': 'poll', 'poll': polls})
+            if args.parse_mode == 'fail':
+                state = {'state': 'failed', 'err_msg': 'mock failure'}
+            elif args.parse_mode == 'timeout' or polls < args.parse_polls or not info.get('uploaded'):
+                state = {'state': 'running', 'extract_progress': {'extracted_pages': 1, 'total_pages': 3}}
+            else:
+                port = self.server.server_address[1]
+                state = {'state': 'done', 'full_zip_url': f'http://127.0.0.1:{port}/result/{batch}.zip'}
+            state['file_name'] = info['name_ext']
+            self.parse_json({'code': 0, 'msg': 'ok', 'data': {'batch_id': batch, 'extract_result': [state]}})
+            return
+        if self.path.startswith('/result/') and self.path.endswith('.zip'):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, 'w') as z:
+                z.writestr('full.md', args.parse_text.replace('\\n', '\n'))
+                z.writestr('layout.json', '{}')
+            with lock:
+                records.append({'kind': 'parse', 'api': 'zip'})
+            self.send_body(buf.getvalue(), 'application/zip')
+            return
         if self.path == '/models':
             data = {'data': [{'id': 'mock-chat', 'type': 'chat', 'input_modalities': ['text'],
                               'effort': {'supported_levels': ['low', 'high', 'max']}},
@@ -124,6 +184,34 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         global chat_count
         length = int(self.headers.get('Content-Length', '0'))
+        if self.path.endswith('/file-urls/batch'):
+            data = json.loads(self.rfile.read(length))
+            if args.parse_mode == 'auth':
+                self.parse_json({'code': 'A0202', 'msg': 'token error'})
+                return
+            files = data.get('files', [])
+            batch = 'mock-%d' % (len(batches) + 1)
+            name = files[0].get('name', '') if files else ''
+            with lock:
+                batches[batch] = {'polls': 0, 'name_ext': name.rsplit('.', 1)[-1].lower() if '.' in name else ''}
+                records.append({'kind': 'parse', 'api': 'apply', 'files': len(files), 'ext': batches[batch]['name_ext'],
+                                'model_version': data.get('model_version'), 'has_auth': self.headers.get('Authorization', '').startswith('Bearer ')})
+            port = self.server.server_address[1]
+            self.parse_json({'code': 0, 'msg': 'ok', 'data': {'batch_id': batch, 'file_urls': [f'http://127.0.0.1:{port}/upload/{batch}?sig=mock']}})
+            return
+        if self.path.endswith('/tools/tts'):
+            data = json.loads(self.rfile.read(length))
+            text = data.get('text', '')
+            self.voice('tts', 'deepseek', {'voice': data.get('voice_id'), 'format': data.get('format'),
+                                           'filter_markdown': data.get('filter_markdown'), 'has_model': 'model' in data, 'chars': len(text)},
+                       lambda empty: (b'' if empty else tone_wav(len(text)), 'audio/wav'))
+            return
+        if self.path.endswith('/tools/asr'):
+            body = self.rfile.read(length)
+            self.voice('asr', 'deepseek', {'multipart': b'name="file"' in body, 'has_model': b'name="model"' in body, 'audio_bytes': len(body)},
+                       lambda empty: (json.dumps({'request_id': 'mock', 'text': '' if empty else args.asr_text, 'duration_ms': 3000},
+                                                 ensure_ascii=False).encode(), 'application/json'))
+            return
         if self.path == '/audio/speech':
             data = json.loads(self.rfile.read(length))
             text = data.get('input', '')
@@ -183,6 +271,9 @@ class Handler(BaseHTTPRequestHandler):
                 'last_role': messages[-1].get('role') if messages else None,
                 'has_reminder_hint': REMINDER_HEADER in system,
                 'proactive': PROACTIVE_HEADER in last,
+                'has_meta_note': last.startswith(META_HEADER),
+                'has_file_text': '[文件：' in last,
+                'has_image_text': '[图片：' in last,
                 'failed': failed,
             })
             records.append(record)

@@ -22,6 +22,20 @@ enum class FailReason(val code: Int) {
     ASR_FAILED(10),
     /** 没有设置语音识别服务，或它没有 Key（0.7.0） */
     ASR_UNAVAILABLE(11),
+    /** 发了文件，但没有设置文件解析服务或它没有 Token（0.9.2）：没有请求模型 */
+    PARSE_UNAVAILABLE(12),
+    /** 文件解析的 Token 不对或过期（0.9.2） */
+    PARSE_AUTH(13),
+    /** 文件超过 200 MB 或 200 页（0.9.2） */
+    PARSE_TOO_LARGE(14),
+    /** 文件解析不支持这种格式（0.9.2） */
+    PARSE_UNSUPPORTED(15),
+    /** 文件解析失败（0.9.2），点击重试会重新解析 */
+    PARSE_FAILED(16),
+    /** 等了 10 分钟还没解析完（0.9.2） */
+    PARSE_TIMEOUT(17),
+    /** 今天的文件解析额度用完了（0.9.2） */
+    PARSE_QUOTA(18),
     UNKNOWN(9),
     ;
 

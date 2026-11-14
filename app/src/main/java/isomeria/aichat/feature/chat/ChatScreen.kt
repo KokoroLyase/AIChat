@@ -143,6 +143,8 @@ fun ChatScreen(
     onOpenModel: (Long, String) -> Unit = { _, _ -> },
     /** 打开语音识别服务商的设置（0.7.0） */
     onOpenVoiceSettings: () -> Unit = {},
+    /** 打开文件解析的设置（0.9.2） */
+    onOpenParserSettings: () -> Unit = {},
     /** 语音通话（0.8.0）；参数是联系人 id */
     onCall: (Long) -> Unit = {},
     /** 看通话详情（0.8.0）；正在进行的通话由 [onCall] 回到通话页 */
@@ -319,6 +321,15 @@ fun ChatScreen(
             when (event) {
                 ChatEvent.ImageImportFailed ->
                     Toast.makeText(context, R.string.chat_image_import_failed, Toast.LENGTH_SHORT).show()
+                is ChatEvent.FilesSkipped -> Toast.makeText(
+                    context,
+                    when {
+                        event.tooLarge > 0 -> R.string.chat_file_too_large
+                        event.unsupported > 0 -> R.string.chat_file_unsupported
+                        else -> R.string.chat_file_import_failed
+                    },
+                    Toast.LENGTH_LONG,
+                ).show()
                 is ChatEvent.ScrollToLatest -> pendingLatest = event.messageId
                 is ChatEvent.ScrollToMessage -> pendingJump = event.messageId
                 ChatEvent.QuoteMissing -> Toast.makeText(context, R.string.quote_missing, Toast.LENGTH_SHORT).show()
@@ -349,6 +360,10 @@ fun ChatScreen(
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val pickImages = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(9)) { uris ->
         viewModel.sendImages(uris)
+    }
+    // 发文件（0.9.2）：系统文件选择器，可以多选，只列 MinerU 支持的格式；不需要存储权限
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        viewModel.sendFiles(uris)
     }
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val uri = pendingCameraUri
@@ -516,6 +531,7 @@ fun ChatScreen(
             onVoicePlay = viewModel::playVoice,
             onVoiceShowText = viewModel::setVoiceShowText,
             onCallClick = { message -> if (opensCallPage(message, inCall)) state.contact?.let { onCall(it.id) } else onOpenCall(message) },
+            onFileClick = { message -> openChatFile(context, viewModel.fileUri(message), message) },
             onStartSelection = { message ->
                 closePanels()
                 viewModel.startSelection(message)
@@ -709,16 +725,17 @@ fun ChatScreen(
                         modifier = Modifier.height(panelHeight),
                     ) } }
                     InputPanel.MORE -> { { MorePanel(
-                        imageEnabled = state.supportsImage,
+                        // 0.9.2：模型不能看图、但配了文件解析时也能发图片，交给它识别
+                        imageEnabled = state.supportsImage || state.canParse,
                         onAlbum = {
-                            if (!state.supportsImage) {
+                            if (!state.supportsImage && !state.canParse) {
                                 Toast.makeText(context, R.string.chat_image_unsupported, Toast.LENGTH_LONG).show()
                             } else if (beforeSend()) {
                                 pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                             }
                         },
                         onCamera = {
-                            if (!state.supportsImage) {
+                            if (!state.supportsImage && !state.canParse) {
                                 Toast.makeText(context, R.string.chat_image_unsupported, Toast.LENGTH_LONG).show()
                             } else if (beforeSend()) {
                                 val uri = viewModel.newCameraUri()
@@ -728,6 +745,14 @@ fun ChatScreen(
                         },
                         modifier = Modifier.height(panelHeight),
                         onCall = { state.contact?.let { onCall(it.id) } },
+                        fileEnabled = state.canParse,
+                        onFile = {
+                            if (!state.canParse) {
+                                Toast.makeText(context, R.string.chat_file_need_parser, Toast.LENGTH_LONG).show()
+                            } else if (beforeSend()) {
+                                pickFiles.launch(isomeria.aichat.data.parse.MineruFormats.mimeTypes)
+                            }
+                        },
                     ) } }
                     InputPanel.NONE -> null
                 },
@@ -755,7 +780,9 @@ fun ChatScreen(
 
     failedDialog?.let { message ->
         val reason = FailReason.of(message.errorCode)
-        val needsSettings = reason == FailReason.AUTH || reason == FailReason.NO_API_KEY || reason == FailReason.CONFIGURATION || reason == FailReason.ASR_UNAVAILABLE
+        // 文件解析没配置或 Token 不对（0.9.2）：去“文件解析”设置
+        val parserSettings = reason == FailReason.PARSE_UNAVAILABLE || reason == FailReason.PARSE_AUTH
+        val needsSettings = reason == FailReason.AUTH || reason == FailReason.NO_API_KEY || reason == FailReason.CONFIGURATION || reason == FailReason.ASR_UNAVAILABLE || parserSettings
         // 问题在模型规则时，修正入口是模型配置页，联系人页改不了
         val modelToConfigure by produceState<String?>(null, message.id) {
             value = if (reason == FailReason.CONFIGURATION) viewModel.modelToConfigure() else null
@@ -781,6 +808,7 @@ fun ChatScreen(
                 if (model != null) state.contact?.let { onOpenModel(it.providerId, model) }
                 else if (reason == FailReason.CONFIGURATION) state.contact?.let { onEditContact(it.id) }
                 else if (reason == FailReason.ASR_UNAVAILABLE) onOpenVoiceSettings()
+                else if (parserSettings) onOpenParserSettings()
                 else if (needsSettings) state.contact?.let { onOpenProvider(it.providerId) } else viewModel.retry()
             },
         )
@@ -1117,6 +1145,28 @@ internal fun InCallBar(startedAt: Long?, now: (() -> Long)? = null, onClick: () 
     }
 }
 
+/**
+ * 打开聊天里的文件（0.9.2）：交给别的 App 看，只授权读这一个文件；文件不在本机、没有能打开的 App 时提示
+ */
+internal fun openChatFile(context: android.content.Context, uri: android.net.Uri?, message: isomeria.aichat.data.db.Message) {
+    if (uri == null) {
+        Toast.makeText(context, R.string.chat_file_missing, Toast.LENGTH_SHORT).show()
+        return
+    }
+    val extension = message.filePath?.substringAfterLast('.', "").orEmpty().lowercase()
+    val type = message.fileMime?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+        ?: android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+        ?: "*/*"
+    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+        .setDataAndType(uri, type)
+        .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try {
+        context.startActivity(intent)
+    } catch (e: android.content.ActivityNotFoundException) {
+        Toast.makeText(context, R.string.chat_file_open_none, Toast.LENGTH_SHORT).show()
+    }
+}
+
 fun failReasonText(reason: FailReason): Int = when (reason) {
     FailReason.CONFIGURATION -> R.string.error_configuration
     FailReason.AUTH -> R.string.error_auth
@@ -1132,6 +1182,13 @@ fun failReasonText(reason: FailReason): Int = when (reason) {
     FailReason.EMPTY_REPLY -> R.string.error_empty_reply
     FailReason.ASR_FAILED -> R.string.error_asr_failed
     FailReason.ASR_UNAVAILABLE -> R.string.error_asr_unavailable
+    FailReason.PARSE_UNAVAILABLE -> R.string.error_parse_unavailable
+    FailReason.PARSE_AUTH -> R.string.error_parse_auth
+    FailReason.PARSE_TOO_LARGE -> R.string.error_parse_too_large
+    FailReason.PARSE_UNSUPPORTED -> R.string.error_parse_unsupported
+    FailReason.PARSE_FAILED -> R.string.error_parse_failed
+    FailReason.PARSE_TIMEOUT -> R.string.error_parse_timeout
+    FailReason.PARSE_QUOTA -> R.string.error_parse_quota
     FailReason.UNKNOWN -> R.string.error_unknown
 }
 

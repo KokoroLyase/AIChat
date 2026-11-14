@@ -145,6 +145,62 @@ class ChatRepository @Inject constructor(
         return rows.size
     }
 
+    /**
+     * 发文件（0.9.2）：一次可选多个，每个单独成一条消息。文件复制到 files/chat_files，content 是文件名；
+     * 发出后由回复任务先解析（[isomeria.aichat.data.parse.ParsePipeline]），解析成功才请求模型。
+     * 超过 200 MB、格式不支持、读不了的不发，分别计数
+     */
+    suspend fun sendFiles(contactId: Long, uris: List<Uri>): FileSendResult = StorageOperations.gate.activity {
+        val now = System.currentTimeMillis()
+        var tooLarge = 0
+        var unsupported = 0
+        var failed = 0
+        val stored = mutableListOf<StoredFile>()
+        for (uri in uris) {
+            val file = try {
+                files.importChatFile(uri)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: FileTooLargeException) {
+                tooLarge++
+                continue
+            } catch (e: Exception) {
+                failed++
+                continue
+            }
+            if (!isomeria.aichat.data.parse.MineruFormats.supports("x." + java.io.File(file.path).extension)) {
+                files.delete(file.path)
+                unsupported++
+                continue
+            }
+            stored += file
+        }
+        if (stored.isEmpty()) return@activity FileSendResult(0, tooLarge, unsupported, failed)
+        val rows = stored.mapIndexed { index, file ->
+            Message(
+                contactId = contactId,
+                role = Role.USER,
+                type = MessageType.FILE,
+                content = file.name,
+                filePath = file.path,
+                fileSize = file.size,
+                fileMime = file.mime,
+                status = MessageStatus.SENDING,
+                createdAt = now + index,
+            )
+        }
+        try {
+            insertUserMessages(contactId, rows)
+        } catch (e: Throwable) {
+            stored.forEach { files.delete(it.path) }
+            throw e
+        } finally {
+            stored.forEach { files.commitAvatar(it.path) }
+        }
+        replyScheduler.enqueue(contactId)
+        FileSendResult(stored.size, tooLarge, unsupported, failed)
+    }
+
     private suspend fun insertUserMessages(contactId: Long, rows: List<Message>) {
         db.withTransaction {
             ensureConversation(contactId)
@@ -196,6 +252,8 @@ class ChatRepository @Inject constructor(
         }
         files.delete(message.imagePath)
         files.delete(message.voicePath)
+        files.delete(message.filePath)
+        files.delete(message.parsedPath)
         callAudio.forEach(files::delete)
         // 删掉的是最后一条等待中的消息时，取消这次请求
         if (message.status == MessageStatus.SENDING && messageDao.sendingIds(message.contactId).isEmpty()) {
@@ -220,6 +278,8 @@ class ChatRepository @Inject constructor(
         for (message in messages) {
             files.delete(message.imagePath)
             files.delete(message.voicePath)
+            files.delete(message.filePath)
+            files.delete(message.parsedPath)
         }
         callAudio.forEach(files::delete)
         return messages.size
@@ -418,6 +478,9 @@ fun Message.quoting(quote: Message?): Message =
 fun isSelectable(message: Message): Boolean =
     message.status != MessageStatus.SENDING && message.status != MessageStatus.PENDING && !message.callOngoing
 
+/** 发文件（0.9.2）的结果：发出几个，因为太大、格式不支持、读不了没发的各几个 */
+data class FileSendResult(val sent: Int, val tooLarge: Int, val unsupported: Int, val failed: Int)
+
 /** 复制（0.9.0）用到的说法：聊天和收藏共用 */
 fun copyLabels(context: Context, contactName: String): isomeria.aichat.core.CopyLabels {
     val time = java.time.format.DateTimeFormatter.ofPattern(context.getString(isomeria.aichat.R.string.copy_call_time_pattern))
@@ -432,6 +495,7 @@ fun copyLabels(context: Context, contactName: String): isomeria.aichat.core.Copy
             context.getString(isomeria.aichat.R.string.copy_call_header, time.format(start), isomeria.aichat.core.CallDurations.format(call.voiceMillis))
         },
         speaker = { speaker, text -> context.getString(isomeria.aichat.R.string.copy_speaker_line, speaker, text) },
+        file = context.getString(isomeria.aichat.R.string.preview_file),
     )
 }
 

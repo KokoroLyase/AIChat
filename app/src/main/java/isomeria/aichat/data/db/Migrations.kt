@@ -4,6 +4,19 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
+ * v10 → v11（0.9.2）：消息加文件（原文件路径、大小、类型）和解析结果的路径，旧消息都没有；
+ * 消息类型多了 FILE、服务商用途多了 PARSER（都存名字，不改表）。旧数据都不变。
+ */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE message ADD COLUMN filePath TEXT")
+        db.execSQL("ALTER TABLE message ADD COLUMN fileSize INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE message ADD COLUMN fileMime TEXT")
+        db.execSQL("ALTER TABLE message ADD COLUMN parsedPath TEXT")
+    }
+}
+
+/**
  * v9 → v10（0.9.0）：消息加引用（被引用消息的 id 和快照）和译文，旧消息都没有引用和译文；
  * 新建收藏的两张表（favorite、favorite_turn），删除收藏时级联删除它的每一句。旧数据都不变。
  */

@@ -18,11 +18,13 @@ data class CopyLabels(
     val asrFailed: String,
     val callHeader: (Message) -> String,
     val speaker: (name: String, text: String) -> String,
+    /** 文件（0.9.2）。参数：文件名 */
+    val file: String = "[FILE] %1\$s",
 )
 
 /**
  * 多选复制和长按通话“复制”（0.9.0）：按时间顺序，每条一行，不带说话人和时间；消息里本来的换行换成空格。
- * - 语音复制转写文字，没有转写的写“[语音]”；图片写“[图片]”
+ * - 语音复制转写文字，没有转写的写“[语音]”；图片写“[图片]”；文件（0.9.2）写“[文件] 文件名”，不复制解析出的文字
  * - 通话复制完整内容：第一行是 [CopyLabels.callHeader]，之后每句一行，带说话人；识别失败的写 [CopyLabels.asrFailed]
  * - 译文（0.9.0）不复制，只复制原文
  */
@@ -36,6 +38,7 @@ object MessageCopy {
         MessageType.TEXT -> listOf(oneLine(message.content))
         MessageType.VOICE -> listOf(oneLine(message.content).ifEmpty { labels.voice })
         MessageType.IMAGE -> listOf(labels.image)
+        MessageType.FILE -> listOf(labels.file.format(oneLine(message.content)))
         MessageType.CALL -> listOf(labels.callHeader(message)) + turns.sortedWith(compareBy({ it.seq }, { it.id })).map { turn ->
             val text = if (turn.status == CallTurnStatus.ASR_FAILED || turn.text.isBlank()) labels.asrFailed else oneLine(turn.text)
             labels.speaker(if (turn.role == Role.USER) labels.me else labels.contact, text)

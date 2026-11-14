@@ -463,6 +463,10 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
             metaFirst = "这是你们的第一条消息",
             metaSelf = "你",
             metaOther = "对方",
+            fileLabel = "[文件：%1\$s]",
+            fileTruncated = "（已截断）",
+            imageText = "[图片：%1\$s]",
+            imageNoText = "[图片（无文字）]",
         ),
         zone,
     )
@@ -547,6 +551,12 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
 
     val providers = ProviderRepository(db, db.providerDao(), cipher, setOf(provider.forProtocol(ProviderProtocol.DEEPSEEK), provider.forProtocol(ProviderProtocol.OPENAI)))
 
+    /** 文件解析（0.9.2）：假的 MinerU；没保存配置时用不了，和 App 里一样 */
+    val parser = FakeParser()
+    val parsers = isomeria.aichat.data.parse.ParserRepository(db, cipher, parser)
+    val files = FileStorage(context)
+    val parsePipeline = isomeria.aichat.data.parse.ParsePipeline(db.messageDao(), files, parsers, contextBuilder)
+
     val engine = ReplyEngine(
         db = db,
         contactDao = db.contactDao(),
@@ -566,6 +576,7 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         delivery = delivery,
         queue = queue,
         reminders = reminders,
+        parse = parsePipeline,
     )
 
     var preferences = isomeria.aichat.core.RHYTHM_TEST_PREFERENCES
@@ -595,6 +606,22 @@ internal class ReplyHarness(context: android.content.Context, val db: AppDatabas
         val contact = db.contactDao().get(contactId)!!
         db.contactDao().update(contact.copy(useGlobalMemory = false, useReplyPreferences = false))
     }
+}
+
+/** 假的文件解析（0.9.2）：记下解析了哪些文件名，返回“解析：文件名”；[failure] 不为空时失败 */
+internal class FakeParser : isomeria.aichat.data.parse.DocumentParser {
+    val parsed = mutableListOf<String>()
+    var result: (String) -> String = { "解析：$it" }
+    var failure: Exception? = null
+
+    override suspend fun parse(endpoint: LlmEndpoint, file: File, name: String, imageLabel: String): String {
+        failure?.let { throw it }
+        check(file.isFile)
+        parsed += name
+        return result(name)
+    }
+
+    override suspend fun test(endpoint: LlmEndpoint) = Unit
 }
 
 internal class RecordingQueue : ReplyQueue {

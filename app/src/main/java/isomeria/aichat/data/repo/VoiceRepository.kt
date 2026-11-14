@@ -93,7 +93,7 @@ class VoiceRepository @Inject constructor(
     private fun contactSource(kind: ProviderKind, contact: Contact?): String? = when (kind) {
         ProviderKind.TTS -> contact?.ttsSource
         ProviderKind.ASR -> contact?.asrSource
-        ProviderKind.LLM -> null
+        ProviderKind.LLM, ProviderKind.PARSER -> null
     }?.takeIf { it.isNotBlank() }
 
     /** 选用的服务商（[contact] 不为 null 时是这个联系人实际用的）；没选、选的不在了或类型不对时为 null */
@@ -136,7 +136,7 @@ class VoiceRepository @Inject constructor(
                     when (kind) {
                         ProviderKind.TTS -> contact.copy(ttsSource = null)
                         ProviderKind.ASR -> contact.copy(asrSource = null)
-                        ProviderKind.LLM -> contact
+                        ProviderKind.LLM, ProviderKind.PARSER -> contact
                     },
                 )
             }
@@ -221,7 +221,7 @@ class VoiceRepository @Inject constructor(
             when (kind) {
                 ProviderKind.TTS -> voice.copy(ttsSource = value)
                 ProviderKind.ASR -> voice.copy(asrSource = value)
-                ProviderKind.LLM -> voice
+                ProviderKind.LLM, ProviderKind.PARSER -> voice
             },
         )
     }
@@ -293,7 +293,7 @@ class VoiceRepository @Inject constructor(
     private fun source(kind: ProviderKind, voice: VoiceSettings) = when (kind) {
         ProviderKind.TTS -> voice.ttsSource
         ProviderKind.ASR -> voice.asrSource
-        ProviderKind.LLM -> ""
+        ProviderKind.LLM, ProviderKind.PARSER -> ""
     }
 
     private fun selectedLocal(kind: ProviderKind, voice: VoiceSettings): VoiceSource.Local? = localOf(kind, source(kind, voice))

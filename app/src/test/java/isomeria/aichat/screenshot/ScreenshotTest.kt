@@ -1158,7 +1158,7 @@ class ScreenshotTest {
     @Test fun callConnectingLight() = shot("82-call-connecting", false) { Call(callConnecting) }
     @Test fun callEndedDark() = shot("82-call-ended", true) { Call(callEnded) }
 
-    /** 聊天页「+」面板：相册、拍照、语音通话 */
+    /** 聊天页「+」面板：相册、拍照、语音通话、文件（0.9.2，这里是没配文件解析时的置灰） */
     @Composable private fun MorePanelShot() = Column(Modifier.fillMaxSize(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom) {
         isomeria.aichat.ui.components.MorePanel(imageEnabled = true, onAlbum = {}, onCamera = {}, modifier = Modifier.height(260.dp), onCall = {})
     }
@@ -1170,6 +1170,22 @@ class ScreenshotTest {
     @Test fun callBubblesDark() = shot("84-chat-call", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.callRows) }
     @Test fun callBubblesLarge() = large("84-chat-call-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.callRows) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun callBubblesNarrow() = shot("84-chat-call-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.callRows) }
+
+    /** 文件消息（0.9.2）：解析好的、名字很长的、解析失败的、正在解析的 */
+    @Test fun fileBubblesLight() = shot("96-chat-file", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.fileRows) }
+    @Test fun fileBubblesDark() = shot("96-chat-file", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.fileRows) }
+    @Test fun fileBubblesLarge() = large("96-chat-file-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.fileRows) }
+    @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun fileBubblesNarrow() = large("96-chat-file-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.fileRows) }
+
+    /** 设置 → 模型服务 → 文件解析（0.9.2） */
+    @Composable private fun ParserShot(test: isomeria.aichat.feature.settings.ParserTestResult? = null) = isomeria.aichat.feature.settings.ParserSettingsContent(
+        state = isomeria.aichat.feature.settings.ParserSettingsState(loaded = true, savedKeyMasked = "abcd••••••wxyz", test = test),
+        onBack = {},
+        actions = isomeria.aichat.feature.settings.ParserSettingsActions(),
+    )
+    @Test fun parserSettingsLight() = shot("97-parser-settings", false) { ParserShot(isomeria.aichat.feature.settings.ParserTestResult.OK) }
+    @Test fun parserSettingsDark() = shot("97-parser-settings", true) { ParserShot() }
+    @Test fun parserSettingsLarge() = large("97-parser-settings-large", false) { ParserShot(isomeria.aichat.feature.settings.ParserTestResult.AUTH) }
 
     /** 通话详情：识别失败、被打断、合成失败的几条；第二条正在放 */
     private val callDetail = isomeria.aichat.feature.call.CallDetail(

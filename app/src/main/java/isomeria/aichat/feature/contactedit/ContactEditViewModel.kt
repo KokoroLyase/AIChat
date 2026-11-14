@@ -249,7 +249,7 @@ class ContactEditViewModel @Inject constructor(
         when (kind) {
             isomeria.aichat.data.db.ProviderKind.TTS -> form.withTtsSource(source, voiceChoices.value.globalTts)
             isomeria.aichat.data.db.ProviderKind.ASR -> form.copy(asrSource = source)
-            isomeria.aichat.data.db.ProviderKind.LLM -> form
+            isomeria.aichat.data.db.ProviderKind.LLM, isomeria.aichat.data.db.ProviderKind.PARSER -> form
         }
     }
 

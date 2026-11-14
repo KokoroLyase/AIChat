@@ -68,6 +68,14 @@ data class ContextLabels(
     val metaSelf: String = "",
     /** 上一条是用户发的：对方 */
     val metaOther: String = "",
+    /** 文件消息（0.9.2）在请求里的标题。参数：文件名 */
+    val fileLabel: String = "[%1\$s]",
+    /** 文件文字放不下、截断时加在后面的一行 */
+    val fileTruncated: String = "",
+    /** 模型不能看图时，识别出文字的图片（0.9.2）。参数：识别出的文字（过长时截断） */
+    val imageText: String = "",
+    /** 识别过、没有文字的图片 */
+    val imageNoText: String = "",
 )
 
 /** 全局记忆里要发出去的一条：已启用、所在的类别和主题。 */
@@ -107,6 +115,7 @@ data class PromptGlobals(
  * - 只有最近 [MAX_IMAGES] 张图片带原图，更早的替换为「[图片]」；模型不支持图片时全部替换
  * - 连续同一角色的消息合并成一条（文字和图片作为同一条消息的不同部分）
  * - 引用了别的消息的用户消息（0.9.0）前面加一行 [ContextLabels.quoteOther] 或 [ContextLabels.quoteSelf]；没有引用的和 0.8.0 逐字一致
+ * - 文件和图片的解析结果（0.9.2）由调用方先用 [withAttachments] 换成文字；没有文件、图片也没解析过时请求和 0.9.1 一样
  */
 class ContextBuilder(
     private val labels: ContextLabels,
@@ -154,6 +163,8 @@ class ContextBuilder(
                 }
                 // 通话（0.8.0）由调用方先展开成每一条话（CallTranscript）；没展开的通话消息没有内容，下面会跳过
                 MessageType.CALL -> ChatPart.Text(message.content)
+                // 文件（0.9.2）：调用方用 withAttachments 换成了带文字的；没换的只有标题
+                MessageType.FILE -> ChatPart.Text(labels.fileLabel.format(message.content))
             }
             if (part is ChatPart.Text && part.text.isBlank()) continue
             if (role != currentRole) {
@@ -318,8 +329,94 @@ class ContextBuilder(
             .replace(labels.namePlaceholder, name)
             .trim()
 
+    /** 文件解析用的图片说法（0.9.2）：解析出的 Markdown 里的图片引用换成它，和不带原图的图片一样是“[图片]” */
+    val imageLabel: String get() = labels.imagePlaceholder
+
+    /**
+     * 文件和图片的解析结果换成文字（0.9.2），在按预算选聊天记录（[ContextWindow.select]）之前调用；
+     * 换过的是一份 TEXT 类型的副本（id、角色、状态、时间、分组都不变），没换的原样返回。
+     *
+     * - 文件：最近 [MAX_FILES] 个带解析出的全文，前面一行“[文件：名称]”；更早的、没解析过的只有这一行。
+     *   所有文件的文字合计不超过 [budget] 的一半，从最新的往前分，放不下的截断并注明
+     * - 图片：模型能看图时最近 [MAX_IMAGES] 张照旧带原图；不带原图的图片识别过就发识别出的文字（最多 [IMAGE_TEXT_MAX_CHARS] 字），
+     *   识别过但没有文字的发 [ContextLabels.imageNoText]，没识别过的照旧是“[图片]”
+     *
+     * @param read 读解析结果文件；读不到时返回 null（按没解析过）
+     */
+    fun withAttachments(
+        rows: List<Message>,
+        supportsImage: Boolean,
+        budget: Int,
+        estimator: TokenEstimator,
+        read: (String) -> String?,
+    ): List<Message> {
+        if (rows.none { it.type == MessageType.FILE || (it.type == MessageType.IMAGE && it.parsedPath != null) }) return rows
+        val withData = if (supportsImage) ContextWindow.imagesWithData(rows) else emptySet()
+        val fullFiles = rows.filter { it.type == MessageType.FILE }.takeLast(MAX_FILES).map { it.id }.toHashSet()
+        var remaining = (budget / 2).coerceAtLeast(0)
+        val rendered = HashMap<Long, String>()
+        // 文件从最新的往前分预算
+        for (row in rows.asReversed()) {
+            if (row.type != MessageType.FILE) continue
+            val header = labels.fileLabel.format(row.content)
+            val text = if (row.id in fullFiles) row.parsedPath?.let(read)?.trim().orEmpty() else ""
+            if (text.isEmpty()) {
+                rendered[row.id] = header
+                continue
+            }
+            val cost = estimator.text(text)
+            rendered[row.id] = if (cost <= remaining) {
+                remaining -= cost
+                header + "\n" + text
+            } else {
+                val cut = cutToTokens(text, remaining, estimator)
+                remaining -= estimator.text(cut)
+                listOf(header, cut, labels.fileTruncated).filter { it.isNotEmpty() }.joinToString("\n")
+            }
+        }
+        return rows.map { row ->
+            when {
+                row.type == MessageType.FILE -> row.copy(type = MessageType.TEXT, content = rendered[row.id].orEmpty())
+                row.type == MessageType.IMAGE && row.id !in withData && row.parsedPath != null -> {
+                    val text = read(row.parsedPath)?.trim() ?: return@map row
+                    val content = if (text.isEmpty()) labels.imageNoText else labels.imageText.format(truncateChars(text, IMAGE_TEXT_MAX_CHARS))
+                    if (content.isEmpty()) row else row.copy(type = MessageType.TEXT, content = content)
+                }
+                else -> row
+            }
+        }
+    }
+
+    /** 截到不超过 [tokens] 的开头一段（按估算，不切开 emoji 这类两个 char 的字） */
+    private fun cutToTokens(text: String, tokens: Int, estimator: TokenEstimator): String {
+        if (tokens <= 0) return ""
+        var length = text.length
+        while (length > 0) {
+            val candidate = text.substring(0, safeEnd(text, length))
+            if (estimator.text(candidate) <= tokens) return candidate.trimEnd()
+            length = (length * 0.9).toInt()
+        }
+        return ""
+    }
+
     companion object {
         const val MAX_IMAGES = 3
+
+        /** 带解析全文的文件个数（0.9.2），和带原图的图片一样是最近 3 个 */
+        const val MAX_FILES = 3
+
+        /** 图片识别出的文字在请求里最多带这么多字（0.9.2） */
+        const val IMAGE_TEXT_MAX_CHARS = 2000
+
+        /** 按 Unicode 字符截断，超过时加“…” */
+        fun truncateChars(text: String, max: Int): String {
+            if (text.codePointCount(0, text.length) <= max) return text
+            return text.substring(0, text.offsetByCodePoints(0, max)) + "…"
+        }
+
+        /** 截到 [length] 时如果切开了代理对，往前退一个 */
+        private fun safeEnd(text: String, length: Int): Int =
+            if (length in 1 until text.length && Character.isHighSurrogate(text[length - 1])) length - 1 else length
 
         /** 请求里引用的文字最多带这么多字（按 Unicode 字符算），多了截断加“…” */
         const val QUOTE_MAX_CHARS = 100

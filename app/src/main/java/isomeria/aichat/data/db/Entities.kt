@@ -19,8 +19,11 @@ enum class Role { USER, ASSISTANT }
  * 每一条说的话在 [CallTurn]（call_turn 表），上下文、记忆和搜索都按条展开。
  * [Message.voiceMillis] 是总时长：通话还在进行时为 0（见 [Message.callOngoing]），挂断时写入（至少 1 毫秒）；
  * [Message.errorCode] 是挂断的原因（[CallEndReason]）
+ *
+ * FILE（0.9.2）：用户发的文件，原文件在 files/chat_files/（[Message.filePath]），content 是文件名（聊天列表预览和搜索用）。
+ * 发出后由 MinerU 解析成 Markdown，存在 files/parsed/（[Message.parsedPath]），上下文里带解析出的文字
  */
-enum class MessageType { TEXT, IMAGE, VOICE, CALL }
+enum class MessageType { TEXT, IMAGE, VOICE, CALL, FILE }
 
 /**
  * 通话为什么结束（0.8.0，存在通话消息的 errorCode）。数字写进数据库和备份，不能改。
@@ -76,7 +79,8 @@ enum class CallTurnStatus {
  */
 enum class MessageStatus { SENDING, SUCCESS, FAILED, PENDING }
 
-enum class ProviderKind { LLM, TTS, ASR }
+/** 服务商的用途：大语言模型、语音合成、语音识别，以及文件解析（0.9.2，目前只有 MinerU） */
+enum class ProviderKind { LLM, TTS, ASR, PARSER }
 
 /** 模型能力：接口报告支持 / 不支持，或接口没说（由用户在设置里标记）。 */
 enum class Capability { YES, NO, UNKNOWN }
@@ -268,6 +272,17 @@ data class Message(
     val translation: String? = null,
     /** 是否在气泡下面显示译文（「隐藏翻译」时为 false，译文保留） */
     @ColumnInfo(defaultValue = "0") val translationShown: Boolean = false,
+    /** 文件消息（0.9.2）的原文件，在 files/chat_files/ 里；文件名在 content */
+    val filePath: String? = null,
+    /** 文件大小（字节） */
+    @ColumnInfo(defaultValue = "0") val fileSize: Long = 0,
+    /** 文件类型（选择文件时系统给的 MIME），打开文件时用 */
+    val fileMime: String? = null,
+    /**
+     * 解析结果（0.9.2）：文件解析出的 Markdown，或模型不能看图时图片识别出的文字，在 files/parsed/ 里。
+     * null 表示还没解析过；文件存在但是空的表示解析过、没有文字。文字放文件里不放 content：大文档可能有几 MB
+     */
+    val parsedPath: String? = null,
 ) {
     /** 等着合成的语音回复：已经存了文字，还没有语音文件 */
     val awaitingSynthesis: Boolean get() = type == MessageType.VOICE && role == Role.ASSISTANT && voicePath == null

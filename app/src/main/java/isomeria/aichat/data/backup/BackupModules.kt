@@ -69,6 +69,8 @@ fun BackupData.mediaNames(): Set<String> = buildSet {
     messages.mapNotNullTo(this) { it.image }
     messages.mapNotNullTo(this) { it.voice }
     messages.forEach { message -> message.call.mapNotNullTo(this) { it.audio } }
+    messages.mapNotNullTo(this) { it.file }
+    messages.mapNotNullTo(this) { it.parsed }
     conversations.mapNotNullTo(this) { it.background }
     settings.avatar?.let(::add)
     favorites.mapNotNullTo(this) { it.audio }

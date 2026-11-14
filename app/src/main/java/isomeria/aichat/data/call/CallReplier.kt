@@ -71,7 +71,9 @@ class CallReplier @Inject constructor(
         }
         val historyBudget = baseBudget - (note?.let(estimator::text) ?: 0)
         val marked = if (lastUser < 0) rows else rows.mapIndexed { index, row -> if (index == lastUser) row.copy(status = MessageStatus.SENDING) else row }
-        val history = ContextWindow.select(marked, historyBudget, estimator, snapshot.supportsImage)
+        // 文件和图片的解析结果（0.9.2）换成文字，和普通回复一样
+        val attached = contextBuilder.withAttachments(marked, snapshot.supportsImage, historyBudget, estimator, files::readParsed)
+        val history = ContextWindow.select(attached, historyBudget, estimator, snapshot.supportsImage)
         val messages = contextBuilder.build(
             contact = contact,
             history = history,

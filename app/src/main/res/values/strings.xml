@@ -39,6 +39,9 @@
     <string name="preview_image">[图片]</string>
     <string name="preview_voice">[语音]</string>
     <string name="preview_call">[通话]</string>
+    <!-- 文件消息（0.9.2）在聊天列表里的预览。参数：文件名 -->
+    <string name="preview_file">[文件] %1$s</string>
+    <string name="preview_file_tag">[文件]</string>
     <string name="preview_call_duration">[通话] %1$s</string>
     <!-- 0.9.0 多选和复制 -->
     <string name="chat_menu_select">多选</string>
@@ -69,7 +72,7 @@
     <string name="me_favorites">收藏</string>
     <string name="chat_menu_favorite">收藏</string>
     <string name="favorite_added">已收藏</string>
-    <string name="favorite_images_skipped">图片不能收藏</string>
+    <string name="favorite_images_skipped">图片和文件不能收藏</string>
     <string name="favorites_title">收藏</string>
     <string name="favorites_search_hint">搜索收藏</string>
     <string name="favorites_empty">还没有收藏\n长按聊天里的文字、语音或通话，选“收藏”</string>
@@ -103,7 +106,35 @@
     <string name="chat_hold_to_talk">按住 说话</string>
     <string name="chat_album">相册</string>
     <string name="chat_camera">拍照</string>
-    <string name="chat_image_unsupported">当前模型不支持图片，可以到联系人编辑里换成支持图片的模型</string>
+    <string name="chat_image_unsupported">当前模型不支持图片，可以到联系人编辑里换成支持图片的模型，或在「我 → 设置 → 模型服务 → 文件解析」里配置 MinerU，让它识别图片</string>
+    <!-- 发文件（0.9.2） -->
+    <string name="chat_file">文件</string>
+    <string name="chat_file_need_parser">发文件要先在「我 → 设置 → 模型服务 → 文件解析」里配置 MinerU</string>
+    <string name="chat_file_too_large">文件超过 200 MB，没有发送</string>
+    <string name="chat_file_unsupported">只能发 PDF、Word、PPT、Excel 和图片文件</string>
+    <string name="chat_file_import_failed">有文件读取失败，没有发送</string>
+    <string name="chat_file_missing">这个文件已经不在手机上了</string>
+    <string name="chat_file_open_none">没有能打开这个文件的应用</string>
+    <string name="file_parsing">解析中…</string>
+    <!-- 文件气泡的读屏说明。参数：文件名、大小 -->
+    <string name="file_message_desc">文件：%1$s，%2$s</string>
+    <string name="file_message_open">打开文件</string>
+    <!-- 设置 → 模型服务 → 文件解析（0.9.2） -->
+    <string name="parser_title">文件解析</string>
+    <string name="parser_ready">MinerU</string>
+    <string name="parser_mineru">MinerU 精准解析</string>
+    <string name="parser_intro">聊天里发的文件，以及模型不能看图时发的图片，会先交给 MinerU 解析成文字，再发给联系人。模型能看图时，图片照旧直接发给模型。目前只支持 MinerU。</string>
+    <string name="parser_token">Token</string>
+    <string name="parser_token_hint">在 MinerU 官网的 API 管理里创建</string>
+    <string name="parser_token_clear">清除 Token</string>
+    <string name="parser_test">测试连接</string>
+    <string name="parser_test_running">正在测试…</string>
+    <string name="parser_test_ok">连接成功</string>
+    <string name="parser_test_auth">Token 不对或已过期</string>
+    <string name="parser_test_failed">连接失败</string>
+    <string name="parser_enabled">启用文件解析</string>
+    <string name="parser_privacy">文件会上传到 MinerU 的服务器（mineru.net，以及它的对象存储和下载地址），解析出的文字下载回本机，存在本机并跟着聊天记录备份。每个文件最大 200 MB、200 页，支持 PDF、Word、PPT、Excel 和常见图片。</string>
+    <string name="parser_security_notice">Token 经 Android Keystore 加密后保存在本机，只会发送到上面的地址。</string>
     <string name="chat_thinking_done">已深度思考（用时 %1$d 秒）</string>
     <string name="chat_menu_regenerate">重新生成</string>
     <string name="chat_menu_cancel_reply">取消回复</string>
@@ -243,6 +274,11 @@
     <string name="prompt_meta_first">这是你们的第一条消息</string>
     <string name="prompt_meta_self">你</string>
     <string name="prompt_meta_other">对方</string>
+    <!-- 文件和图片的解析结果在请求里的写法（0.9.2）。参数：文件名 / 识别出的文字 -->
+    <string name="prompt_file_label">[文件：%1$s]</string>
+    <string name="prompt_file_truncated">（后面还有内容，已截断）</string>
+    <string name="prompt_image_text">[图片：%1$s]</string>
+    <string name="prompt_image_no_text">[图片（没有识别出文字）]</string>
     <string name="prompt_nickname_line">对方的昵称是「%1$s」。</string>
     <string name="prompt_memory_header">下面是你对之前聊天的记忆，自然地参考就好，不要主动提到这份记忆：</string>
     <!-- 参数：年、月、日、内容 -->
@@ -720,6 +756,7 @@
     <string name="storage_voice">语音消息</string>
     <string name="storage_calls">通话录音</string>
     <string name="storage_favorites">收藏</string>
+    <string name="storage_files">聊天文件</string>
     <string name="storage_asr_models">离线识别模型</string>
     <string name="storage_cache">缓存</string>
     <string name="storage_database">数据库</string>
@@ -1101,6 +1138,14 @@
     <string name="voice_mic_denied_message">按住说话和录音转文字需要麦克风权限，可以在系统设置里为智信打开。</string>
     <string name="error_asr_failed">语音识别失败，这条语音没有发给联系人。可以重发，再识别一次。</string>
     <string name="error_asr_unavailable">还没有设置语音识别服务，或它没有 API Key，这条语音没有发给联系人。</string>
+    <!-- 文件解析失败（0.9.2）：这一轮的消息都没有发给联系人 -->
+    <string name="error_parse_unavailable">还没有设置文件解析服务，或它没有 Token，这个文件没有发给联系人。</string>
+    <string name="error_parse_auth">文件解析的 Token 不对或已过期，这个文件没有发给联系人。</string>
+    <string name="error_parse_too_large">文件超过 200 MB 或 200 页，解析不了，没有发给联系人。</string>
+    <string name="error_parse_unsupported">文件解析不支持这种格式，没有发给联系人。</string>
+    <string name="error_parse_failed">文件解析失败，没有发给联系人。可以重发，再解析一次。</string>
+    <string name="error_parse_timeout">文件解析等了 10 分钟还没完成，没有发给联系人。可以重发，再解析一次。</string>
+    <string name="error_parse_quota">今天的文件解析额度用完了，没有发给联系人。</string>
     <!-- 0.7.0 语音消息：联系人设置 -->
     <string name="contact_reply_type">消息发送类型</string>
     <string name="contact_tts_voice">音色</string>

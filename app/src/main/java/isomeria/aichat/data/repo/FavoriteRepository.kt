@@ -18,7 +18,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /** 列表和详情页的一条收藏：[source] 是还在的来源联系人（id 和创建时间都对得上），不在时为 null，[turns] 是通话的每一句 */
-/** 收藏了几条；[imagesSkipped] 是选中的里面有图片（图片不能收藏） */
+/** 收藏了几条；[imagesSkipped] 是选中的里面有图片或文件（0.9.2，都不能收藏） */
 data class FavoriteResult(val added: Int, val imagesSkipped: Boolean)
 
 data class FavoriteEntry(val favorite: Favorite, val source: Contact?, val turns: List<FavoriteTurn>)
@@ -56,7 +56,7 @@ class FavoriteRepository @Inject constructor(
 
     private suspend fun addProtected(messageIds: Collection<Long>, now: Long): FavoriteResult {
         val found = messageIds.distinct().chunked(500).flatMap { db.messageDao().getByIds(it) }
-        val images = found.any { it.type == MessageType.IMAGE }
+        val images = found.any { it.type == MessageType.IMAGE || it.type == MessageType.FILE }
         val messages = found.filter { canFavorite(it) }.sortedWith(compareBy({ it.createdAt }, { it.id }))
         if (messages.isEmpty()) return FavoriteResult(0, images)
         val existing = dao.listAll().mapNotNullTo(HashSet()) { favorite -> favorite.messageId?.let { it to favorite.messageCreatedAt } }
@@ -144,6 +144,7 @@ class FavoriteRepository @Inject constructor(
 
     companion object {
         /** 能收藏的：文字、语音（含没有转写的）、打完的通话；图片、等待回复中、待投递的不能 */
-        fun canFavorite(message: Message): Boolean = message.type != MessageType.IMAGE && isSelectable(message)
+        fun canFavorite(message: Message): Boolean =
+            message.type != MessageType.IMAGE && message.type != MessageType.FILE && isSelectable(message)
     }
 }

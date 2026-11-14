@@ -161,7 +161,7 @@ class BackupFavoriteTest {
             assertEquals("语音一份、通话两句各一份", listOf("m4a", "m4a", "mp3"), names.map { it.substringAfterLast('.') }.sorted())
         }
         val preview = backup.inspect(zip)
-        assertEquals(10, preview.manifest.formatVersion)
+        assertEquals(11, preview.manifest.formatVersion)
         assertTrue(BackupModule.FAVORITES.name in preview.manifest.modules.orEmpty())
         assertEquals(3, preview.favoriteCount)
         val call = preview.data.favorites.single { it.type == MessageType.CALL }

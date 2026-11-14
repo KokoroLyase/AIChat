@@ -51,6 +51,8 @@ import javax.inject.Singleton
  *   没开启时这一步什么也不做，回复和 0.5.0 一样
  * - 0.7.0：等待回复的消息里有语音时先识别（[VoicePipeline]），识别失败时这一轮都标为失败、不请求模型；
  *   没有语音时这一步什么也不做
+ * - 0.9.2：等待回复的消息里有文件（或模型不能看图、又配了文件解析时有图片）时，稍等之后先解析（[ParsePipeline]），
+ *   解析失败时这一轮都标为失败、不请求模型；拼上下文前把解析结果换成文字（[ContextBuilder.withAttachments]）
  */
 @Singleton
 class ReplyEngine @Inject constructor(
@@ -73,6 +75,7 @@ class ReplyEngine @Inject constructor(
     private val queue: ReplyQueue,
     private val reminders: ProactiveReminders,
     private val voice: VoicePipeline? = null,
+    private val parse: isomeria.aichat.data.parse.ParsePipeline? = null,
 ) {
     /** 通话（0.8.0）在上下文里展开成每一条话；没有通话时就是 messageDao.recent */
     private val calls = isomeria.aichat.data.repo.CallHistory(db)
@@ -87,7 +90,22 @@ class ReplyEngine @Inject constructor(
         // 上一轮已经生成的先发完：投递任务在发，这里只是等（到点时顺手送达，不会重复）
         delivery.run(contactId)
         waitForQuiet(contactId)
+        // 文件（0.9.2）在稍等之后才解析：连着发几个文件、再补一句话时不会解析到一半被替换掉
+        if (parse != null && !parseFiles(contactId)) return
         isomeria.aichat.data.repo.StorageOperations.gate.activity { runProtected(contactId) }
+    }
+
+    /** 解析这一轮的文件和图片（0.9.2）；失败时把等待回复的消息都标为失败（点击重试会重新解析），返回 false */
+    private suspend fun parseFiles(contactId: Long): Boolean {
+        val pipeline = parse ?: return true
+        if (messageDao.sendingIds(contactId).isEmpty()) return true
+        // 模型能不能看图决定图片要不要解析；拿不到配置时这里不管，下面请求时照常报错
+        val supportsImage = try { providers.snapshot(contactId, memory = false).supportsImage } catch (e: LlmException) { return true }
+        val reason = isomeria.aichat.data.repo.StorageOperations.gate.activity { pipeline.parseWaiting(contactId, supportsImage) } ?: return true
+        val waiting = messageDao.sendingIds(contactId)
+        if (waiting.isNotEmpty()) fail(waiting, reason)
+        debugLog("file parsing failed: $reason")
+        return false
     }
 
     /**
@@ -149,8 +167,9 @@ class ReplyEngine @Inject constructor(
         val system = contextBuilder.systemPrompt(contact, nickname, memories, globals).orEmpty()
         val note = if (globals.metaNote) metaNote(contactId, waiting, startedAt) else null
         val historyBudget = contact.contextTokens - estimator.text(system) - (note?.let(estimator::text) ?: 0)
+        val recentRows = calls.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING }
         val selected = ContextWindow.select(
-            calls.recent(contactId, ContextWindow.maxRows(historyBudget)).filter { it.status != MessageStatus.PENDING },
+            contextBuilder.withAttachments(recentRows, supportsImage, historyBudget, estimator, files::readParsed),
             historyBudget,
             estimator,
             supportsImage,

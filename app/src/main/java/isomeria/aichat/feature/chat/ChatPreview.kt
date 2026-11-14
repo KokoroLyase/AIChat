@@ -102,6 +102,22 @@ internal val callRows: List<ChatRow> = listOf(
     ChatRow.Item(Message(id = 24, contactId = 1, role = Role.USER, type = MessageType.CALL, status = MessageStatus.SUCCESS, createdAt = 24)),
 )
 
+private fun fileMsg(id: Long, name: String, size: Long, status: MessageStatus = MessageStatus.SUCCESS, role: Role = Role.USER) = Message(
+    id = id, contactId = 1, role = role, type = MessageType.FILE, content = name, filePath = "chat_files/$id.pdf", fileSize = size,
+    parsedPath = if (status == MessageStatus.SENDING) null else "parsed/$id.md", status = status,
+    errorCode = if (status == MessageStatus.FAILED) FailReason.PARSE_FAILED.code else 0, createdAt = id,
+)
+
+/** 文件消息（0.9.2）：解析好的、正在解析的、名字很长的、解析失败的，和前后的文字放在一起 */
+internal val fileRows: List<ChatRow> = listOf(
+    ChatRow.TimeBar("21:30", "t0"),
+    ChatRow.Item(fileMsg(51, "2026 年第三季度工作总结.pdf", 2_458_000)),
+    ChatRow.Item(msg(52, Role.ASSISTANT, "收到，我看看")),
+    ChatRow.Item(fileMsg(53, "非常非常长的文件名会在两行之后省略掉，后面这些字不会显示出来的季度销售数据汇总表.xlsx", 86_000)),
+    ChatRow.Item(fileMsg(54, "合同.docx", 31_000, status = MessageStatus.FAILED)),
+    ChatRow.Item(fileMsg(55, "课件.pptx", 12_300_000, status = MessageStatus.SENDING)),
+)
+
 /** 多选（0.9.0）：文字、语音、图片、通话可以选，等待回复中的不能选 */
 internal val selectRows: List<ChatRow> = listOf(
     ChatRow.TimeBar("21:30", "t0"),

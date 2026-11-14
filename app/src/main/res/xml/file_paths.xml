@@ -2,4 +2,6 @@
 <paths>
     <cache-path name="camera" path="camera/" />
     <cache-path name="updates" path="updates/" />
+    <!-- 聊天里发的文件（0.9.2）：点文件气泡时交给别的 App 打开，只授权这一个文件的读权限 -->
+    <files-path name="chat_files" path="chat_files/" />
 </paths>

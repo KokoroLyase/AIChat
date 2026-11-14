@@ -29,7 +29,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Favorite::class,
         FavoriteTurn::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 @TypeConverters(DbConverters::class)

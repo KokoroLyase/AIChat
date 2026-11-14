@@ -22,7 +22,13 @@ import kotlin.math.roundToInt
 
 data class StoredImage(val path: String, val width: Int, val height: Int)
 
-enum class MediaKind { AVATAR, IMAGE, BACKGROUND, VOICE, CALL, FAVORITE }
+/** 复制进来的聊天文件（0.9.2）：本机路径、显示的文件名、大小和系统给的类型 */
+data class StoredFile(val path: String, val name: String, val size: Long, val mime: String?)
+
+/** 选的文件超过 [FileStorage.MAX_CHAT_FILE_BYTES]（0.9.2） */
+class FileTooLargeException : Exception("FileTooLarge")
+
+enum class MediaKind { AVATAR, IMAGE, BACKGROUND, VOICE, CALL, FAVORITE, FILE, PARSED }
 
 /** 聊天背景文件；没设置或文件已丢失时返回 null，界面回退到默认背景。 */
 fun chatBackgroundFile(path: String?): File? = path?.let(::File)?.takeIf { it.isFile }
@@ -45,6 +51,10 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
     private val callsDir get() = File(context.filesDir, CALLS_DIR).apply { mkdirs() }
     /** 收藏（0.9.0）：收藏语音和通话时复制一份音频到这里，删掉原消息也还能播放 */
     private val favoritesDir get() = File(context.filesDir, FAVORITES_DIR).apply { mkdirs() }
+    /** 聊天里发的文件（0.9.2）：用户选的文件复制一份到这里，保留扩展名 */
+    private val chatFilesDir get() = File(context.filesDir, CHAT_FILES_DIR).apply { mkdirs() }
+    /** 文件和图片的解析结果（0.9.2）：MinerU 返回的 Markdown */
+    private val parsedDir get() = File(context.filesDir, PARSED_DIR).apply { mkdirs() }
     /** 录音转文字（麦克风按钮）的临时录音，识别完就删；不是语音消息 */
     val voiceTempDir: File get() = File(context.cacheDir, VOICE_TEMP_DIR).apply { mkdirs() }
 
@@ -84,6 +94,71 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
             throw e
         }
         return file.absolutePath
+    }
+
+    /**
+     * 把用户选的文件复制到 files/chat_files（0.9.2），文件名随机、保留扩展名（只留字母和数字）。
+     * 超过 [MAX_CHAT_FILE_BYTES] 时抛 [FileTooLargeException]，读不了时抛 IOException；复制失败时不留半个文件。
+     * 和 [newVoiceFile] 一样先固定，写库后调用 [commitAvatar] 解除，失败时调用 [delete]
+     */
+    suspend fun importChatFile(uri: Uri): StoredFile = withContext(Dispatchers.IO) {
+        val resolver = context.contentResolver
+        var name = ""
+        var declared = -1L
+        resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                name = cursor.getString(0).orEmpty()
+                if (!cursor.isNull(1)) declared = cursor.getLong(1)
+            }
+        }
+        if (declared > MAX_CHAT_FILE_BYTES) throw FileTooLargeException()
+        val mime = resolver.getType(uri)
+        val file = File(chatFilesDir, "${UUID.randomUUID()}.${chatFileExtension(name, mime)}")
+        StorageOperations.pin(file)
+        try {
+            val input = resolver.openInputStream(uri) ?: throw java.io.IOException("Unreadable")
+            input.use { source ->
+                file.outputStream().use { out ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val read = source.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > MAX_CHAT_FILE_BYTES) throw FileTooLargeException()
+                        out.write(buffer, 0, read)
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            file.delete()
+            StorageOperations.unpin(file)
+            throw e
+        }
+        StoredFile(file.absolutePath, displayName(name, file), file.length(), mime)
+    }
+
+    /** 解析结果（0.9.2）写到 files/parsed，返回路径。和 [newVoiceFile] 一样先固定，写库后调用 [commitAvatar] 解除 */
+    fun writeParsed(text: String): String {
+        val file = File(parsedDir, "${UUID.randomUUID()}.md")
+        StorageOperations.pin(file)
+        try {
+            file.writeText(text)
+        } catch (e: Throwable) {
+            file.delete()
+            StorageOperations.unpin(file)
+            throw e
+        }
+        return file.absolutePath
+    }
+
+    /** 读解析结果（0.9.2）；文件不在时返回 null */
+    fun readParsed(path: String): String? = runCatching { File(path).takeIf { it.isFile }?.readText() }.getOrNull()
+
+    /** 打开聊天文件（0.9.2）用的 content:// 地址；文件不在时返回 null */
+    fun chatFileUri(path: String?): Uri? {
+        val file = path?.let(::File)?.takeIf { it.isFile && isPrivate(it) } ?: return null
+        return runCatching { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }.getOrNull()
     }
 
     /** 恢复数据前自动备份当前数据的位置（应用私有目录） */
@@ -156,14 +231,16 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
             MediaKind.VOICE -> voiceDir
             MediaKind.CALL -> callsDir
             MediaKind.FAVORITE -> favoritesDir
+            MediaKind.FILE -> chatFilesDir
+            MediaKind.PARSED -> parsedDir
         }
         return File(dir, "${UUID.randomUUID()}.$extension")
     }
 
-    /** 删除头像、图片、聊天背景、语音、通话（0.8.0）和收藏（0.9.0）目录里已经没有任何记录引用的文件（恢复数据后清理） */
+    /** 删除头像、图片、聊天背景、语音、通话（0.8.0）、收藏（0.9.0）、文件和解析结果（0.9.2）目录里已经没有任何记录引用的文件（恢复数据后清理） */
     fun unreferenced(referenced: Set<String>): List<File> {
         val keep = referenced.mapNotNull { runCatching { File(it).canonicalPath }.getOrNull() }.toSet() + StorageOperations.pinnedPaths()
-        return listOf(avatarsDir, imagesDir, backgroundsDir, voiceDir, callsDir, favoritesDir).flatMap { dir ->
+        return listOf(avatarsDir, imagesDir, backgroundsDir, voiceDir, callsDir, favoritesDir, chatFilesDir, parsedDir).flatMap { dir ->
             check(dir.isDirectory && !java.nio.file.Files.isSymbolicLink(dir.toPath()))
             (dir.listFiles() ?: throw java.io.IOException("MediaDirectoryUnavailable"))
                 .filter { it.isFile && !java.nio.file.Files.isSymbolicLink(it.toPath()) && isPrivate(it) && it.canonicalPath !in keep }
@@ -277,6 +354,26 @@ class FileStorage @Inject constructor(@ApplicationContext private val context: C
         const val VOICE_DIR = "voice"
         const val CALLS_DIR = "calls"
         const val FAVORITES_DIR = "favorites"
+        const val CHAT_FILES_DIR = "chat_files"
+        const val PARSED_DIR = "parsed"
+
+        /** 聊天里能发的文件最大 200 MB（MinerU 的上限） */
+        const val MAX_CHAT_FILE_BYTES = 200L shl 20
+
+        /** 文件名的扩展名（只留字母和数字，最多 5 个字）；没有时按类型猜，再没有就是 bin */
+        internal fun chatFileExtension(name: String, mime: String?): String {
+            val fromName = name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(5)
+            if (fromName.isNotEmpty() && name.contains('.')) return fromName
+            val fromMime = mime?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+                ?.lowercase()?.filter { it.isLetterOrDigit() }?.take(5)
+            return fromMime?.ifEmpty { null } ?: "bin"
+        }
+
+        /** 显示的文件名：系统没给时用复制后的文件名；去掉换行这类控制字符，最多 [MAX_FILE_NAME] 个字 */
+        internal fun displayName(name: String, file: File): String =
+            name.filterNot { it.isISOControl() }.trim().take(MAX_FILE_NAME).ifEmpty { file.name }
+
+        const val MAX_FILE_NAME = 120
         const val VOICE_TEMP_DIR = "voice-temp"
         private const val MAX_IMAGE_SIDE = 2048
         private const val MAX_CROP_SOURCE_SIDE = 2048

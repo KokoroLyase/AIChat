@@ -524,6 +524,28 @@ object WeIcons {
     }
 
     /** 相册（0.9.1）：画框里的太阳和山 */
+    /** 文件（0.9.2）：折了一个角的纸，上面两行字 */
+    val File: ImageVector by lazy {
+        lineIcon("File") {
+            moveTo(14f, 3.5f)
+            lineTo(7f, 3.5f)
+            quadTo(5f, 3.5f, 5f, 5.5f)
+            lineTo(5f, 18.5f)
+            quadTo(5f, 20.5f, 7f, 20.5f)
+            lineTo(17f, 20.5f)
+            quadTo(19f, 20.5f, 19f, 18.5f)
+            lineTo(19f, 8.5f)
+            close()
+            moveTo(14f, 3.5f)
+            lineTo(14f, 8.5f)
+            lineTo(19f, 8.5f)
+            moveTo(8.5f, 13f)
+            lineTo(15.5f, 13f)
+            moveTo(8.5f, 16.5f)
+            lineTo(13.5f, 16.5f)
+        }
+    }
+
     val Image: ImageVector by lazy {
         lineIcon("Image") {
             roundRect(3.5f, 4.5f, 20.5f, 19.5f, 2f)

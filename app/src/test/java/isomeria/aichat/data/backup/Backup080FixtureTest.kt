@@ -174,12 +174,12 @@ class Backup080FixtureTest {
 
     /** 0.8.0 的备份恢复后再从 0.9.0 导出：v10，通话和录音都在，模块里有“收藏” */
     @Test
-    fun restoredFrom080_exportsAsV10WithTheCall() = runBlocking {
+    fun restoredFrom080_exportsAsCurrentFormatWithTheCall() = runBlocking {
         backup.restore(backup.inspect(fixture("aichat-080-plain.zip")), RestoreMode.OVERWRITE, null)
         val again = File(context.cacheDir, "again.zip")
         again.outputStream().use { backup.export(it, null) }
         val preview = backup.inspect(again)
-        assertEquals(10, preview.manifest.formatVersion)
+        assertEquals(11, preview.manifest.formatVersion)
         assertEquals(1, preview.callCount)
         assertEquals(listOf(true, true, true, false), preview.data.messages.single { it.type == MessageType.CALL }.call.map { it.audio != null })
         assertTrue(BackupModule.FAVORITES in preview.modules)

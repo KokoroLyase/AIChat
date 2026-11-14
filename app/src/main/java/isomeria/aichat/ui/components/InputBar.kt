@@ -1,6 +1,7 @@
 package isomeria.aichat.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -204,7 +205,7 @@ private fun SendButton(onClick: () -> Unit) {
     }
 }
 
-/** 「+」面板：相册、拍照（当前模型不支持图片时置灰），语音通话（0.8.0）。 */
+/** 「+」面板：相册、拍照（当前模型不支持图片、也没配文件解析时置灰），语音通话（0.8.0），文件（0.9.2，没配文件解析时置灰）。 */
 @Composable
 fun MorePanel(
     imageEnabled: Boolean,
@@ -212,6 +213,9 @@ fun MorePanel(
     onCamera: () -> Unit,
     modifier: Modifier = Modifier,
     onCall: () -> Unit = {},
+    /** 发文件（0.9.2）：没配文件解析时置灰，点了提示去设置 */
+    fileEnabled: Boolean = false,
+    onFile: () -> Unit = {},
 ) {
     val colors = WeTheme.colors
     // 高度由调用方给（和键盘一样高）
@@ -219,13 +223,22 @@ fun MorePanel(
         modifier
             .fillMaxWidth()
             .background(colors.barBackground)
+            // 0.9.2：窄屏特大字体时第二行放不下面板高度，可以上下滑
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 20.dp),
     ) {
-        // 0.9.1：按自身宽度靠左排；窄屏大字体时最后一项只剩剩下的宽度，标签缩小字号，不折成两行
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+        // 0.9.1：按自身宽度靠左排，标签放不下时缩小字号，不折成两行。
+        // 0.9.2 多了“文件”：一行放不下时（窄屏大字体）换到下一行，间距和以前一样
+        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+        androidx.compose.foundation.layout.FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
             PanelItem(WeIcons.Image, stringResource(R.string.chat_album), imageEnabled, onAlbum)
             PanelItem(WeIcons.Camera, stringResource(R.string.chat_camera), imageEnabled, onCamera)
             PanelItem(WeIcons.Phone, stringResource(R.string.chat_voice_call), true, onCall)
+            PanelItem(WeIcons.File, stringResource(R.string.chat_file), fileEnabled, onFile)
         }
     }
 }

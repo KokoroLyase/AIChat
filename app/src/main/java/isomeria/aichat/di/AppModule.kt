@@ -32,6 +32,7 @@ import isomeria.aichat.data.db.MIGRATION_6_7
 import isomeria.aichat.data.db.MIGRATION_7_8
 import isomeria.aichat.data.db.MIGRATION_8_9
 import isomeria.aichat.data.db.MIGRATION_9_10
+import isomeria.aichat.data.db.MIGRATION_10_11
 import isomeria.aichat.data.db.GlobalMemoryDao
 import isomeria.aichat.data.db.MemoryDao
 import isomeria.aichat.data.db.MessageDao
@@ -66,7 +67,7 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
             .addCallback(AppDatabase.seedCallback)
             .build()
 
@@ -150,6 +151,10 @@ object AppModule {
                 metaFirst = res.getString(R.string.prompt_meta_first),
                 metaSelf = res.getString(R.string.prompt_meta_self),
                 metaOther = res.getString(R.string.prompt_meta_other),
+                fileLabel = res.getString(R.string.prompt_file_label),
+                fileTruncated = res.getString(R.string.prompt_file_truncated),
+                imageText = res.getString(R.string.prompt_image_text),
+                imageNoText = res.getString(R.string.prompt_image_no_text),
             ),
         )
     }
@@ -244,6 +249,9 @@ abstract class BindingsModule {
     @Binds abstract fun voiceSettingsSource(impl: SettingsStore): isomeria.aichat.core.VoiceSettingsSource
 
     @Binds abstract fun voiceService(impl: isomeria.aichat.data.voice.VoiceApi): isomeria.aichat.data.voice.VoiceService
+
+    /** 文件解析（0.9.2）：MinerU 精准解析 API */
+    @Binds abstract fun documentParser(impl: isomeria.aichat.data.parse.MineruApi): isomeria.aichat.data.parse.DocumentParser
 
     @Binds abstract fun voiceRecorder(impl: isomeria.aichat.data.voice.AndroidVoiceRecorder): isomeria.aichat.data.voice.VoiceRecorder
 

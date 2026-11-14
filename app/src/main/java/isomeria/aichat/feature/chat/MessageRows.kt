@@ -140,6 +140,8 @@ data class MessageActions(
     val onVoiceShowText: (Message, Boolean) -> Unit = { _, _ -> },
     /** 点通话消息（0.8.0）：进入这次通话的详情 */
     val onCallClick: (Message) -> Unit = {},
+    /** 点文件消息（0.9.2）：交给别的 App 打开 */
+    val onFileClick: (Message) -> Unit = {},
     /** 长按菜单“多选”（0.9.0） */
     val onStartSelection: (Message) -> Unit = {},
     /** 长按通话“复制”（0.9.0）：复制这次通话的完整内容 */
@@ -337,6 +339,16 @@ fun MessageRow(
                                 onLongClick = { menuOpen = true },
                                 held = menuOpen,
                             )
+                            MessageType.FILE -> isomeria.aichat.ui.components.FileBubble(
+                                name = message.content,
+                                size = message.fileSize,
+                                // 等待回复、还没解析出来时写“解析中…”
+                                status = if (message.status == MessageStatus.SENDING && message.parsedPath == null) stringResource(R.string.file_parsing) else null,
+                                sent = sent,
+                                onClick = { actions.onFileClick(message) },
+                                onLongClick = { menuOpen = true },
+                                held = menuOpen,
+                            )
                         }
                         if (menuOpen) WeBubbleMenu(menuItems) { menuOpen = false }
                     }
@@ -435,6 +447,7 @@ private fun selectionLabel(message: Message): String = when (message.type) {
     MessageType.VOICE -> message.content.ifBlank { stringResource(R.string.preview_voice) }
     MessageType.IMAGE -> stringResource(R.string.preview_image)
     MessageType.CALL -> isomeria.aichat.data.repo.callPreview(androidx.compose.ui.platform.LocalContext.current, message)
+    MessageType.FILE -> stringResource(R.string.preview_file, message.content)
 }
 
 /**

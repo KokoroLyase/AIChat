@@ -57,7 +57,13 @@ class BackupMigrations(
             7 to { data -> v7ToV8(data) },
             8 to { data -> v8ToV9(data) },
             9 to { data -> v9ToV10(data) },
+            10 to { data -> v10ToV11(data) },
         )
+
+        /**
+         * v10 → v11（0.9.2）：消息多了文件和解析结果，服务商多了文件解析，旧文件里都没有（默认值）。data.json 不用改
+         */
+        private fun v10ToV11(data: JsonObject): JsonObject = data
 
         /**
          * v9 → v10（0.9.0）：消息多了引用和译文，旧消息都没有（默认值）；多了收藏，旧文件里没有。data.json 不用改

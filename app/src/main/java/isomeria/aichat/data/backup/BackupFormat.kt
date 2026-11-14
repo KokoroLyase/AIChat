@@ -31,12 +31,16 @@ import kotlinx.serialization.json.Json
  *                   v9 起消息多了通话类型（CALL），通话消息带着它的每一条话（[MessageDto.call]），跟着聊天记录导出
  *                   v10 起消息带引用（被引用消息的 id 和快照）和译文，跟着聊天记录导出；多了收藏（[BackupData.favorites]，
  *                   [BackupModule.FAVORITES]，不依赖联系人）
+ *                   v11 起消息多了文件类型（FILE），带原文件和解析结果（[MessageDto.file]、[MessageDto.parsed]）；
+ *                   服务商多了文件解析（PARSER，跟着模型配置导出）
  *   avatars/…       头像（联系人和自己的）
  *   images/…        聊天图片
  *   background/…    聊天背景（v4 起）
  *   voice/…         语音消息（v7 起）
  *   calls/…         通话里每一条话的音频（v9 起）
  *   favorites/…     收藏的语音和通话的音频（v10 起，收藏时复制的一份）
+ *   chat_files/…    聊天里发的文件（v11 起）
+ *   parsed/…        文件和图片的解析结果（v11 起，Markdown 文字）
  *
  * data.json 里的头像和图片写成 zip 内的相对路径（如 images/xxx.jpg），恢复时换成本机路径。
  * 格式和数据库表分开定义：以后改表不影响已经导出的文件，改格式时 [BackupFormat.VERSION] +1，
@@ -45,7 +49,7 @@ import kotlinx.serialization.json.Json
 
 object BackupFormat {
     /** 数据格式版本。改 data.json 的结构时 +1 */
-    const val VERSION = 10
+    const val VERSION = 11
 
     /** manifest 里的应用标识，用来认出智信的备份文件 */
     const val APP_ID = "isomeria.aichat"
@@ -58,9 +62,11 @@ object BackupFormat {
     const val VOICE_DIR = "voice/"
     const val CALLS_DIR = "calls/"
     const val FAVORITES_DIR = "favorites/"
+    const val FILES_DIR = "chat_files/"
+    const val PARSED_DIR = "parsed/"
 
     /** zip 内文件名只允许这些字符（不能以点开头），防止「../」之类的路径 */
-    val mediaNamePattern = Regex("""^(avatars|images|background|voice|calls|favorites)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
+    val mediaNamePattern = Regex("""^(avatars|images|background|voice|calls|favorites|chat_files|parsed)/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$""")
 
     val json = Json {
         ignoreUnknownKeys = true
@@ -77,7 +83,7 @@ enum class BackupModule(val requiresContacts: Boolean = false) {
     /** 联系人：人设、模型和各项设置、头像、置顶和免打扰 */
     CONTACTS,
 
-    /** 聊天记录：消息、图片、语音、通话（0.8.0）、聊天背景、草稿 */
+    /** 聊天记录：消息、图片、语音、通话（0.8.0）、文件和解析结果（0.9.2）、聊天背景、草稿 */
     CHATS(requiresContacts = true),
 
     /** 联系人的长期记忆 */
@@ -87,7 +93,7 @@ enum class BackupModule(val requiresContacts: Boolean = false) {
     USAGE(requiresContacts = true),
     GLOBAL_MEMORY,
 
-    /** 模型配置：大模型和语音服务商、模型列表；API Key 另外选 */
+    /** 模型配置：大模型、语音和文件解析（0.9.2）服务商、模型列表；API Key 另外选 */
     PROVIDERS,
     REPLY_PREFERENCES,
 
@@ -281,6 +287,12 @@ data class MessageDto(
     /** 译文和是否显示（v10 起） */
     val translation: String? = null,
     val translationShown: Boolean = false,
+    /** 文件消息（v11 起）的原文件，zip 内相对路径，如 chat_files/xxx.pdf；文件名在 content */
+    val file: String? = null,
+    val fileSize: Long = 0,
+    val fileMime: String? = null,
+    /** 解析结果（v11 起），如 parsed/xxx.md；没有解析过时为 null */
+    val parsed: String? = null,
 )
 
 /** 通话里的一条话（v9 起）。音频是 zip 内相对路径，如 calls/xxx.m4a；收藏里的通话（v10 起）是 favorites/xxx.m4a */

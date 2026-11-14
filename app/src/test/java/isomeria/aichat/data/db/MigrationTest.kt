@@ -72,7 +72,7 @@ class MigrationTest {
     private fun JsonObject.sql(key: String) = this[key]!!.jsonPrimitive.content
 
     private fun open(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
         .allowMainThreadQueries()
         .build()
         .also { room = it }
@@ -535,6 +535,54 @@ class MigrationTest {
         db.favoriteDao().delete(favorite)
         assertEquals(listOf(voice), db.favoriteDao().listAll().map { it.id })
         assertTrue(db.favoriteDao().allTurns().isEmpty())
+    }
+
+    /**
+     * v10 → v11（0.9.2）：消息加文件和解析结果的四列，旧消息都没有；文件消息和文件解析服务能写能读，
+     * 查“这个聊天的文件”时把原文件和解析结果都算上（删除聊天时一起删）
+     */
+    @Test
+    fun v10ToV11_oldRowsKept_noFile_fileMessagesAndParserCanBeWritten() = runBlocking {
+        createV1(version = 10) {
+            execSQL("INSERT INTO provider_config(id,kind,provider,name,baseUrl,apiKeyEncrypted,defaultModel,enabled,presetId,compatibility,voice) VALUES(1,'LLM','openai','DeepSeek','https://api.deepseek.com','encrypted','m',1,'deepseek','DEEPSEEK','')")
+            execSQL("INSERT INTO contact(id,name,avatarColor,providerId,model,thinking,temperature,systemPrompt,contextTokens,splitReplies,autoMemory,createdAt,updatedAt,thinkingOption,memoryModel,memoryThinkingOption,useGlobalMemory,useReplyPreferences,proactiveEnabled,proactiveFrequency,replyType,ttsVoice,ttsStyle,replyPreferences,ttsSource,asrSource) VALUES(8,'甲',1,1,'m','OFF',0.4,'人设',6000,1,1,10,20,'high',NULL,'off',1,1,0,'MEDIUM',NULL,NULL,'',NULL,NULL,NULL)")
+            execSQL("INSERT INTO message(id,contactId,role,type,content,imagePath,imageWidth,imageHeight,reasoning,reasoningMillis,status,errorCode,model,promptTokens,completionTokens,replyGroup,createdAt,origin,voicePath,voiceMillis,voicePlayed,voiceShowText,quoteId,quoteRole,quoteType,quoteText,translation,translationShown) VALUES(1,8,'USER','IMAGE','','/i/a.jpg',10,10,NULL,0,'SUCCESS',0,NULL,0,0,NULL,100,'NORMAL',NULL,0,0,0,NULL,NULL,NULL,NULL,'译文',1)")
+        }
+        val db = open()
+        val old = db.messageDao().get(1)!!
+        assertEquals("/i/a.jpg", old.imagePath)
+        assertEquals("译文", old.translation)
+        assertNull(old.filePath)
+        assertEquals(0L, old.fileSize)
+        assertNull(old.fileMime)
+        assertNull(old.parsedPath)
+
+        val id = db.messageDao().insert(
+            Message(
+                contactId = 8, role = Role.USER, type = MessageType.FILE, content = "报告.pdf", filePath = "/f/a.pdf", fileSize = 2048,
+                fileMime = "application/pdf", status = MessageStatus.SENDING, createdAt = 200,
+            ),
+        )
+        assertEquals(listOf(id), db.messageDao().unparsed(8).map { it.id }.filter { it == id })
+        db.messageDao().setParsed(id, "/p/a.md")
+        db.messageDao().get(id)!!.let {
+            assertEquals(MessageType.FILE, it.type)
+            assertEquals("/f/a.pdf", it.filePath)
+            assertEquals(2048L, it.fileSize)
+            assertEquals("application/pdf", it.fileMime)
+            assertEquals("/p/a.md", it.parsedPath)
+        }
+        assertEquals(setOf("/i/a.jpg", "/f/a.pdf", "/p/a.md"), db.messageDao().imagePaths(8).toSet())
+        assertEquals(setOf("/i/a.jpg", "/f/a.pdf", "/p/a.md"), db.messageDao().allImagePaths().toSet())
+        // 文件名能搜到
+        assertEquals(listOf(id), db.messageDao().searchInChat(8, "报告").map { it.id })
+
+        // 文件解析服务：和语音服务商分开删
+        db.providerDao().insert(ProviderConfig(kind = ProviderKind.PARSER, provider = "mineru", name = "MinerU", baseUrl = "https://mineru.net/api/v4", defaultModel = "vlm"))
+        db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, provider = "deepseek-tts", name = "DeepSeek", baseUrl = "https://api.deepseek.com/v1", defaultModel = ""))
+        db.providerDao().deleteKinds(listOf(ProviderKind.TTS, ProviderKind.ASR))
+        assertEquals(listOf(ProviderKind.LLM, ProviderKind.PARSER), db.providerDao().listConfigs().map { it.kind })
+        assertTrue(db.providerDao().llmList().none { it.kind == ProviderKind.PARSER })
     }
 
     /** 清空或删除聊天时连续未回复次数清零；用户发言用的清零和主动发送的计数互不影响别的字段 */

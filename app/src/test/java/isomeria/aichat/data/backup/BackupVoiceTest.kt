@@ -123,7 +123,7 @@ class BackupVoiceTest {
             assertFalse("语音服务商的 Key 默认也不导出", raw.contains("sk-tts") || raw.contains("sk-asr"))
         }
         val data = backup.inspect(zip).data
-        assertEquals(10, backup.inspect(zip).manifest.formatVersion)
+        assertEquals(11, backup.inspect(zip).manifest.formatVersion)
         assertEquals("恢复前的摘要：语音消息条数（合成中的那条按文字导出）", 2, backup.inspect(zip).voiceCount)
         val messages = data.messages.sortedBy { it.createdAt }
         assertEquals(listOf(MessageType.VOICE, MessageType.VOICE, MessageType.TEXT), messages.map { it.type })
@@ -144,7 +144,7 @@ class BackupVoiceTest {
         val zip = export()
         val preview = backup.inspect(zip)
         assertEquals(listOf("", ""), preview.data.providers.filter { it.kind != ProviderKind.LLM }.map { it.compatibility })
-        db.providerDao().deleteAllVoice()
+        db.providerDao().deleteKinds(listOf(ProviderKind.TTS, ProviderKind.ASR))
         backup.restore(preview, RestoreMode.OVERWRITE, null)
         val voice = db.providerDao().listConfigs().filter { it.kind != ProviderKind.LLM }
         assertEquals(setOf(ProviderKind.TTS, ProviderKind.ASR), voice.map { it.kind }.toSet())
@@ -180,7 +180,7 @@ class BackupVoiceTest {
         val zip = export()
         val before = db.messageDao().listByContact(1).filter { it.voicePath != null }.map { File(it.voicePath!!).readBytes().toList() }
         // 导出后本机改了：删掉语音服务商、改了设置
-        db.providerDao().deleteAllVoice()
+        db.providerDao().deleteKinds(listOf(ProviderKind.TTS, ProviderKind.ASR))
         settings.v = settings.v.copy(voice = VoiceSettings())
 
         backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
@@ -243,7 +243,7 @@ class BackupVoiceTest {
         assertEquals(7, dto.replyPreferences!!.waitSeconds)
         // 本机：联系人和语音服务商都删了，另一个合成服务商占了 id
         db.contactDao().delete(1)
-        db.providerDao().deleteAllVoice()
+        db.providerDao().deleteKinds(listOf(ProviderKind.TTS, ProviderKind.ASR))
         db.providerDao().insert(ProviderConfig(kind = ProviderKind.TTS, compatibility = "", provider = "openai-audio", name = "别的", baseUrl = "https://other.test", defaultModel = "x"))
 
         backup.restore(backup.inspect(zip), RestoreMode.MERGE, null)
@@ -307,7 +307,7 @@ class BackupVoiceTest {
             ZipFile(zip).use { z ->
                 assertTrue("模型文件不进备份", z.entries().toList().none { it.name.contains("asr-models") || it.name.endsWith(".onnx") })
             }
-            assertEquals(10, backup.inspect(zip).manifest.formatVersion)
+            assertEquals(11, backup.inspect(zip).manifest.formatVersion)
             assertEquals(VoiceSettingsDto(ReplyType.VOICE, "local:system-tts", "local:offline-asr"), backup.inspect(zip).data.settings.voice)
             settings.v = settings.v.copy(voice = VoiceSettings())
             backup.restore(backup.inspect(zip), RestoreMode.OVERWRITE, null)
