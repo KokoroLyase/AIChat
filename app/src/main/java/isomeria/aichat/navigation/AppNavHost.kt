@@ -119,7 +119,7 @@ const val NEW_GLOBAL_ITEM = -1L
 
 /**
  * 单 Activity + Navigation Compose。二级页面从右侧推入；返回按微信的动画滑出，
- * 侧边返回手势拖动时页面跟手（预测性返回，见 PageTransitions.kt）。
+ * 侧边返回手势和点返回箭头效果相同（见 PageTransitions.kt）。
  */
 @Composable
 fun AppNavHost(
@@ -170,42 +170,42 @@ fun AppNavHost(
                 onOpenFavorites = { nav.navigate(FavoritesRoute) },
             )
         }
-        page<FavoritesRoute> {
+        page<FavoritesRoute>(nav) {
             isomeria.aichat.feature.favorites.FavoritesScreen(onBack = nav::popBackStackSafely, onOpen = { nav.navigate(FavoriteDetailRoute(it)) })
         }
-        page<FavoriteDetailRoute> { isomeria.aichat.feature.favorites.FavoriteDetailScreen(onBack = nav::popBackStackSafely) }
-        page<GlobalMemoryRoute> {
+        page<FavoriteDetailRoute>(nav) { isomeria.aichat.feature.favorites.FavoriteDetailScreen(onBack = nav::popBackStackSafely) }
+        page<GlobalMemoryRoute>(nav) {
             GlobalMemoryScreen(onBack = nav::popBackStackSafely, onOpenCategory = { nav.navigate(GlobalMemoryCategoryRoute(it)) })
         }
-        page<GlobalMemoryCategoryRoute> { entry ->
+        page<GlobalMemoryCategoryRoute>(nav) { entry ->
             GlobalMemoryCategoryScreen(
                 categoryId = entry.toRoute<GlobalMemoryCategoryRoute>().categoryId,
                 onBack = nav::popBackStackSafely,
                 onOpenTopic = { nav.navigate(GlobalMemoryTopicRoute(it)) },
             )
         }
-        page<GlobalMemoryTopicRoute> { entry ->
+        page<GlobalMemoryTopicRoute>(nav) { entry ->
             GlobalMemoryTopicScreen(
                 topicId = entry.toRoute<GlobalMemoryTopicRoute>().topicId,
                 onBack = nav::popBackStackSafely,
                 onOpenItem = { topic, item -> nav.navigate(GlobalMemoryItemRoute(topic, item)) },
             )
         }
-        page<GlobalMemoryItemRoute> { GlobalMemoryItemScreen(onBack = nav::popBackStackSafely) }
-        page<ReplyPreferencesRoute> { ReplyPreferencesScreen(onBack = nav::popBackStackSafely) }
-        page<ProactiveRoute> {
+        page<GlobalMemoryItemRoute>(nav) { GlobalMemoryItemScreen(onBack = nav::popBackStackSafely) }
+        page<ReplyPreferencesRoute>(nav) { ReplyPreferencesScreen(onBack = nav::popBackStackSafely) }
+        page<ProactiveRoute>(nav) {
             isomeria.aichat.feature.proactive.ProactiveScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenContact = { nav.navigate(ContactDetailRoute(it)) },
             )
         }
-        page<VoiceSettingsRoute> {
+        page<VoiceSettingsRoute>(nav) {
             isomeria.aichat.feature.voice.VoiceSettingsScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenProviders = { nav.navigate(VoiceProviderListRoute(it.name)) },
             )
         }
-        page<VoiceProviderListRoute> {
+        page<VoiceProviderListRoute>(nav) {
             isomeria.aichat.feature.voice.VoiceProviderListScreen(
                 onBack = nav::popBackStackSafely,
                 onOpen = { kind, id -> nav.navigate(VoiceProviderEditRoute(kind.name, id)) },
@@ -213,10 +213,10 @@ fun AppNavHost(
                 onOpenLocal = { nav.navigate(if (it == isomeria.aichat.data.db.ProviderKind.TTS) SystemTtsRoute else OfflineAsrRoute) },
             )
         }
-        page<VoiceProviderEditRoute> { isomeria.aichat.feature.voice.VoiceProviderEditScreen(onBack = nav::popBackStackSafely) }
-        page<SystemTtsRoute> { isomeria.aichat.feature.voice.SystemTtsScreen(onBack = nav::popBackStackSafely) }
-        page<OfflineAsrRoute> { isomeria.aichat.feature.voice.OfflineAsrScreen(onBack = nav::popBackStackSafely) }
-        page<SettingsSectionRoute> { entry ->
+        page<VoiceProviderEditRoute>(nav) { isomeria.aichat.feature.voice.VoiceProviderEditScreen(onBack = nav::popBackStackSafely) }
+        page<SystemTtsRoute>(nav) { isomeria.aichat.feature.voice.SystemTtsScreen(onBack = nav::popBackStackSafely) }
+        page<OfflineAsrRoute>(nav) { isomeria.aichat.feature.voice.OfflineAsrScreen(onBack = nav::popBackStackSafely) }
+        page<SettingsSectionRoute>(nav) { entry ->
             SettingsSectionScreen(
                 section = SettingsSection.valueOf(entry.toRoute<SettingsSectionRoute>().section),
                 onBack = nav::popBackStackSafely,
@@ -233,7 +233,7 @@ fun AppNavHost(
                 ),
             )
         }
-        page<ChatRoute> {
+        page<ChatRoute>(nav) {
             ChatScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenContact = { nav.navigate(ContactDetailRoute(it)) },
@@ -248,8 +248,8 @@ fun AppNavHost(
                 onOpenCall = { message -> nav.navigate(CallDetailRoute(message.id)) },
             )
         }
-        page<CallDetailRoute> { isomeria.aichat.feature.call.CallDetailScreen(onBack = nav::popBackStackSafely) }
-        page<CallRoute> {
+        page<CallDetailRoute>(nav) { isomeria.aichat.feature.call.CallDetailScreen(onBack = nav::popBackStackSafely) }
+        page<CallRoute>(nav) {
             isomeria.aichat.feature.call.CallScreen(
                 onClose = nav::popBackStackSafely,
                 onEditContact = { nav.navigate(ContactEditRoute(it)) },
@@ -257,20 +257,20 @@ fun AppNavHost(
                 onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
             )
         }
-        page<ChatInfoRoute> {
+        page<ChatInfoRoute>(nav) {
             ChatInfoScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenContact = { nav.navigate(ContactDetailRoute(it)) },
                 onSearchHistory = { nav.navigate(ChatSearchRoute(it)) },
             )
         }
-        page<ChatSearchRoute> {
+        page<ChatSearchRoute>(nav) {
             ChatSearchScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenMessage = nav::openMessage,
             )
         }
-        page<ContactDetailRoute> { entry ->
+        page<ContactDetailRoute>(nav) { entry ->
             val route = entry.toRoute<ContactDetailRoute>()
             ContactDetailScreen(
                 onBack = nav::popBackStackSafely,
@@ -291,13 +291,13 @@ fun AppNavHost(
                 onCall = { nav.navigate(CallRoute(route.contactId)) { launchSingleTop = true } },
             )
         }
-        page<ModelEditRoute> { ModelEditScreen(onBack = nav::popBackStackSafely) }
-        page<MemoryRoute> {
+        page<ModelEditRoute>(nav) { ModelEditScreen(onBack = nav::popBackStackSafely) }
+        page<MemoryRoute>(nav) {
             MemoryScreen(onBack = nav::popBackStackSafely, onOpen = { nav.navigate(MemoryEditRoute(it)) }, onOpenProvider = { nav.navigate(ProviderEditRoute(it)) },
                 onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) })
         }
-        page<MemoryEditRoute> { MemoryEditScreen(onBack = nav::popBackStackSafely) }
-        page<ContactEditRoute> {
+        page<MemoryEditRoute>(nav) { MemoryEditScreen(onBack = nav::popBackStackSafely) }
+        page<ContactEditRoute>(nav) {
             ContactEditScreen(
                 onBack = nav::popBackStackSafely,
                 onCreated = { id ->
@@ -309,33 +309,33 @@ fun AppNavHost(
                 onOpenPrompt = { nav.navigate(ContactPromptRoute) },
             )
         }
-        page<ContactPromptRoute> { entry ->
+        page<ContactPromptRoute>(nav) { entry ->
             val editEntry = remember(entry) { nav.getBackStackEntry<ContactEditRoute>() }
             ContactPromptScreen(onBack = nav::popBackStackSafely, viewModel = hiltViewModel(editEntry))
         }
-        page<ExportRoute> { ExportScreen(onBack = nav::popBackStackSafely) }
-        page<CrashLogsRoute> { CrashLogsScreen(onBack = nav::popBackStackSafely) }
-        page<StorageRoute> { StorageScreen(onBack = nav::popBackStackSafely) }
-        page<RestoreRoute> { RestoreScreen(onBack = nav::popBackStackSafely) }
-        page<ProviderListRoute> {
+        page<ExportRoute>(nav) { ExportScreen(onBack = nav::popBackStackSafely) }
+        page<CrashLogsRoute>(nav) { CrashLogsScreen(onBack = nav::popBackStackSafely) }
+        page<StorageRoute>(nav) { StorageScreen(onBack = nav::popBackStackSafely) }
+        page<RestoreRoute>(nav) { RestoreScreen(onBack = nav::popBackStackSafely) }
+        page<ProviderListRoute>(nav) {
             ProviderListScreen(
                 onBack = nav::popBackStackSafely,
                 onOpen = { nav.navigate(ProviderEditRoute(it)) },
                 onAdd = { nav.navigate(ProviderEditRoute()) },
             )
         }
-        page<ProviderEditRoute> { ProviderEditScreen(onBack = nav::popBackStackSafely, onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) }) }
-        page<UsageRoute> {
+        page<ProviderEditRoute>(nav) { ProviderEditScreen(onBack = nav::popBackStackSafely, onOpenModel = { id, model -> nav.navigate(ModelEditRoute(id, model)) }) }
+        page<UsageRoute>(nav) {
             UsageScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenDay = { nav.navigate(UsageDetailRoute(day = it)) },
                 onOpenContact = { nav.navigate(UsageDetailRoute(contactId = it)) },
             )
         }
-        page<UsageDetailRoute> { UsageDetailScreen(onBack = nav::popBackStackSafely) }
-        page<LicensesRoute> { LicensesScreen(onBack = nav::popBackStackSafely) }
-        page<ProfileRoute> { ProfileScreen(onBack = nav::popBackStackSafely) }
-        page<SearchRoute> {
+        page<UsageDetailRoute>(nav) { UsageDetailScreen(onBack = nav::popBackStackSafely) }
+        page<LicensesRoute>(nav) { LicensesScreen(onBack = nav::popBackStackSafely) }
+        page<ProfileRoute>(nav) { ProfileScreen(onBack = nav::popBackStackSafely) }
+        page<SearchRoute>(nav) {
             SearchScreen(
                 onBack = nav::popBackStackSafely,
                 onOpenChat = { nav.navigate(ChatRoute(it)) { popUpTo(MainRoute) } },
@@ -343,18 +343,19 @@ fun AppNavHost(
                 onOpenChatSearch = { contactId, query -> nav.navigate(ChatSearchRoute(contactId, query)) },
             )
         }
-        page<ImageViewerRoute> { entry ->
+        page<ImageViewerRoute>(nav) { entry ->
             ImageViewerScreen(path = entry.toRoute<ImageViewerRoute>().path, onBack = nav::popBackStackSafely)
         }
     }
 }
 
-/** 二级页面：套上 PageFrame（左边缘阴影）；返回由 NavHost 的预测性返回处理 */
+/** 二级页面：套上 PageFrame（返回接管 + 左边缘阴影） */
 private inline fun <reified T : Any> NavGraphBuilder.page(
+    nav: NavHostController,
     noinline content: @Composable (NavBackStackEntry) -> Unit,
 ) {
     composable<T> { entry ->
-        PageFrame(transition) { content(entry) }
+        PageFrame(transition, onBack = nav::popBackStackSafely) { content(entry) }
     }
 }
 

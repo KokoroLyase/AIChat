@@ -35,12 +35,13 @@ import org.robolectric.annotation.Config
 @Serializable internal data object TestDetailRoute
 
 /**
- * 0.9.1 预测性返回：二级页面不再拦截返回，侧边手势拖动时页面跟着手指走；
- * 放弃手势滑回原位，松手完成返回；页面里自己的 BackHandler 仍然优先。
+ * 侧边返回手势（0.9.1 确认保持 0.9.0 的做法）：二级页面接管返回，拖动时页面不动、不缩小，
+ * 放弃手势时留在原页，松手后返回；页面里自己的 BackHandler 仍然优先。
+ * 0.9.1 开发时试过交给 NavHost 的预测性返回（拖动时页面缩小成卡片），用户实测后决定不要。
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "w400dp-h800dp-xxhdpi", application = Application::class)
-class PredictiveBackTest {
+class BackGestureTest {
     @get:Rule val compose = createComposeRule()
 
     private lateinit var nav: NavHostController
@@ -64,7 +65,7 @@ class PredictiveBackTest {
                 ) {
                     composable<TestHomeRoute> { Box(Modifier.fillMaxSize().background(Color.White).testTag("home")) }
                     composable<TestDetailRoute> {
-                        PageFrame(transition) {
+                        PageFrame(transition, onBack = { nav.popBackStack() }) {
                             // 页面里自己的返回（比如收起面板）：开着时先处理它
                             BackHandler(enabled = innerHandlerOn.value) { innerHandled.intValue++ }
                             Box(Modifier.fillMaxSize().background(Color.Gray).testTag("detail"))
@@ -81,23 +82,26 @@ class PredictiveBackTest {
     private fun event(progress: Float) = BackEventCompat(touchX = 400f * progress, touchY = 400f, progress = progress, swipeEdge = BackEventCompat.EDGE_LEFT)
     private fun onDetail() = nav.currentBackStackEntry?.destination?.route?.contains("TestDetailRoute") == true
 
-    @Test fun pageFollowsFingerWhileDragging() {
+    @Test fun pageStaysStillWhileDragging() {
         setUp()
         compose.runOnUiThread {
             dispatcher.dispatchOnBackStarted(event(0f))
             dispatcher.dispatchOnBackProgressed(event(0.5f))
         }
         compose.waitForIdle()
-        val half = compose.onNodeWithTag("detail").getBoundsInRoot().left
+        val half = compose.onNodeWithTag("detail").getBoundsInRoot()
         compose.runOnUiThread { dispatcher.dispatchOnBackProgressed(event(0.8f)) }
         compose.waitForIdle()
-        val further = compose.onNodeWithTag("detail").getBoundsInRoot().left
-        assertTrue("page should move right while dragging: $half", half > 0.dp && half < 400.dp)
-        assertTrue("page should keep following: $half -> $further", further > half)
+        val further = compose.onNodeWithTag("detail").getBoundsInRoot()
+        // 不跟手：位置和大小都不变（预测性返回时会右移或缩小）
+        assertEquals(0.dp, half.left)
+        assertEquals(0.dp, further.left)
+        assertEquals(400.dp, further.right)
         assertTrue(onDetail())
+        compose.onNodeWithTag("home").assertDoesNotExist()
     }
 
-    @Test fun cancelledGestureSlidesBack() {
+    @Test fun cancelledGestureStaysOnPage() {
         setUp()
         compose.runOnUiThread {
             dispatcher.dispatchOnBackStarted(event(0f))
