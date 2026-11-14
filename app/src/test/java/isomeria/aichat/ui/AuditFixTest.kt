@@ -291,6 +291,53 @@ class AuditFixTest {
         assertEquals(1, contextDismissed)
     }
 
+    private fun screenTop(text: String) = compose.onAllNodesWithText(text)[0].fetchSemanticsNode().positionOnScreen.y
+
+    /** 真机复核发现：点“置顶”马上就置顶了，淡出的菜单里这一项变成“取消置顶”，菜单还跟着滑到最上面的那一行走 */
+    @Test fun menuKeepsItsLabelAndPlaceWhileFading() {
+        var pinned by mutableStateOf(false)
+        var translated by mutableStateOf(false)
+        var context by mutableStateOf(true)
+        var bubble by mutableStateOf(true)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            AIChatTheme(darkTheme = false) {
+                Column(Modifier.fillMaxSize()) {
+                    androidx.compose.foundation.layout.Box(Modifier.padding(top = if (pinned) 0.dp else 300.dp).fillMaxWidth().height(64.dp)) {
+                        if (context) isomeria.aichat.ui.components.WeContextMenu(
+                            androidx.compose.ui.unit.IntOffset(100, 20),
+                            listOf(isomeria.aichat.ui.components.MenuItem(if (pinned) "取消置顶" else "置顶该聊天") { pinned = !pinned }),
+                            onDismiss = { context = false },
+                        )
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.padding(top = if (translated) 20.dp else 300.dp, start = 100.dp).height(30.dp).fillMaxWidth(0.3f)) {
+                        if (bubble) isomeria.aichat.ui.components.WeBubbleMenu(
+                            listOf(isomeria.aichat.ui.components.MenuItem(if (translated) "隐藏翻译" else "翻译", isomeria.aichat.ui.components.WeIcons.Copy) { translated = !translated }),
+                        ) { bubble = false }
+                    }
+                }
+            }
+        }
+        settle()
+        val contextTop = screenTop("置顶该聊天")
+        compose.onAllNodesWithText("置顶该聊天")[0].performClick()
+        frames(3)
+        assertTrue("已经置顶", pinned)
+        assertTrue("淡出时还是点的那一项", !gone("置顶该聊天") && gone("取消置顶"))
+        assertEquals("菜单不跟着那一行走（锚点上移了 300dp，菜单只有缩小带来的几个像素）", contextTop, screenTop("置顶该聊天"), 20f)
+        settle()
+        assertTrue(gone("置顶该聊天"))
+
+        val bubbleTop = screenTop("翻译")
+        compose.onAllNodesWithText("翻译")[0].performClick()
+        frames(3)
+        assertTrue(translated)
+        assertTrue("气泡菜单淡出时也不变", !gone("翻译") && gone("隐藏翻译"))
+        assertEquals("气泡菜单也不跟着走（锚点上移了 280dp）", bubbleTop, screenTop("翻译"), 20f)
+        settle()
+        assertTrue(gone("翻译"))
+    }
+
     // ---------- 展开、收起 ----------
 
     private fun height(text: String) = bounds(text).let { it.bottom - it.top }

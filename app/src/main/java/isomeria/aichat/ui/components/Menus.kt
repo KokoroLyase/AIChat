@@ -68,14 +68,31 @@ data class MenuItem(val label: String, val icon: ImageVector? = null, val onClic
 /**
  * 菜单也是独立窗口，要和 [WeDialogWindow] 一样带上 App 内的字体大小。
  * [content] 拿到出现的进度和关闭菜单的方法：点了某一项先执行它，菜单再淡出、缩回去，最后才真的关掉（0.9.1 审计补上关闭动画）。
+ * 淡出的过程中位置固定在点的时候（真机复核：置顶后那一行滑到最上面，菜单不跟着走）。
  */
 @Composable
-private fun WePopup(provider: PopupPositionProvider, onDismiss: () -> Unit, content: @Composable (progress: State<Float>, close: (() -> Unit) -> Unit) -> Unit) {
+private fun WePopup(provider: PopupPositionProvider, onDismiss: () -> Unit, content: @Composable (progress: State<Float>, close: (() -> Unit) -> Unit, leaving: Boolean) -> Unit) {
     val density = LocalDensity.current
-    val (progress, close) = rememberMenuMotion(onDismiss)
-    Popup(popupPositionProvider = provider, onDismissRequest = { close {} }, properties = PopupProperties(focusable = true)) {
-        CompositionLocalProvider(LocalDensity provides density) { content(progress, close) }
+    val motion = rememberMenuMotion(onDismiss)
+    val frozen = remember(provider) { FrozenPositionProvider(provider) }
+    frozen.frozen = motion.leaving
+    Popup(popupPositionProvider = frozen, onDismissRequest = { motion.close {} }, properties = PopupProperties(focusable = true)) {
+        CompositionLocalProvider(LocalDensity provides density) { content(motion.progress, motion.close, motion.leaving) }
     }
+}
+
+/** 关闭中返回上一次算出的位置，锚点再怎么动菜单也不动 */
+private class FrozenPositionProvider(private val inner: PopupPositionProvider) : PopupPositionProvider {
+    var frozen = false
+    private var last: IntOffset? = null
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        last?.let { if (frozen) return it }
+        return inner.calculatePosition(anchorBounds, windowSize, layoutDirection, popupContentSize).also { last = it }
+    }
+}
+
+private class MenuMotion(val progress: State<Float>, private val leavingState: State<Boolean>, val close: (() -> Unit) -> Unit) {
+    val leaving: Boolean get() = leavingState.value
 }
 
 /**
@@ -83,14 +100,14 @@ private fun WePopup(provider: PopupPositionProvider, onDismiss: () -> Unit, cont
  * 关闭的过程中再点不重复执行。
  */
 @Composable
-private fun rememberMenuMotion(onDismiss: () -> Unit): Pair<State<Float>, (() -> Unit) -> Unit> {
+private fun rememberMenuMotion(onDismiss: () -> Unit): MenuMotion {
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val leaving = remember { mutableStateOf(false) }
     val dismiss by rememberUpdatedState(onDismiss)
     LaunchedEffect(Unit) { progress.animateTo(1f, tween(WeMotion.MENU_ENTER, easing = WeMotion.Decelerate)) }
-    val close: (() -> Unit) -> Unit = remember {
-        { action ->
+    return remember {
+        MenuMotion(progress.asState(), leaving) { action ->
             if (!leaving.value) {
                 leaving.value = true
                 action()
@@ -101,7 +118,17 @@ private fun rememberMenuMotion(onDismiss: () -> Unit): Pair<State<Float>, (() ->
             }
         }
     }
-    return progress.asState() to close
+}
+
+/**
+ * 菜单项在关闭的过程中保持点的时候的样子：点了“置顶”马上就置顶了，淡出时这一项不能变成“取消置顶”（真机复核发现）。
+ */
+@Composable
+private fun <T : Any> keepWhileLeaving(value: T, leaving: Boolean): T {
+    val last = remember { arrayOfNulls<Any>(1) }
+    if (!leaving || last[0] == null) last[0] = value
+    @Suppress("UNCHECKED_CAST")
+    return last[0] as T
 }
 
 /**
@@ -121,17 +148,21 @@ fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
     val density = LocalDensity.current
     val view = LocalView.current
     val dimens = WeTheme.dimens
+    // 0.9.1 审计：关闭时淡出、缩回去（以前一下子消失）；淡出时菜单项和位置保持点的时候的样子
+    val motion = rememberMenuMotion(onDismiss)
+    val enter = motion.progress
+    val closeMenu = motion.close
+    val shownItems = keepWhileLeaving(items, motion.leaving)
     // 锚点（消息气泡所在的布局）在屏幕上的位置；菜单窗口自己的位置在摆放时再取，两者都用屏幕坐标，不受状态栏、键盘影响
     var anchor by remember { mutableStateOf<IntRect?>(null) }
     Spacer(
         Modifier.onGloballyPositioned { coordinates ->
+            if (motion.leaving) return@onGloballyPositioned
             val parent = coordinates.parentLayoutCoordinates ?: return@onGloballyPositioned
             val topLeft = parent.positionOnScreen().round()
             anchor = IntRect(topLeft, parent.size)
         },
     )
-    // 0.9.1 审计：关闭时淡出、缩回去（以前一下子消失）
-    val (enter, closeMenu) = rememberMenuMotion(onDismiss)
     BackHandler { closeMenu {} }
     Popup(
         popupPositionProvider = WindowOriginProvider,
@@ -158,7 +189,7 @@ fun WeBubbleMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
             Layout(
                 content = {
                     BubbleMenuGrid(
-                        items,
+                        shownItems,
                         { item -> closeMenu(item.onClick) },
                         Modifier
                             .graphicsLayer {
@@ -365,7 +396,8 @@ fun WeContextMenu(pressOffset: IntOffset, items: List<MenuItem>, onDismiss: () -
     val colors = WeTheme.colors
     val dimens = WeTheme.dimens
     val provider = remember(pressOffset) { AtPointProvider(pressOffset) }
-    WePopup(provider, onDismiss) { enter, closeMenu ->
+    WePopup(provider, onDismiss) { enter, closeMenu, leaving ->
+        val shownItems = keepWhileLeaving(items, leaving)
         // 0.9.1：从按下的位置缩放淡入，和长按消息的菜单同一套参数；关闭时缩回去
         Column(
             Modifier
@@ -377,7 +409,7 @@ fun WeContextMenu(pressOffset: IntOffset, items: List<MenuItem>, onDismiss: () -
                 .background(colors.dialogBackground)
                 .padding(vertical = 6.dp),
         ) {
-            items.forEach { item ->
+            shownItems.forEach { item ->
                 Row(
                     Modifier
                         .clickable(role = Role.Button) { closeMenu(item.onClick) }
@@ -402,7 +434,8 @@ fun WeDropdownMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
     val dimens = WeTheme.dimens
     val margin = with(LocalDensity.current) { 4.dp.roundToPx() }
     val provider = remember(margin) { BelowEndProvider(margin) }
-    WePopup(provider, onDismiss) { enter, closeMenu ->
+    WePopup(provider, onDismiss) { enter, closeMenu, leaving ->
+        val shownItems = keepWhileLeaving(items, leaving)
         Column(
             Modifier
                 .scaleFadeIn(enter, WeMotion.MENU_START_SCALE, TransformOrigin(1f, 0f))
@@ -410,7 +443,7 @@ fun WeDropdownMenu(items: List<MenuItem>, onDismiss: () -> Unit) {
                 .background(colors.popupBackground)
                 .padding(vertical = 4.dp),
         ) {
-            items.forEach { item ->
+            shownItems.forEach { item ->
                 Row(
                     Modifier
                         .clickable(role = Role.Button) { closeMenu(item.onClick) }
