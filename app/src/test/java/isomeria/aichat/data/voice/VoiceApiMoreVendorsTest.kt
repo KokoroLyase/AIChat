@@ -23,7 +23,8 @@ import org.junit.Test
 
 /**
  * 0.7.2 后加的格式（2026-11-12 按官方文档）：智谱合成和识别（含长录音分段、按错误码分类）、Fish Audio 识别、
- * OpenRouter 合成（pcm 包成 WAV、instructions）和识别（标准接口读 usage.seconds）。只用本机模拟接口。
+ * OpenRouter 合成（pcm 包成 WAV、instructions）和识别（标准接口读 usage.seconds）；0.9.2 的 DeepSeek 合成和识别（2026-11-14 按官方文档）。
+ * 只用本机模拟接口。
  */
 class VoiceApiMoreVendorsTest {
     private lateinit var server: MockWebServer
@@ -283,5 +284,68 @@ class VoiceApiMoreVendorsTest {
         assertEquals(2.5, result.seconds!!, 0.001)
         val raw = server.takeRequest().body!!.utf8()
         assertTrue(raw.contains("openai/whisper-large-v3"))
+    }
+
+    // ---------- DeepSeek（0.9.2） ----------
+
+    @Test
+    fun deepSeekTts_postsToolsTts_wavVoiceFilterMarkdown_noModelNoStyle() = runBlocking {
+        val wav = WavFormat.header(4, 24_000, 1) + byteArrayOf(1, 0, 2, 0)
+        server.enqueue(MockResponse.Builder().addHeader("Content-Type", "audio/wav").body(okio.Buffer().write(wav)).build())
+        val audio = api.synthesize(VoiceProtocol.DEEPSEEK_TTS, endpoint(), TtsRequest("", "你好", " tide ", "温柔一点"))
+        assertArrayEquals(wav, audio.bytes)
+        assertEquals("wav", audio.extension)
+        val recorded = server.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertEquals("/v1/tools/tts", recorded.url.encodedPath)
+        assertEquals("Bearer sk-test", recorded.headers["Authorization"])
+        val body = body(recorded)
+        assertEquals(setOf("text", "voice_id", "format", "filter_markdown"), body.keys)
+        assertEquals("你好", body["text"]!!.jsonPrimitive.content)
+        assertEquals("tide", body["voice_id"]!!.jsonPrimitive.content)
+        assertEquals("wav", body["format"]!!.jsonPrimitive.content)
+        assertEquals("true", body["filter_markdown"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun deepSeekTts_emptyVoiceUsesServiceDefault_jsonOn200IsError_andHttpErrors() = runBlocking {
+        server.enqueue(MockResponse.Builder().addHeader("Content-Type", "audio/wav").body(okio.Buffer().write(WavFormat.header(2, 24_000, 1) + byteArrayOf(1, 0))).build())
+        api.synthesize(VoiceProtocol.DEEPSEEK_TTS, endpoint(), TtsRequest("", "你好", ""))
+        assertFalse("没填音色时不发 voice_id，用服务商的默认音色", body(server.takeRequest()).containsKey("voice_id"))
+        server.enqueue(MockResponse.Builder().addHeader("Content-Type", "application/json").body("""{"error":{"message":"x"}}""").build())
+        expectError(LlmError.UNKNOWN) { api.synthesize(VoiceProtocol.DEEPSEEK_TTS, endpoint(), TtsRequest("", "你好", "stella")) }
+        server.enqueue(MockResponse.Builder().code(400).body("""{"error":{"message":"Content Exists Risk"}}""").build())
+        expectError(LlmError.BAD_REQUEST) { api.synthesize(VoiceProtocol.DEEPSEEK_TTS, endpoint(), TtsRequest("", "你好", "stella")) }
+        server.enqueue(MockResponse.Builder().code(401).build())
+        expectError(LlmError.AUTH) { api.synthesize(VoiceProtocol.DEEPSEEK_TTS, endpoint(), TtsRequest("", "你好", "stella")) }
+        server.enqueue(MockResponse.Builder().code(429).build())
+        expectError(LlmError.RATE_LIMIT) { api.synthesize(VoiceProtocol.DEEPSEEK_TTS, endpoint(), TtsRequest("", "你好", "stella")) }
+        server.enqueue(MockResponse.Builder().code(504).build())
+        expectError(LlmError.SERVER) { api.synthesize(VoiceProtocol.DEEPSEEK_TTS, endpoint(), TtsRequest("", "你好", "stella")) }
+    }
+
+    @Test
+    fun deepSeekAsr_postsOnlyFile_readsTextAndDurationMs() = runBlocking {
+        server.enqueue(MockResponse.Builder().body("""{"request_id":"r1","text":" 上海今天天气怎么样？ ","duration_ms":3200}""").build())
+        val result = api.transcribe(VoiceProtocol.DEEPSEEK_ASR, endpoint(), AsrRequest("", speech(3)))
+        assertEquals("上海今天天气怎么样？", result.text)
+        assertEquals(3.2, result.seconds!!, 0.001)
+        val recorded = server.takeRequest()
+        assertEquals("/v1/tools/asr", recorded.url.encodedPath)
+        assertEquals("Bearer sk-test", recorded.headers["Authorization"])
+        assertTrue(recorded.headers["Content-Type"]!!.startsWith("multipart/form-data"))
+        val raw = recorded.body!!.utf8()
+        assertTrue(raw.contains("name=\"file\"; filename=\"audio.wav\""))
+        assertEquals("只发 file 一个字段", 1, Regex("Content-Disposition: form-data; name=").findAll(raw).count())
+    }
+
+    @Test
+    fun deepSeekAsr_emptyTextFails_tooLargeIsBadRequest() = runBlocking {
+        server.enqueue(MockResponse.Builder().body("""{"request_id":"r1","text":"","duration_ms":1000}""").build())
+        expectError(LlmError.UNKNOWN) { api.transcribe(VoiceProtocol.DEEPSEEK_ASR, endpoint(), AsrRequest("", speech(1))) }
+        server.enqueue(MockResponse.Builder().code(413).build())
+        expectError(LlmError.BAD_REQUEST) { api.transcribe(VoiceProtocol.DEEPSEEK_ASR, endpoint(), AsrRequest("", speech(1))) }
+        server.enqueue(MockResponse.Builder().code(503).build())
+        expectError(LlmError.SERVER) { api.transcribe(VoiceProtocol.DEEPSEEK_ASR, endpoint(), AsrRequest("", speech(1))) }
     }
 }

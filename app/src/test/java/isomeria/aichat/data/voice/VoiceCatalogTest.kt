@@ -39,8 +39,9 @@ class VoiceCatalogTest {
 
     @Test
     fun presetOrder_isWhatTheUserAskedFor() {
-        assertEquals(listOf("volcengine", "qwen", "zhipu", "mimo", "minimax", "fish", "siliconflow", "openrouter"), VoicePresets.forKind(ProviderKind.TTS).map { it.id })
-        assertEquals(listOf("volcengine", "qwen", "zhipu", "mimo", "fish", "siliconflow", "openrouter"), VoicePresets.forKind(ProviderKind.ASR).map { it.id })
+        // 2026-11-14 用户要求 DeepSeek 排在合成和识别的最前面（0.9.2）
+        assertEquals(listOf("deepseek", "volcengine", "qwen", "zhipu", "mimo", "minimax", "fish", "siliconflow", "openrouter"), VoicePresets.forKind(ProviderKind.TTS).map { it.id })
+        assertEquals(listOf("deepseek", "volcengine", "qwen", "zhipu", "mimo", "fish", "siliconflow", "openrouter"), VoicePresets.forKind(ProviderKind.ASR).map { it.id })
         assertEquals("all 包含两边的全部预置", (VoicePresets.forKind(ProviderKind.TTS) + VoicePresets.forKind(ProviderKind.ASR)).toSet(), VoicePresets.all.toSet())
         assertTrue(VoicePresets.forKind(ProviderKind.ASR).all { it.supports(ProviderKind.ASR) })
     }
@@ -51,7 +52,8 @@ class VoiceCatalogTest {
             for (kind in listOf(ProviderKind.TTS, ProviderKind.ASR)) {
                 val endpoint = preset.endpoint(kind) ?: continue
                 assertTrue(preset.id, endpoint.protocol in VoiceProtocol.all)
-                assertTrue(preset.id, endpoint.model.isNotBlank())
+                // 没有模型参数的格式（DeepSeek）模型为空，其他的都要有
+                assertEquals(preset.id, VoiceProtocol.needsModel(endpoint.protocol), endpoint.model.isNotBlank())
                 assertTrue(preset.id, endpoint.docs.startsWith("https://"))
             }
             val tts = preset.tts ?: continue
@@ -65,7 +67,7 @@ class VoiceCatalogTest {
 
     @Test
     fun builtInLists_haveUniqueIds_andCoverEachPreset() {
-        for (list in listOf(BuiltInVoices.MIMO, BuiltInVoices.VOLCENGINE, BuiltInVoices.QWEN, BuiltInVoices.siliconFlow("m"), BuiltInVoices.ZHIPU, BuiltInVoices.GEMINI, BuiltInVoices.OPENAI)) {
+        for (list in listOf(BuiltInVoices.MIMO, BuiltInVoices.VOLCENGINE, BuiltInVoices.QWEN, BuiltInVoices.siliconFlow("m"), BuiltInVoices.ZHIPU, BuiltInVoices.GEMINI, BuiltInVoices.OPENAI, BuiltInVoices.DEEPSEEK)) {
             assertEquals(list.size, list.map { it.id }.toSet().size)
             assertTrue(list.all { it.name.isNotBlank() && it.group.isNotBlank() })
         }
@@ -92,6 +94,28 @@ class VoiceCatalogTest {
         assertTrue(VoiceCatalog.supports("zhipu", VoiceProtocol.ZHIPU_TTS))
         assertTrue(VoiceCatalog.supports("openrouter", VoiceProtocol.OPENROUTER_TTS))
         assertFalse("识别没有音色", VoiceCatalog.supports("fish", VoiceProtocol.FISH_ASR))
+    }
+
+    @Test
+    fun deepSeek_presetAndVoices_asDocumented() = runBlocking {
+        val preset = VoicePresets.DEEPSEEK
+        assertEquals(VoiceProtocol.DEEPSEEK_TTS, preset.tts!!.protocol)
+        assertEquals(VoiceProtocol.DEEPSEEK_ASR, preset.asr!!.protocol)
+        assertEquals("https://api.deepseek.com/v1", preset.tts!!.baseUrl)
+        assertEquals("https://api.deepseek.com/v1", preset.asr!!.baseUrl)
+        assertEquals("", preset.tts!!.model)
+        assertEquals("", preset.asr!!.model)
+        assertEquals("stella", preset.tts!!.defaultVoice)
+        assertFalse(VoiceProtocol.needsModel(VoiceProtocol.DEEPSEEK_TTS))
+        assertFalse(VoiceProtocol.needsModel(VoiceProtocol.DEEPSEEK_ASR))
+        assertTrue(VoiceProtocol.needsModel(VoiceProtocol.OPENAI_AUDIO))
+        assertFalse("自定义服务商不能选 DeepSeek 的格式", VoiceProtocol.DEEPSEEK_TTS in VoiceProtocol.custom || VoiceProtocol.DEEPSEEK_ASR in VoiceProtocol.custom)
+        assertFalse("DeepSeek 合成没有风格参数", VoiceProtocol.supportsStyle(VoiceProtocol.DEEPSEEK_TTS, ""))
+        assertEquals(listOf("stella", "tide"), BuiltInVoices.DEEPSEEK.map { it.id })
+        assertTrue(VoiceCatalog.supports(preset.id, VoiceProtocol.DEEPSEEK_TTS))
+        // 内置列表不需要 Key，也不发请求
+        assertEquals(BuiltInVoices.DEEPSEEK, catalog.list(VoiceTarget(preset.id, VoiceProtocol.DEEPSEEK_TTS, base(), null, "")))
+        assertEquals(0, server.requestCount)
     }
 
     @Test

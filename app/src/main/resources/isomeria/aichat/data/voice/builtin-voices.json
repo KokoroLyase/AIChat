@@ -1500,5 +1500,19 @@
    "detail": "官方推荐",
    "group": "OpenAI"
   }
+ ],
+ "deepseek": [
+  {
+   "id": "stella",
+   "name": "海星",
+   "detail": "女声，默认音色",
+   "group": "系统音色"
+  },
+  {
+   "id": "tide",
+   "name": "暗潮",
+   "detail": "男声",
+   "group": "系统音色"
+  }
  ]
 }

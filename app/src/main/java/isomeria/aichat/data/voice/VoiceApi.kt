@@ -86,10 +86,19 @@ object VoiceProtocol {
     /** OpenRouter 语音合成 /audio/speech：风格要求放 instructions，有的模型只出 pcm（0.7.2） */
     const val OPENROUTER_TTS = "openrouter-tts"
 
+    /** DeepSeek 语音合成 /tools/tts：没有模型参数，只有两种音色，没有风格和语速（0.9.2） */
+    const val DEEPSEEK_TTS = "deepseek-tts"
+
+    /** DeepSeek 语音识别 /tools/asr：multipart 只有 file，没有模型和语种参数（0.9.2） */
+    const val DEEPSEEK_ASR = "deepseek-asr"
+
     /** 自定义服务商可以选的通用格式 */
     val custom = listOf(CHAT_AUDIO, OPENAI_AUDIO)
 
-    val all = custom + listOf(VOLC_TTS, VOLC_ASR, QWEN_TTS, QWEN_ASR, ZHIPU_TTS, ZHIPU_ASR, MINIMAX_TTS, FISH_TTS, FISH_ASR, OPENROUTER_TTS)
+    val all = custom + listOf(VOLC_TTS, VOLC_ASR, QWEN_TTS, QWEN_ASR, ZHIPU_TTS, ZHIPU_ASR, MINIMAX_TTS, FISH_TTS, FISH_ASR, OPENROUTER_TTS, DEEPSEEK_TTS, DEEPSEEK_ASR)
+
+    /** 这种格式要不要填模型：DeepSeek 的语音接口没有模型参数（0.9.2），编辑页不显示“模型”一栏 */
+    fun needsModel(protocol: String): Boolean = protocol != DEEPSEEK_TTS && protocol != DEEPSEEK_ASR
 
     /**
      * 这种格式发不发语气和风格要求：MiMo（单独一条消息）、火山 2.0 音色（context_texts）、百炼（instruction）、
@@ -193,6 +202,11 @@ class EmptyVoiceResultException : Exception("empty voice result")
  *   长录音分段（见 [AsrSplitter]）。智谱出错时 HTTP 状态码不够用（余额不足也是 429），按返回内容里的错误码分类（[ZhipuErrors]）。
  * - **OpenRouter 合成**（[VoiceProtocol.OPENROUTER_TTS]）：POST {Base URL}/audio/speech，和标准接口一样，风格要求放 `instructions`；
  *   Gemini TTS、HeyGen 要 pcm，返回 pcm 时按返回头的采样率包成 WAV（[PcmAudio]）。OpenRouter 识别用标准接口。
+ * - **DeepSeek 合成**（[VoiceProtocol.DEEPSEEK_TTS]，0.9.2，2026-11-14 按官方文档）：POST {Base URL}/tools/tts，JSON 的 `text`、
+ *   `voice_id`、`format`=wav、`filter_markdown`=true，返回音频二进制（边合成边返回，中途断开按网络错误）。一次最多 10,000 计费字符
+ *   （汉字算 2 个），[isomeria.aichat.core.VoiceChunks] 切出的每段远小于这个数。
+ * - **DeepSeek 识别**（[VoiceProtocol.DEEPSEEK_ASR]）：POST {Base URL}/tools/asr，multipart 只有 `file`（16 位 WAV，最长 120 秒、8 MiB），
+ *   文字在 `text`，时长（毫秒）在 `duration_ms`。413（文件太大）和 400 一样按请求的问题。
  *
  * 除火山（X-Api-Key）外认证都用 `Authorization: Bearer`；只发到用户配置的 Base URL，不跟随重定向。
  * 一次请求最多等 [TIMEOUT_SECONDS] 秒（带思考的聊天模型 90 秒不够是 0.6.0 的教训；语音合成、识别的实际耗时以真机为准）。
@@ -250,6 +264,9 @@ class VoiceApi(client: OkHttpClient, private val json: Json, timeoutMillis: Long
                     PcmAudio.wrapIfPcm(audioBytes(response), type, requestedPcm = pcm)
                 }
             }
+            VoiceProtocol.DEEPSEEK_TTS -> {
+                post(endpoint, "tools/tts", deepSeekTtsBody(request).toString().toRequestBody(JSON_TYPE), errorOf = ::deepSeekError) { response -> audioBytes(response) }
+            }
             else -> throw LlmException(LlmError.CONFIGURATION)
         }
         if (bytes.isEmpty()) throw LlmException(LlmError.UNKNOWN, cause = EmptyVoiceResultException())
@@ -296,6 +313,15 @@ class VoiceApi(client: OkHttpClient, private val json: Json, timeoutMillis: Long
                 post(endpoint, "auc/bigmodel/recognize/flash", volcAsrBody(request).toString().toRequestBody(JSON_TYPE), headers) { response ->
                     volcAsrResult(response.header("X-Api-Status-Code"), response.body.string())
                 }
+            }
+            VoiceProtocol.DEEPSEEK_ASR -> {
+                val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("file", "audio.wav", request.wav.toRequestBody(WAV_TYPE))
+                    .build()
+                val text = post(endpoint, "tools/asr", body, errorOf = ::deepSeekError) { it.body.string() }
+                val root = parse(text)
+                val millis = root["duration_ms"]?.jsonPrimitive?.doubleOrNull
+                AsrResult(root["text"]?.jsonPrimitive?.contentOrNull.orEmpty().trim(), millis?.let { it / 1000.0 })
             }
             else -> throw LlmException(LlmError.CONFIGURATION)
         }
@@ -608,6 +634,18 @@ class VoiceApi(client: OkHttpClient, private val json: Json, timeoutMillis: Long
             put("response_format", "wav")
             put("stream", false)
         }
+
+        /** DeepSeek 合成（0.9.2）：要 wav，朗读前去掉 Markdown；没有模型、风格和语速 */
+        fun deepSeekTtsBody(request: TtsRequest): JsonObject = buildJsonObject {
+            put("text", request.text)
+            if (request.voice.isNotBlank()) put("voice_id", request.voice.trim())
+            put("format", "wav")
+            put("filter_markdown", true)
+        }
+
+        /** DeepSeek 的错误：413（文件太大）和 400 一样算请求的问题，其他按通用的状态码 */
+        fun deepSeekError(code: Int, @Suppress("UNUSED_PARAMETER") body: String): LlmException =
+            if (code == 413) LlmException(LlmError.BAD_REQUEST, code, "HTTP $code") else LlmException.fromHttp(code)
 
         /** OpenRouter 合成：只出 pcm 的模型要 pcm，其他要 mp3；支持的模型风格要求放 instructions */
         fun openRouterTtsBody(request: TtsRequest): JsonObject = buildJsonObject {

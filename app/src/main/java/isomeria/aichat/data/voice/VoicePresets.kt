@@ -17,8 +17,10 @@ data class VoicePresetEndpoint(
 )
 
 /**
- * 语音服务商的预置（2026-11-12 按官方文档核对）。预置只填新连接，不改已保存的地址；预置的请求格式不能改。
+ * 语音服务商的预置（2026-11-12 按官方文档核对，DeepSeek 2026-11-14）。预置只填新连接，不改已保存的地址；预置的请求格式不能改。
  *
+ * - DeepSeek（0.9.2）：合成 /tools/tts（音色 stella、tide，没有模型、风格和语速），识别 /tools/asr（单次最长 120 秒），
+ *   用开放平台的 API Key；两边都没有模型参数（[VoicePresetEndpoint.model] 为空）
  * - 火山引擎（豆包）：合成用豆包语音合成 2.0（资源 ID seed-tts-2.0），识别用录音文件识别 2.0 极速版（volc.bigasr.auc_turbo），
  *   只支持新版控制台的 API Key
  * - 阿里云百炼（千问）：合成 qwen-audio-3.1-tts-flash，识别 qwen3-asr-flash。地址要换成自己的业务空间专属地址
@@ -59,6 +61,20 @@ object VoicePresets {
     private const val ZHIPU_BASE = "https://open.bigmodel.cn/api/paas/v4"
     private const val FISH_BASE = "https://api.fish.audio"
     private const val OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+    private const val DEEPSEEK_BASE = "https://api.deepseek.com/v1"
+
+    val DEEPSEEK = VoicePreset(
+        id = "deepseek",
+        nameRes = R.string.preset_deepseek,
+        tts = VoicePresetEndpoint(
+            VoiceProtocol.DEEPSEEK_TTS, DEEPSEEK_BASE, "", "https://api-docs.deepseek.com/zh-cn/guides/tts",
+            defaultVoice = "stella", priceRes = R.string.voice_price_deepseek_tts,
+        ),
+        asr = VoicePresetEndpoint(
+            VoiceProtocol.DEEPSEEK_ASR, DEEPSEEK_BASE, "", "https://api-docs.deepseek.com/zh-cn/guides/asr",
+            priceRes = R.string.voice_price_deepseek_asr,
+        ),
+    )
 
     val VOLCENGINE = VoicePreset(
         id = "volcengine",
@@ -162,9 +178,9 @@ object VoicePresets {
         ),
     )
 
-    /** 列表里的顺序（用户 2026-11-12 定的，同日加了智谱、Fish Audio 识别和 OpenRouter） */
-    private val ttsOrder = listOf(VOLCENGINE, QWEN, ZHIPU, MIMO, MINIMAX, FISH, SILICONFLOW, OPENROUTER)
-    private val asrOrder = listOf(VOLCENGINE, QWEN, ZHIPU, MIMO, FISH, SILICONFLOW, OPENROUTER)
+    /** 列表里的顺序（用户 2026-11-12 定的，同日加了智谱、Fish Audio 识别和 OpenRouter；2026-11-14 用户要求 DeepSeek 排最前） */
+    private val ttsOrder = listOf(DEEPSEEK, VOLCENGINE, QWEN, ZHIPU, MIMO, MINIMAX, FISH, SILICONFLOW, OPENROUTER)
+    private val asrOrder = listOf(DEEPSEEK, VOLCENGINE, QWEN, ZHIPU, MIMO, FISH, SILICONFLOW, OPENROUTER)
 
     /** 全部预置（合成和识别合起来，只有一种的也在） */
     val all = (ttsOrder + asrOrder).distinct()

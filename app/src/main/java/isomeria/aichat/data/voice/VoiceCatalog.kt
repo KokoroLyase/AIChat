@@ -202,7 +202,7 @@ class VoiceCatalog @Inject constructor(client: OkHttpClient, private val json: J
         fun supports(presetId: String?, protocol: String, systemTts: Boolean = false): Boolean = systemTts ||
             protocol == VoiceProtocol.VOLC_TTS || protocol == VoiceProtocol.QWEN_TTS ||
             protocol == VoiceProtocol.ZHIPU_TTS || protocol == VoiceProtocol.OPENROUTER_TTS ||
-            protocol == VoiceProtocol.MINIMAX_TTS || protocol == VoiceProtocol.FISH_TTS ||
+            protocol == VoiceProtocol.MINIMAX_TTS || protocol == VoiceProtocol.FISH_TTS || protocol == VoiceProtocol.DEEPSEEK_TTS ||
             (presetId == VoicePresets.MIMO.id && protocol == VoiceProtocol.CHAT_AUDIO) ||
             (presetId == VoicePresets.SILICONFLOW.id && protocol == VoiceProtocol.OPENAI_AUDIO)
 

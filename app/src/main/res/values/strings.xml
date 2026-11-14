@@ -992,6 +992,8 @@
     <string name="voice_protocol_zhipu_tts">智谱 GLM-TTS</string>
     <string name="voice_protocol_zhipu_asr">智谱 GLM-ASR</string>
     <string name="voice_protocol_openrouter_tts">OpenRouter 语音合成</string>
+    <string name="voice_protocol_deepseek_tts">DeepSeek 语音合成</string>
+    <string name="voice_protocol_deepseek_asr">DeepSeek 语音识别</string>
     <string name="voice_volc_note">火山引擎用新版控制台的 API Key。“模型”这一栏填资源 ID：合成用 seed-tts-2.0（复刻的音色用 seed-icl-2.0），识别用 volc.bigasr.auc_turbo。</string>
     <string name="voice_workspace_note">百炼要用自己的业务空间地址：把地址里的 {WorkspaceId} 换成控制台里的业务空间 ID，Key 也要是这个业务空间的。</string>
     <string name="voice_fish_note">Fish Audio 的服务器在海外，国内网络下可能较慢或连不上。音色填音色模型的 ID。</string>
@@ -1000,6 +1002,8 @@
     <string name="voice_zhipu_asr_note">智谱一次最多识别 30 秒，超过 25 秒的录音会分成几段依次识别再拼起来（每段一次请求）。</string>
     <string name="voice_openrouter_tts_note">OpenRouter 的服务器在海外，国内网络下可能较慢或连不上；文字会转给你选的模型背后的服务商。“模型”要写完整的模型名，音色、能不能用语气和风格要求都随模型不同。</string>
     <string name="voice_openrouter_asr_note">OpenRouter 的服务器在海外，国内网络下可能较慢或连不上；录音会转给你选的模型背后的服务商。“模型”要写完整的模型名；默认的 Whisper 识别中文偶尔会出繁体字，可以换别的模型。</string>
+    <string name="voice_deepseek_tts_note">DeepSeek 用开放平台的 API Key（和聊天模型的 DeepSeek 分开填）。没有模型可选，只有海星（女声）和暗潮（男声）两种音色，不能调语速；合成前会去掉文字里的 Markdown 格式。</string>
+    <string name="voice_deepseek_asr_note">DeepSeek 用开放平台的 API Key（和聊天模型的 DeepSeek 分开填）。没有模型可选，语种自动识别；一次最长 120 秒，语音消息和通话里的每段话都在这个范围内。</string>
     <string name="voice_style_supported_note">这个服务商支持语气和风格要求：在联系人的「朋友资料」里填写，不会被读出来。</string>
     <string name="voice_style_unsupported_note">这个服务商不支持语气和风格要求，联系人填的会被忽略。</string>
     <string name="base_url_placeholder_required">请把地址里的 {WorkspaceId} 换成你的百炼业务空间 ID：在百炼控制台“业务空间管理”的 API Host 一栏，或创建 API Key 后的弹窗里能看到。</string>
@@ -1027,6 +1031,8 @@
     <string name="voice_price_zhipu_tts">智谱语音合成按用量收费，价格见智谱的定价页，以服务商为准。</string>
     <string name="voice_price_zhipu_asr">智谱语音识别按音频时长收费（官方价格约 0.06 元每分钟），以服务商为准。</string>
     <string name="voice_price_openrouter">OpenRouter 按所选模型的价格收费，多数语音合成模型按字数计费，价格见 OpenRouter 的模型页。</string>
+    <string name="voice_price_deepseek_tts">DeepSeek 语音合成按字数收费，刊例价每万字符 3 元（一个汉字算 2 个字符），目前限时五折；价格以服务商为准。</string>
+    <string name="voice_price_deepseek_asr">DeepSeek 语音识别按音频时长收费，刊例价每小时 0.78 元，目前限时五折；价格以服务商为准。</string>
     <string name="voice_price_openrouter_asr">OpenRouter 按所选模型的价格收费（默认的 Whisper 按音频秒数计费），价格见 OpenRouter 的模型页。</string>
     <!-- 0.7.2 选音色 -->
     <string name="voice_picker_search_hint">搜索音色名称或 ID</string>

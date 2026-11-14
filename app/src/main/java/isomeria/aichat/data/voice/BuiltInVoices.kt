@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
  * - 硅基流动：CosyVoice2-0.5B 的 8 个预置音色，ID 前面带模型名
  * - 智谱：glm-tts 的 7 个系统音色（复刻的音色用 Key 从服务商取）
  * - OpenRouter：没有取音色的接口，按模型名给 Gemini TTS 的 30 个、OpenAI 的 13 个，别的模型手填
+ * - DeepSeek（0.9.2，2026-11-14 按官方文档）：只有海星（stella，女声）和暗潮（tide，男声）两个
  */
 object BuiltInVoices {
     @Serializable
@@ -27,6 +28,7 @@ object BuiltInVoices {
         val zhipu: List<Entry> = emptyList(),
         val gemini: List<Entry> = emptyList(),
         val openai: List<Entry> = emptyList(),
+        val deepseek: List<Entry> = emptyList(),
     )
 
     private val lists: Lists by lazy {
@@ -43,6 +45,7 @@ object BuiltInVoices {
     val ZHIPU: List<VoiceOption> by lazy { lists.zhipu.options() }
     val GEMINI: List<VoiceOption> by lazy { lists.gemini.options() }
     val OPENAI: List<VoiceOption> by lazy { lists.openai.options() }
+    val DEEPSEEK: List<VoiceOption> by lazy { lists.deepseek.options() }
 
     /** 这个来源的内置列表；没有内置列表时为 null */
     fun forTarget(target: VoiceTarget): List<VoiceOption>? = when {
@@ -51,6 +54,7 @@ object BuiltInVoices {
         target.protocol == VoiceProtocol.QWEN_TTS -> QWEN
         target.protocol == VoiceProtocol.ZHIPU_TTS -> ZHIPU
         target.protocol == VoiceProtocol.OPENROUTER_TTS -> openRouter(target.model)
+        target.protocol == VoiceProtocol.DEEPSEEK_TTS -> DEEPSEEK
         target.presetId == VoicePresets.MIMO.id && target.protocol == VoiceProtocol.CHAT_AUDIO -> MIMO
         target.presetId == VoicePresets.SILICONFLOW.id && target.protocol == VoiceProtocol.OPENAI_AUDIO -> siliconFlow(target.model)
         else -> null

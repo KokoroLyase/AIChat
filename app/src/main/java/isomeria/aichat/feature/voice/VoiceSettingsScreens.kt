@@ -115,6 +115,8 @@ internal fun protocolLabel(protocol: String): Int = when (protocol) {
     VoiceProtocol.ZHIPU_TTS -> R.string.voice_protocol_zhipu_tts
     VoiceProtocol.ZHIPU_ASR -> R.string.voice_protocol_zhipu_asr
     VoiceProtocol.OPENROUTER_TTS -> R.string.voice_protocol_openrouter_tts
+    VoiceProtocol.DEEPSEEK_TTS -> R.string.voice_protocol_deepseek_tts
+    VoiceProtocol.DEEPSEEK_ASR -> R.string.voice_protocol_deepseek_asr
     else -> R.string.voice_protocol_openai_audio
 }
 
@@ -296,7 +298,8 @@ fun VoiceProviderListContent(
                         if (provider.id == state.selectedId) {
                             Text(stringResource(R.string.voice_provider_in_use), style = WeTheme.typography.listTime, color = colors.brandText)
                         }
-                        Text(stringResource(protocolLabel(provider.provider)) + " · " + provider.defaultModel,
+                        // 没有模型的格式（DeepSeek，0.9.2）只写格式
+                        Text(stringResource(protocolLabel(provider.provider)) + provider.defaultModel.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
                             style = WeTheme.typography.listTime, color = colors.textTertiary)
                         Text(
                             stringResource(if (provider.apiKeyEncrypted.isNullOrEmpty()) R.string.llm_api_key_missing else R.string.llm_api_key_set),
@@ -443,7 +446,8 @@ class VoiceProviderEditViewModel @Inject constructor(
             s.name.isBlank() -> R.string.llm_name_required
             VoicePresets.hasPlaceholder(s.baseUrl) -> R.string.base_url_placeholder_required
             BaseUrlRules.normalize(s.baseUrl, allowLocalHttp = BuildConfig.DEBUG) == null -> R.string.llm_base_url_invalid
-            s.model.isBlank() -> R.string.voice_model_required
+            // DeepSeek 的语音接口没有模型参数（0.9.2）
+            s.model.isBlank() && VoiceProtocol.needsModel(s.protocol) -> R.string.voice_model_required
             s.keyInput.isNotEmpty() && !LlmEndpoint.isUsableKey(s.keyInput) -> R.string.llm_api_key_invalid_chars
             else -> null
         }
@@ -628,8 +632,11 @@ fun VoiceProviderEditContent(state: VoiceProviderEditState, onBack: () -> Unit, 
             FormRow(stringResource(R.string.llm_base_url), showDivider = true) {
                 VoiceTextInput(state.baseUrl, actions.onBaseUrl, stringResource(R.string.llm_base_url_hint), KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false))
             }
-            FormRow(stringResource(R.string.voice_model), showDivider = tts) {
-                VoiceTextInput(state.model, actions.onModel, stringResource(R.string.voice_model_hint), KeyboardOptions(autoCorrectEnabled = false))
+            // DeepSeek 的语音接口没有模型参数（0.9.2）：不显示这一栏
+            if (VoiceProtocol.needsModel(state.protocol)) {
+                FormRow(stringResource(R.string.voice_model), showDivider = tts) {
+                    VoiceTextInput(state.model, actions.onModel, stringResource(R.string.voice_model_hint), KeyboardOptions(autoCorrectEnabled = false))
+                }
             }
             if (tts) {
                 FormRow(stringResource(R.string.voice_voice), showDivider = state.canPickVoice) {
@@ -706,6 +713,8 @@ internal fun protocolNote(protocol: String, presetId: String? = null): Int? = wh
     protocol == VoiceProtocol.ZHIPU_TTS -> R.string.voice_zhipu_tts_note
     protocol == VoiceProtocol.ZHIPU_ASR -> R.string.voice_zhipu_asr_note
     protocol == VoiceProtocol.OPENROUTER_TTS -> R.string.voice_openrouter_tts_note
+    protocol == VoiceProtocol.DEEPSEEK_TTS -> R.string.voice_deepseek_tts_note
+    protocol == VoiceProtocol.DEEPSEEK_ASR -> R.string.voice_deepseek_asr_note
     presetId == VoicePresets.OPENROUTER.id && protocol == VoiceProtocol.OPENAI_AUDIO -> R.string.voice_openrouter_asr_note
     else -> null
 }
