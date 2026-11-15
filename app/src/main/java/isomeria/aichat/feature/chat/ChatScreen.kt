@@ -480,12 +480,8 @@ fun ChatScreen(
     BackHandler(enabled = selection != null) { viewModel.cancelSelection() }
 
     val contact = state.contact
-    val title = when {
-        state.typing -> stringResource(R.string.chat_typing)
-        contact != null -> contact.name
-        state.loaded -> stringResource(R.string.chat_contact_missing)
-        else -> ""
-    }
+    // 0.9.2 起等待回复时标题也只显示联系人名称，不再显示“对方正在输入…”
+    val title = chatTitle(state, stringResource(R.string.chat_contact_missing))
 
     fun send() {
         if (beforeSend()) {

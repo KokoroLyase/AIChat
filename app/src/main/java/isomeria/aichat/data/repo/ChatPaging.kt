@@ -64,13 +64,13 @@ class ChatPaging(private val db: AppDatabase) {
 
     /**
      * 聊天页顶部和列表需要的状态。0.5.0 起待投递的回复是 PENDING，送达时写库会触发重新计算，
-     * 不再按时间轮询；[ChatTimeline.pending] 表示还有没送达的回复（标题显示「对方正在输入…」）。
+     * 不再按时间轮询；[ChatTimeline.pending] 表示还有没送达的回复（0.9.1 及以前标题显示「对方正在输入…」）。
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun timeline(contactId: Long): Flow<ChatTimeline> = messages.observeLatest(contactId).mapLatest {
         db.withTransaction {
             val visible = messages.latestVisible(contactId)
-            // 还在识别的语音（0.7.0）不算等待回复：识别成功后才显示「对方正在输入…」
+            // 还在识别的语音（0.7.0）不算等待回复：识别成功后才算等待回复
             val waiting = messages.hasWaitingReply(contactId)
             val pending = messages.hasPending(contactId)
             val allowed = visible?.role == isomeria.aichat.data.db.Role.ASSISTANT && !waiting && !pending &&

@@ -257,7 +257,7 @@ interface MessageDao {
     @Query("UPDATE message SET translationShown = :shown WHERE id = :id")
     suspend fun setTranslationShown(id: Long, shown: Boolean)
 
-    /** 等待回复（标题显示「对方正在输入…」）：有 SENDING 的消息，但还在识别的语音不算（识别成功后才进入等待回复） */
+    /** 等待回复（0.9.1 及以前标题显示「对方正在输入…」）：有 SENDING 的消息，但还在识别的语音不算（识别成功后才进入等待回复） */
     @Query("SELECT EXISTS(SELECT 1 FROM message WHERE contactId = :contactId AND role = 'USER' AND status = 'SENDING' AND NOT (type = 'VOICE' AND content = ''))")
     suspend fun hasWaitingReply(contactId: Long): Boolean
 

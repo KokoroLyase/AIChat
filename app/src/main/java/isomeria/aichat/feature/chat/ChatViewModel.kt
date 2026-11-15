@@ -68,10 +68,17 @@ sealed interface ChatRow {
     ) : ChatRow
 }
 
+/** 聊天页标题：联系人名称；联系人被删时是 [missing]；还没加载完是空。等待回复时也一样（0.9.2） */
+internal fun chatTitle(state: ChatUiState, missing: String): String = when {
+    state.contact != null -> state.contact.name
+    state.loaded -> missing
+    else -> ""
+}
+
 data class ChatUiState(
     val loaded: Boolean = false,
     val contact: Contact? = null,
-    /** 等待回复中，或分条回复还没全部出现：标题显示「对方正在输入...」 */
+    /** 等待回复中，或分条回复还没全部出现（0.9.2 起标题不再显示「对方正在输入...」，只用于定位消息） */
     val typing: Boolean = false,
     val waitingReply: Boolean = false,
     val supportsImage: Boolean = false,

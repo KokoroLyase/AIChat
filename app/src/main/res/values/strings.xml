@@ -97,7 +97,6 @@
 
     <!-- 聊天页 -->
     <!-- 和微信一致用三个点 -->
-    <string name="chat_typing" tools:ignore="TypographyEllipsis">对方正在输入...</string>
     <string name="chat_voice">切换到语音输入</string>
     <string name="chat_keyboard">切换到键盘</string>
     <string name="chat_emoji">表情</string>

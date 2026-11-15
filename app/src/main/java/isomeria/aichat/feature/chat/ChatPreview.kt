@@ -166,6 +166,7 @@ private val noActions = MessageActions({}, {}, {}, {}, {}, {}, {}, onQuote = {})
 /** 聊天页的静态外观：顶栏、消息、输入栏。Compose Preview 和截图测试共用。 */
 @Composable
 internal fun ChatPageSample(
+    /** 等待回复中：长按菜单有“取消回复”；标题照旧是联系人名称（0.9.2） */
     typing: Boolean = false,
     input: String = "",
     /** 聊天背景：截图测试传入固定位图 */
@@ -195,7 +196,7 @@ internal fun ChatPageSample(
             }
         } else {
             WeTopBar(
-                title = if (typing) stringResource(R.string.chat_typing) else sampleContact.name,
+                title = sampleContact.name,
                 onBack = {},
                 showLine = true,
             ) {
