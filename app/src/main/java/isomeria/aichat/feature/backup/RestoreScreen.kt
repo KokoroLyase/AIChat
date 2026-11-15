@@ -505,6 +505,15 @@ private fun BackupInfo(preview: BackupPreview) {
             showDivider = true,
         )
     }
+    // 聊天文件（0.9.2）；0.9.1 及更早的备份没有
+    if (preview.fileCount > 0) {
+        WeListRow(
+            title = stringResource(R.string.restore_info_files),
+            value = stringResource(R.string.restore_count_files, preview.fileCount),
+            showArrow = false,
+            showDivider = true,
+        )
+    }
     // 收藏（0.9.0）；0.8.0 及更早的备份没有
     if (preview.favoriteCount > 0) {
         WeListRow(

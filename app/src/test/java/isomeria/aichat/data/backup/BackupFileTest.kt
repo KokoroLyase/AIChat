@@ -109,6 +109,7 @@ class BackupFileTest {
         }
         val preview = backup.inspect(zip)
         assertEquals(11, preview.manifest.formatVersion)
+        assertEquals("恢复页显示的聊天文件个数", 2, preview.fileCount)
         val file = preview.data.messages.single { it.content == "报告.pdf" }
         assertEquals(MessageType.FILE, file.type)
         assertEquals(13L, file.fileSize)

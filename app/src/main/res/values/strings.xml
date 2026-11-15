@@ -403,6 +403,8 @@
     <string name="restore_count_voice">%1$d 条</string>
     <string name="restore_info_calls">语音通话</string>
     <string name="restore_count_calls">%1$d 次</string>
+    <string name="restore_info_files">聊天文件</string>
+    <string name="restore_count_files">%1$d 个</string>
     <string name="restore_info_favorites">收藏</string>
     <string name="restore_count_favorites">%1$d 条</string>
     <string name="restore_info_key">API Key</string>
@@ -434,7 +436,7 @@
     <string name="restore_read_failed">读取文件失败，请重试</string>
     <!-- 0.7.2 导出和恢复时选择内容 -->
     <string name="export_modules">导出内容</string>
-    <string name="export_modules_note">聊天记录、联系人记忆和用量统计跟着联系人走，不导出联系人时也不导出它们。API Key 只跟着模型配置导出。导出的文件要用 0.7.2 及以上版本的智信恢复。</string>
+    <string name="export_modules_note">聊天记录、联系人记忆和用量统计跟着联系人走，不导出联系人时也不导出它们。API Key 只跟着模型配置导出。导出的文件要用 0.9.2 及以上版本的智信恢复。</string>
     <string name="restore_modules">恢复内容</string>
     <string name="restore_modules_partial">这个文件只导出了一部分内容，没导出的不会出现在这里，恢复时本机的这些内容保持不变。</string>
     <string name="restore_overwrite_contacts_note">替换联系人时，本机现有联系人连同他们的聊天记录、记忆和用量统计都会删除，换成备份里选中的。</string>
@@ -762,7 +764,7 @@
     <string name="storage_database">数据库</string>
     <string name="storage_clear_cache">清理缓存</string>
     <string name="storage_orphans">清理孤立文件</string>
-    <string name="storage_notice">清理缓存只删可以重新生成的临时文件，不影响聊天图片、头像、聊天背景、语音消息、通话录音、收藏、离线识别模型和数据库。孤立文件是没有任何联系人、消息、聊天或收藏在用的头像、图片、聊天背景、语音和通话录音文件，清理前会先告诉你数量。聊天图片、语音和通话录音只在删除对应消息时才会删除，收藏的录音只在删除这条收藏时才会删除；离线识别模型在「我 → 语音消息 → 语音识别 → 离线识别」里删除。</string>
+    <string name="storage_notice">清理缓存只删可以重新生成的临时文件，不影响聊天图片、头像、聊天背景、语音消息、通话录音、聊天文件、收藏、离线识别模型和数据库。孤立文件是没有任何联系人、消息、聊天或收藏在用的头像、图片、聊天背景、语音、通话录音和聊天文件（含解析出的文字），清理前会先告诉你数量。聊天图片、语音、通话录音和聊天文件只在删除对应消息时才会删除，收藏的录音只在删除这条收藏时才会删除；离线识别模型在「我 → 语音消息 → 语音识别 → 离线识别」里删除。</string>
     <string name="storage_busy">正在回复、更新或恢复，请稍后再清理。</string>
     <string name="storage_result">已清理 %1$d 个文件，释放约 %2$s。</string>
     <string name="storage_no_orphans">没有发现孤立文件。</string>
@@ -970,8 +972,8 @@
     <string name="voice_providers_tts_title">语音合成</string>
     <string name="voice_providers_asr_title">语音识别</string>
     <string name="voice_providers_empty">还没有服务商，点右上角「添加」。</string>
-    <string name="voice_providers_tts_hint">把联系人的回复读成语音。预置了火山引擎（豆包）、阿里云百炼（千问）、BigModel（智谱）、Xiaomi MiMo、MiniMax、Fish Audio、硅基流动和 OpenRouter，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/speech）。联系人默认用标着“正在使用”的那一个（本机的系统语音或一个服务商），在它的页面里打开开关切换；也可以在联系人资料里给某个联系人单独选。</string>
-    <string name="voice_providers_asr_hint">把你的语音转成文字再发给联系人。预置了火山引擎（豆包）、阿里云百炼（千问）、BigModel（智谱）、Xiaomi MiMo、Fish Audio、硅基流动和 OpenRouter，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/transcriptions）。和联系人聊天时默认用标着“正在使用”的那一个（本机的离线识别或一个服务商），在它的页面里打开开关切换；也可以在联系人资料里给某个联系人单独选。</string>
+    <string name="voice_providers_tts_hint">把联系人的回复读成语音。预置了 DeepSeek、火山引擎（豆包）、阿里云百炼（千问）、BigModel（智谱）、Xiaomi MiMo、MiniMax、Fish Audio、硅基流动和 OpenRouter，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/speech）。联系人默认用标着“正在使用”的那一个（本机的系统语音或一个服务商），在它的页面里打开开关切换；也可以在联系人资料里给某个联系人单独选。</string>
+    <string name="voice_providers_asr_hint">把你的语音转成文字再发给联系人。预置了 DeepSeek、火山引擎（豆包）、阿里云百炼（千问）、BigModel（智谱）、Xiaomi MiMo、Fish Audio、硅基流动和 OpenRouter，各用自己的请求格式；也可以自定义，选聊天接口带音频（按 Xiaomi MiMo 的文档实现）或 OpenAI 标准音频接口（/audio/transcriptions）。和联系人聊天时默认用标着“正在使用”的那一个（本机的离线识别或一个服务商），在它的页面里打开开关切换；也可以在联系人资料里给某个联系人单独选。</string>
     <string name="voice_provider_in_use">正在使用</string>
     <string name="voice_local_group">本机</string>
     <string name="voice_providers_group">服务商</string>

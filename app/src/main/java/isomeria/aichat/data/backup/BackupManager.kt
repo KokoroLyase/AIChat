@@ -96,6 +96,8 @@ data class BackupPreview(
     val callCount: Int get() = data.messages.count { it.type == MessageType.CALL }
     /** 收藏（0.9.0）；0.8.0 及更早的备份没有 */
     val favoriteCount: Int get() = data.favorites.size
+    /** 聊天文件（0.9.2）；0.9.1 及更早的备份没有 */
+    val fileCount: Int get() = data.messages.count { it.type == MessageType.FILE }
 
     /** 备份里的全局记忆；0.4.2 及更早的备份没有 */
     val globalMemory: GlobalMemoryCount get() = GlobalMemoryCount(data.globalCategories.size, data.globalItems.size)

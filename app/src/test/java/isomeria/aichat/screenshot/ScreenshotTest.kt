@@ -192,6 +192,17 @@ class ScreenshotTest {
         BackupData(providers = if (keyEncrypted) listOf(ProviderDto(1, ProviderKind.LLM, "deepseek", baseUrl = "https://example.invalid", defaultModel = "fixture", apiKey = SecretDto(SecretDto.SCHEME_PASSWORD, data = "fixture"))) else emptyList()),
         decryptedTemporary = decrypted,
     )
+    // 0.9.2：备份里有语音、通话和聊天文件时，预览多出对应的行（聊天文件在通话和收藏之间，和存储空间页的顺序一致）
+    private fun previewWithFiles() = sampleBackupPreview(decrypted = true, keyEncrypted = true).let { preview ->
+        preview.copy(data = preview.data.copy(messages = listOf(
+            MessageDto(1, 1, Role.USER, MessageType.FILE, "报告.pdf", status = MessageStatus.SUCCESS, createdAt = 1),
+            MessageDto(2, 1, Role.USER, MessageType.FILE, "合同.docx", status = MessageStatus.SUCCESS, createdAt = 2),
+            MessageDto(3, 1, Role.ASSISTANT, MessageType.VOICE, "语音", status = MessageStatus.SUCCESS, createdAt = 3),
+            MessageDto(4, 1, Role.USER, MessageType.CALL, status = MessageStatus.SUCCESS, createdAt = 4),
+        )))
+    }
+    @Test fun restorePreviewFilesLight() = shot("98-restore-files", false) { RestoreSample(RestoreUiState(preview = previewWithFiles(), password = "123456")) }
+    @Test fun restorePreviewFilesDark() = shot("98-restore-files", true) { RestoreSample(RestoreUiState(preview = previewWithFiles(), password = "123456")) }
     // 解锁后的加密文件不再问第二次密码
     @Test fun restoreUnlockedPreviewLight() = shot("44-restore-unlocked", false) { RestoreSample(RestoreUiState(preview = sampleBackupPreview(decrypted = true, keyEncrypted = true), password = "123456")) }
     @Test fun restoreUnlockedPreviewDark() = shot("44-restore-unlocked", true) { RestoreSample(RestoreUiState(preview = sampleBackupPreview(decrypted = true, keyEncrypted = true), password = "123456")) }

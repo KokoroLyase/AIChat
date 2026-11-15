@@ -21,13 +21,16 @@ fail-once（第一次 500，之后正常）。/stats 里语音请求只记是/�
 - MinerU 精准解析：POST …/file-urls/batch 给出指回本机的上传地址，PUT /upload/<id> 收文件（只记字节数），
   GET …/extract-results/batch/<id> 查 --parse-polls 次后 done，结果 zip 在 /result/<id>.zip，里面的 full.md 是 --parse-text；
   不认识的任务返回 -60012（“测试连接”用）。--parse-mode 可选 ok、fail（state failed）、auth（A0202）、timeout（一直 running）；
-- 聊天请求的 /stats 多记三项是/否：最后一条消息开头有没有时间附注、有没有文件文字（“[文件：”）、有没有图片识别文字（“[图片：”）。
+- 聊天请求的 /stats 多记三项是/否：最后一条消息开头有没有时间附注、有没有文件文字（“[文件：”）、有没有图片识别文字（“[图片：”）；
+  另记时间附注本身（只有 App 生成的日期、时间和间隔，到第一个“）”为止，不含聊天内容）、系统提示词里有没有“某年某月某日”的日期，
+  以及整个请求里有几处“[文件：”和几段 --parse-text 的第一行之后的文字（带全文的文件数，文件在更早的轮次里时也算）。
 """
 import argparse
 import base64
 import io
 import json
 import math
+import re
 import struct
 import threading
 import time
@@ -53,6 +56,8 @@ REMINDER_HEADER = '约定时间：'
 PROACTIVE_HEADER = '（这是 App 的提示，不是对方发来的消息'
 META_HEADER = '（App 附上的时间信息'
 args = parser.parse_args()
+_parse_lines = [line for line in args.parse_text.replace('\\n', '\n').split('\n') if line.strip()]
+PARSE_MARK = _parse_lines[1] if len(_parse_lines) > 1 else ''
 records = []
 chat_count = 0
 voice_counts = {'tts': 0, 'asr': 0}
@@ -272,7 +277,11 @@ class Handler(BaseHTTPRequestHandler):
                 'has_reminder_hint': REMINDER_HEADER in system,
                 'proactive': PROACTIVE_HEADER in last,
                 'has_meta_note': last.startswith(META_HEADER),
+                'meta_note': last[:last.index('）') + 1] if last.startswith(META_HEADER) and '）' in last else None,
+                'system_has_date': bool(re.search(r'\d{4}年\d{1,2}月\d{1,2}日', system)),
                 'has_file_text': '[文件：' in last,
+                'file_refs': sum(text_of(m.get('content', '')).count('[文件：') for m in messages),
+                'file_full': sum(text_of(m.get('content', '')).count(PARSE_MARK) for m in messages) if PARSE_MARK else 0,
                 'has_image_text': '[图片：' in last,
                 'failed': failed,
             })
