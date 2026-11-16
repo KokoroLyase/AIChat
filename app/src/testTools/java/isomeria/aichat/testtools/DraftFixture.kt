@@ -15,7 +15,7 @@ object DraftFixture {
     fun take(source: File): String? {
         if (!source.isFile) return null
         val text = try { source.readText(Charsets.UTF_8) } finally { source.delete() }
-        val trimmed = text.removePrefix("﻿").trimEnd('\r', '\n')
+        val trimmed = text.removePrefix("\uFEFF").trimEnd('\r', '\n')
         return trimmed.takeIf { it.isNotEmpty() && it.length <= MAX_CHARS }
     }
 }
