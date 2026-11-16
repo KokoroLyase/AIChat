@@ -139,8 +139,24 @@ class TestToolsActivity : ComponentActivity() {
                     android.util.Log.i("TestTools", "import_call_audio $result")
                 } catch (_: Exception) { text.setText(R.string.tools_failed) }
             }
+            // 1.0.0：把外部私有目录 draft.txt（UTF-8）里的文字写成联系人 contact 的草稿，读完删掉文件。
+            // 用来在真机上输入中文；只写草稿，不发送、不调用模型。打开这个聊天时草稿出现在输入框里
+            "draft" -> lifecycleScope.launch {
+                try {
+                    val contact = intent.getLongExtra("contact", -1L)
+                    val result = withContext(Dispatchers.IO) {
+                        if (db.contactDao().get(contact) == null) return@withContext "noContact=$contact"
+                        val external = getExternalFilesDir(null) ?: return@withContext "noExternalDir"
+                        val draft = DraftFixture.take(File(external, DraftFixture.FILE)) ?: return@withContext "noDraftFile"
+                        chats.saveDraft(contact, draft)
+                        "draftChars=${draft.length}; contact=$contact"
+                    }
+                    text.text = getString(R.string.tools_draft_result, result)
+                    android.util.Log.i("TestTools", "draft $result")
+                } catch (_: Exception) { text.setText(R.string.tools_failed) }
+            }
             // 只看状态，不运行
-            "proactive_state" -> lifecycleScope.launch {
+            "proactive_state" ->lifecycleScope.launch {
                 try {
                     val result = withContext(Dispatchers.IO) {
                         val state = db.proactiveDao().state()
