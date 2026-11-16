@@ -16,6 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -582,6 +585,35 @@ class UiPolishTest {
         }
         assertEquals(1, layoutOf("转文字").lineCount)
         assertFalse(layoutOf("转文字").cut())
+    }
+
+    // 1.0.0：读屏读按钮的名字，不读符号；按钮下面的字不再单独读
+    @Test
+    fun recordingOverlay_buttonsReadTheirNames_notSymbols() {
+        show(1f) {
+            Box(Modifier.fillMaxSize()) {
+                RecordingOverlay(RecordingUi(RecordMode.TO_TEXT, true, 4_000, 0.6f, RecordZone.SEND), 60_000, {}, {}, {})
+            }
+        }
+        compose.onNodeWithContentDescription("完成").assertHasClickAction()
+        compose.onNodeWithContentDescription("取消").assertHasClickAction()
+        compose.onAllNodesWithText("✓").assertCountEquals(0)
+        compose.onAllNodesWithText("✕").assertCountEquals(0)
+        for (label in listOf("完成", "取消")) {
+            val caption = compose.onAllNodesWithText(label).onFirst().fetchSemanticsNode()
+            assertTrue("按钮下面的“$label”还会被读屏单独读一遍", SemanticsProperties.HideFromAccessibility in caption.config)
+        }
+    }
+
+    @Test
+    fun recordingOverlay_voiceMessage_toTextButtonReadsItsName() {
+        show(1f) {
+            Box(Modifier.fillMaxSize()) {
+                RecordingOverlay(RecordingUi(RecordMode.VOICE_MESSAGE, true, 4_000, 0.6f, RecordZone.SEND), 60_000, {}, {}, {})
+            }
+        }
+        compose.onNodeWithContentDescription("转文字").assertHasClickAction()
+        compose.onNodeWithContentDescription("发送").assertHasClickAction()
     }
 
     private companion object {

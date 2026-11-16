@@ -39,6 +39,9 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
@@ -245,16 +248,18 @@ private fun OverlayButton(label: String, symbol: String, highlighted: Boolean, e
                     .size(if (highlighted) 76.dp else 64.dp)
                     .clip(CircleShape)
                     .background(if (highlighted) Color.White else Color.White.copy(alpha = 0.25f))
-                    .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+                    .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                    // 1.0.0：读屏把按钮读成“完成”“取消”，不读“✓”“✕”这些符号（和通话页的按钮一样）
+                    .semantics { contentDescription = label },
                 contentAlignment = Alignment.Center,
             ) {
                 // 白底上的符号固定用深色，深色主题下也看得清
-                Text(symbol, style = WeTheme.typography.listTitle, color = if (highlighted) Color(0xFF191919) else Color.White)
+                Text(symbol, style = WeTheme.typography.listTitle, color = if (highlighted) Color(0xFF191919) else Color.White, modifier = Modifier.clearAndSetSemantics {})
             }
         }
         Spacer(Modifier.height(6.dp))
-        // 0.9.1：窄屏大字体时不折成“转文 / 字”两行，放不下就缩小
-        WeFitText(label, WeTheme.typography.small, Color.White)
+        // 0.9.1：窄屏大字体时不折成“转文 / 字”两行，放不下就缩小。按钮已经读出这几个字，读屏不再单独读一遍
+        WeFitText(label, WeTheme.typography.small, Color.White, Modifier.semantics(mergeDescendants = true) { hideFromAccessibility() })
     }
 }
 
