@@ -88,23 +88,24 @@ class ScreenshotTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun shot(name: String, dark: Boolean, content: @Composable () -> Unit) {
+    /** [capture] 为 false 时只放内容不截图（1.0.0）：调用处先滚动再用同一个名字截，免得核对模式拿滚动前的样子去比 */
+    private fun shot(name: String, dark: Boolean, capture: Boolean = true, content: @Composable () -> Unit) {
         compose.setContent {
             AIChatTheme(darkTheme = dark) {
                 Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) { content() }
             }
         }
-        compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+        if (capture) compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
 
     /** App 内特大（1.25）叠加 JVM 大字体（2.0）：手机系统字体不改，极端情况用这里看 */
-    private fun large(name: String, dark: Boolean, content: @Composable () -> Unit) {
+    private fun large(name: String, dark: Boolean, capture: Boolean = true, content: @Composable () -> Unit) {
         compose.setContent {
             AIChatTheme(darkTheme = dark, fontScale = 2.5f) {
                 Box(Modifier.fillMaxSize().background(WeTheme.colors.pageBackground)) { content() }
             }
         }
-        compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
+        if (capture) compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
 
     @Composable
@@ -602,12 +603,12 @@ class ScreenshotTest {
     @Test fun emptyMemoryLight() = shot("49-memory-empty", false) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
     @Test fun emptyMemoryDark() = shot("49-memory-empty", true) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
     @Test fun emptyMemoryLarge() {
-        large("49-memory-empty-large", false) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
+        large("49-memory-empty-large", false, capture = false) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
         compose.onNodeWithText(isomeria.aichat.R.string.memory_empty_on.let { org.robolectric.RuntimeEnvironment.getApplication().getString(it) }).performScrollTo()
         compose.onRoot().captureRoboImage("screenshots/49-memory-empty-large-light.png")
     }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun emptyMemoryNarrow() {
-        large("49-memory-empty-narrow", true) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
+        large("49-memory-empty-narrow", true, capture = false) { MemoryContent(emptyMemory, {}, {}, {}, {}) }
         compose.onNodeWithText(isomeria.aichat.R.string.memory_empty_on.let { org.robolectric.RuntimeEnvironment.getApplication().getString(it) }).performScrollTo()
         compose.onRoot().captureRoboImage("screenshots/49-memory-empty-narrow-dark.png")
     }
@@ -797,7 +798,7 @@ class ScreenshotTest {
     @Test fun proactiveEmptyDark() = shot("66-proactive-empty", true) { ProactivePage(proactiveEmpty) }
     /** 页面较长：滚到底看联系人状态和恢复默认 */
     private fun proactiveBottom(name: String, dark: Boolean, big: Boolean) {
-        if (big) large(name, dark) { ProactivePage() } else shot(name, dark) { ProactivePage() }
+        if (big) large(name, dark, capture = false) { ProactivePage() } else shot(name, dark, capture = false) { ProactivePage() }
         compose.onNodeWithText(org.robolectric.RuntimeEnvironment.getApplication().getString(isomeria.aichat.R.string.reply_pref_reset)).performScrollTo()
         compose.onRoot().captureRoboImage("screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
