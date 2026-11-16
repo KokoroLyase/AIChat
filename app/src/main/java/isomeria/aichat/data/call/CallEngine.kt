@@ -695,11 +695,16 @@ class CallEngine @Inject constructor(
             if (db.contactDao().get(contactId)?.autoMemory == true) memoryQueue.enqueue(contactId)
         }
 
-        /** debug、perf 包里按段记下每一轮的耗时（不记内容），判断延迟用 */
+        /**
+         * debug、perf 包里按段记下每一轮的耗时（不记内容），判断延迟用。
+         * 1.0.0：用 Log.println 而不是 Log.i：perf 包开着 R8，proguard-rules.pro 会删掉 Log.v/d/i，
+         * 之前 perf 包里一直没有这行日志。release 的 TEST_TOOLS 是 false，照样不输出
+         */
         private fun timing(index: Int, endedAt: Long, recognizedAt: Long, firstContentAt: Long, firstAudioAt: Long) {
             if (!BuildConfig.TEST_TOOLS) return
             fun gap(from: Long, to: Long) = if (from > 0 && to > 0) (to - from).toString() else "-"
-            Log.i(
+            Log.println(
+                Log.INFO,
                 TIMING_TAG,
                 "turn=$index vad=${if (_state.value?.modelVad == true) "silero" else "energy"} endSilence=$END_SILENCE_MILLIS " +
                     "asr=${gap(endedAt, recognizedAt)} firstToken=${gap(recognizedAt, firstContentAt)} " +
