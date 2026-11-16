@@ -161,6 +161,8 @@ class AndroidCallMicrophone @Inject constructor(@ApplicationContext private val 
     @SuppressLint("MissingPermission") // 调用方先检查 RECORD_AUDIO
     override fun start(onFrame: (ShortArray, Int) -> Unit, onError: () -> Unit) {
         check(!running) { "already running" }
+        // 1.0.0：每通电话都从“在听”开始。上一通在静音时挂断，这里还留着 false，测试包的预置音频整通都是静音
+        listening = true
         val injected = File(context.filesDir, TEST_INPUT).takeIf { BuildConfig.TEST_TOOLS && it.isFile }
         val source: Source = if (injected != null) FileSource(injected) { listening } else MicSource()
         source.open()
