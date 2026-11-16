@@ -39,7 +39,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * 0.9.0 翻译在数据层：用联系人的聊天模型和温度、关掉思考，只发提示和这条文字；译文存在消息上，再点直接显示不再请求；
+ * 0.9.0 翻译在数据层：用联系人的聊天模型、关掉思考（1.0.0 起温度固定用较低的值），只发提示和这条文字；译文存在消息上，再点直接显示不再请求；
  * 隐藏保留译文；失败带原因、什么都不存；用量记为“翻译”。只用假的服务商，不会发出真实请求。
  */
 @RunWith(RobolectricTestRunner::class)
@@ -102,19 +102,56 @@ class TranslationDataTest {
         db.messageDao().insert(Message(contactId = 1, role = role, type = type, content = content, status = status, createdAt = 100))
 
     @Test
-    fun translate_chatModelContactTemperatureThinkingOff_onlyPromptAndText() = runBlocking {
+    fun translate_chatModelLowTemperatureThinkingOff_onlyPromptAndText() = runBlocking {
         val id = insert("周末去爬山吗")
         assertNull(repo.translate(id))
         val request = fake.requests.single()
         assertEquals("聊天模型，不是记忆用的默认模型", "chat-model", request.model)
         assertEquals(ThinkingLevel.OFF, request.thinking)
-        assertEquals(0.9f, request.temperature)
+        assertEquals("1.0.0：不跟联系人的 0.9，用固定的低温度", 0.3f, request.temperature)
         assertEquals(listOf(ChatRole.SYSTEM, ChatRole.USER), request.messages.map { it.role })
         assertEquals(listOf("翻成英语", "周末去爬山吗"), request.messages.map { it.plainText() })
         val saved = db.messageDao().get(id)!!
         assertEquals("Shall we go hiking this weekend?", saved.translation)
         assertTrue(saved.translationShown)
         assertEquals("原文不变", "周末去爬山吗", saved.content)
+    }
+
+    /** 1.0.0：配置过温度规则的模型，翻译温度限制在可调范围内；固定温度、不发送温度的按模型规则；聊天仍用联系人的温度 */
+    @Test
+    fun translate_configuredModel_temperatureWithinModelRange_chatKeepsContactTemperature() = runBlocking {
+        val contact = db.contactDao().get(1)!!
+        fun model(spec: isomeria.aichat.data.llm.TemperatureSpec) = isomeria.aichat.data.db.ProviderModel(
+            contact.providerId, "chat-model", "chat-model", imageInputUserMark = false, legacy = false,
+            userConfig = isomeria.aichat.data.llm.ModelRules.encode(
+                isomeria.aichat.data.llm.ModelConfig(
+                    true,
+                    isomeria.aichat.data.llm.ThinkingRule(isomeria.aichat.data.llm.ThinkingMode.SWITCH),
+                    isomeria.aichat.data.llm.TemperatureRule(spec),
+                ),
+            ),
+        )
+        db.contactDao().update(contact.copy(thinkingOption = "on", temperature = 1.3f))
+        // 能表达“开、关思考”的兼容方案（测试默认的通用方案开思考时没有字段可发）
+        db.providerDao().update(db.providerDao().get(contact.providerId)!!.copy(compatibility = isomeria.aichat.data.llm.Compatibility.MIMO.name))
+        val providers = ProviderRepository(db, db.providerDao(), cipher, setOf(fake))
+        suspend fun translatedTemperature(spec: isomeria.aichat.data.llm.TemperatureSpec): Float? {
+            db.providerDao().upsertModels(listOf(model(spec)))
+            fake.requests.clear()
+            repo.translate(insert("周末去爬山吗"))
+            return fake.requests.single().parameters?.temperature
+        }
+        val adjustable = isomeria.aichat.data.llm.TemperatureMode.ADJUSTABLE
+        assertEquals(0.3f, translatedTemperature(isomeria.aichat.data.llm.TemperatureSpec(adjustable, 0f, 2f)))
+        assertEquals("范围不含 0.3 时取最近的", 0.5f, translatedTemperature(isomeria.aichat.data.llm.TemperatureSpec(adjustable, 0.5f, 1f)))
+        assertEquals(1f, translatedTemperature(isomeria.aichat.data.llm.TemperatureSpec(isomeria.aichat.data.llm.TemperatureMode.FIXED, fixed = 1f)))
+        assertNull(translatedTemperature(isomeria.aichat.data.llm.TemperatureSpec(isomeria.aichat.data.llm.TemperatureMode.UNSUPPORTED)))
+        assertEquals("思考关掉了", "off", fake.requests.single().parameters?.option)
+
+        db.providerDao().upsertModels(listOf(model(isomeria.aichat.data.llm.TemperatureSpec(adjustable, 0f, 2f))))
+        val chat = providers.snapshot(1, memory = false)
+        assertEquals("聊天仍用联系人的温度", 1.3f, chat.parameters?.temperature)
+        assertEquals("on", chat.parameters?.option)
     }
 
     @Test

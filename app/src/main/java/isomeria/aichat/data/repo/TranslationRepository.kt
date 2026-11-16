@@ -23,7 +23,8 @@ data class TranslateLabels(val toEnglish: String, val toChinese: String)
  * 翻译（0.9.0）：长按文字或有转写的语音“翻译”。
  *
  * - 方向按 [TranslateDirection]：汉字超过一半翻成英语，否则翻成中文
- * - 用这个联系人的服务商和聊天模型，模型能关思考就关，温度等其余参数按联系人的设置（[ProviderRepository.snapshot]）；
+ * - 用这个联系人的服务商和聊天模型，模型能关思考就关（[ProviderRepository.snapshot]）；温度 1.0.0 起不跟联系人，
+ *   固定用较低的 [isomeria.aichat.data.llm.ModelRules.TRANSLATION_TEMPERATURE]，限制在模型允许的范围内；
  *   请求只有两条：翻译提示（系统）和要翻译的文字（用户），不带聊天记录、记忆和人设
  * - 译文存在消息上（[Message.translation]），再点“翻译”直接显示，不再请求；不进上下文和记忆，聊天请求不变
  * - 用量记为 [UsagePurpose.TRANSLATE]，不算主动聊天

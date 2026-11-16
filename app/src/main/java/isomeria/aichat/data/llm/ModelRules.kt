@@ -190,6 +190,18 @@ object ModelRules {
         }
     }
 
+    /**
+     * 翻译（1.0.0）用的温度：固定 [TRANSLATION_TEMPERATURE]，不跟联系人的温度。
+     * 实测 MiMo 关思考、温度 1.3（新建联系人的默认值）时译文是乱码，0.2 时正常。
+     * 模型的可调范围不含它时取范围内最近的值；固定温度、不发送温度的模型按模型规则，这里的值不会发出去
+     */
+    fun translationTemperature(model: ProviderModel?, option: String): Float {
+        val spec = model?.takeUnless { it.legacy }?.let { runCatching { effective(it).temperature?.forOption(option) }.getOrNull() }
+        return if (spec?.mode == TemperatureMode.ADJUSTABLE && spec.valid()) TRANSLATION_TEMPERATURE.coerceIn(spec.min, spec.max) else TRANSLATION_TEMPERATURE
+    }
+
+    const val TRANSLATION_TEMPERATURE = 0.3f
+
     /** 旧请求构造器发送的温度：限制在 0～2，按 0.1 取整 */
     fun legacyTemperature(value: Float): Float = (value.coerceIn(0f, 2f) * 10).roundToInt() / 10f
 
