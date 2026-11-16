@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -27,6 +26,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -186,6 +187,15 @@ data class TabItem(
 )
 
 /**
+ * Tab 图标上的红点：右边比图标右边多出 10dp、上边高出 4dp，浮在图标上，不计入这一格的大小。
+ * 1.0.0：系统字体 2.0 叠加 App 特大时红点比图标高，原来会把这一格撑高，选中的“智信”比另外两个字低
+ */
+private fun Modifier.badgeOverIcon(): Modifier = layout { measurable, constraints ->
+    val badge = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0, maxWidth = Constraints.Infinity, maxHeight = Constraints.Infinity))
+    layout(0, 0) { badge.place(10.dp.roundToPx() - badge.width, (-4).dp.roundToPx()) }
+}
+
+/**
  * 底部 Tab 栏：最小高 56dp，字体调大时跟着长高。选中态为实心绿色图标 + 绿字；点击无涟漪。
  */
 @Composable
@@ -235,9 +245,7 @@ fun WeBottomBar(
                     if (item.badgeCount > 0) {
                         UnreadBadge(
                             count = item.badgeCount,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = 10.dp, y = (-4).dp),
+                            modifier = Modifier.align(Alignment.TopEnd).badgeOverIcon(),
                         )
                     }
                 }

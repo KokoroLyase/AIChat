@@ -66,11 +66,13 @@ import isomeria.aichat.ui.components.RecordZone
 import isomeria.aichat.ui.components.RecordingOverlay
 import isomeria.aichat.ui.components.RecordingUi
 import isomeria.aichat.ui.components.TOP_BAR_MIN_TITLE_SCALE
+import isomeria.aichat.ui.components.TabItem
 import isomeria.aichat.ui.components.TitleSlot
 import isomeria.aichat.ui.components.TopBarIcon
 import isomeria.aichat.ui.components.VoiceBubble
 import isomeria.aichat.ui.components.voiceRowBubbleWidth
 import isomeria.aichat.ui.components.WeActionRow
+import isomeria.aichat.ui.components.WeBottomBar
 import isomeria.aichat.ui.components.WeDialog
 import isomeria.aichat.ui.components.WeIcon
 import isomeria.aichat.ui.components.WeIcons
@@ -585,6 +587,24 @@ class UiPolishTest {
         }
         assertEquals(1, layoutOf("转文字").lineCount)
         assertFalse(layoutOf("转文字").cut())
+    }
+
+    // 1.0.0：字体最大时“智信”上的红点比图标高，原来会把这一格撑高，“智信”比另外两个字低
+    @Test
+    fun bottomBar_largestFontWithBadge_labelsStayAligned() {
+        show {
+            WeBottomBar(
+                listOf(
+                    TabItem("智信", WeIcons.Chats, WeIcons.ChatsFilled, 3),
+                    TabItem("通讯录", WeIcons.Contacts, WeIcons.ContactsFilled),
+                    TabItem("我", WeIcons.Person, WeIcons.PersonFilled),
+                ),
+                selectedIndex = 0,
+                onSelect = {},
+            )
+        }
+        val tops = listOf("智信", "通讯录", "我").map { bounds(it).top }
+        assertEquals("三个标签不在同一高度：$tops", 1, tops.distinct().size)
     }
 
     // 1.0.0：读屏读按钮的名字，不读符号；按钮下面的字不再单独读
