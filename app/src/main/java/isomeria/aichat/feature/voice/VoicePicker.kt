@@ -35,6 +35,7 @@ import isomeria.aichat.data.voice.VoiceCatalog
 import isomeria.aichat.data.voice.VoiceCatalogNeedsKeyException
 import isomeria.aichat.data.voice.VoiceOption
 import isomeria.aichat.data.voice.VoicePreview
+import isomeria.aichat.data.voice.VoicePreviewPlaybackException
 import isomeria.aichat.data.voice.VoiceTarget
 import isomeria.aichat.feature.chat.failReasonText
 import isomeria.aichat.ui.components.ErrorNote
@@ -149,10 +150,13 @@ class VoicePickerController(
         _state.update { it.copy(previewing = option.id, playing = null, previewError = null) }
         previewJob = scope.launch {
             try {
+                // 1.0.0：放得很快、在 play 返回前就结束时，不能再标成“播放中”（之前会一直停在“播放中”）
+                var ended = false
                 preview.play(target, option.id, previewText) {
+                    ended = true
                     _state.update { if (it.playing == option.id) it.copy(playing = null) else it }
                 }
-                _state.update { if (it.previewing == option.id) it.copy(previewing = null, playing = option.id) else it }
+                _state.update { if (it.previewing == option.id) it.copy(previewing = null, playing = option.id.takeUnless { ended }) else it }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (e: Exception) {
@@ -170,6 +174,7 @@ class VoicePickerController(
 
     private fun message(e: Throwable, res: Int): PickerMessage = when (e) {
         is VoiceCatalogNeedsKeyException -> PickerMessage(R.string.voice_picker_need_key)
+        is VoicePreviewPlaybackException -> PickerMessage(res, R.string.voice_picker_preview_cannot_play)
         is LlmException -> PickerMessage(res, failReasonText(FailReason.of(e)))
         else -> PickerMessage(res, failReasonText(FailReason.UNKNOWN))
     }

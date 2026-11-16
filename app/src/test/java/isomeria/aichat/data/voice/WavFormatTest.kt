@@ -46,6 +46,35 @@ class WavFormatTest {
         assertEquals(48_000L, WavFormat.parse(wav(24_000, 1, 16, 48_000, dataSizeField = 0xFFFFFFFFL))!!.dataBytes)
     }
 
+    /** 1.0.0：DeepSeek 边合成边返回，RIFF 和 data 的长度都是 0xFFFFFFFF；系统播放器不认，试听前按实际长度改好 */
+    @Test
+    fun fixLengths_replacesStreamingPlaceholders_keepsPcm() {
+        fun u32(b: ByteArray, at: Int) = (0 until 4).fold(0L) { acc, i -> acc or ((b[at + i].toLong() and 0xFF) shl (8 * i)) }
+        val streamed = wav(24_000, 1, 16, 48_000, dataSizeField = 0xFFFFFFFFL).also {
+            for (i in 4 until 8) it[i] = 0xFF.toByte()
+        }
+        val fixed = WavFormat.fixLengths(streamed)
+        assertEquals(streamed.size, fixed.size)
+        assertEquals("RIFF 长度 = 文件长度 - 8", streamed.size - 8L, u32(fixed, 4))
+        assertEquals("data 长度 = 实际的 PCM", 48_000L, u32(fixed, 40))
+        assertTrue("除了这两处，内容不变", (streamed.indices - (4 until 8) - (40 until 44)).all { streamed[it] == fixed[it] })
+        assertEquals(WavFormat.parse(streamed), WavFormat.parse(fixed))
+        // 有别的块时改的是 data 块自己的长度
+        val withList = wav(24_000, 1, 16, 4_800, dataSizeField = 0, extraChunk = true)
+        assertEquals(4_800L, u32(WavFormat.fixLengths(withList), 44 + 14 - 4))
+        assertEquals(withList.size - 8L, u32(WavFormat.fixLengths(withList), 4))
+    }
+
+    @Test
+    fun fixLengths_leavesCorrectOrUnknownFilesAlone() {
+        val good = WavFormat.wrap(ByteArray(3_200))
+        assertTrue("长度本来就对的原样返回", WavFormat.fixLengths(good) === good)
+        val mp3 = byteArrayOf(0x49, 0x44, 0x33, 4, 0, 0)
+        assertTrue(WavFormat.fixLengths(mp3) === mp3)
+        val float = wav(16_000, 1, 32, 100, format = 3)
+        assertTrue("不是 PCM 的不动", WavFormat.fixLengths(float) === float)
+    }
+
     @Test
     fun notPcmOrBroken_isNull() {
         assertNull("不是 PCM（3 = 浮点）", WavFormat.parse(wav(16_000, 1, 32, 100, format = 3)))

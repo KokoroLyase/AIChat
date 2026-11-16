@@ -15,6 +15,8 @@ import java.util.UUID
  * - 服务商来源会用 Key 发一次合成请求（可能计费）；只有用户点了「试听」才发。试听不属于哪个联系人，不记进用量统计
  * - 系统语音在手机上合成，不联网
  * - 合成出的音频放在缓存目录，放完或停下就删掉；开始试听前停掉正在放的语音消息
+ * - 1.0.0：WAV 先按实际长度改好文件头（[WavFormat.fixLengths]，DeepSeek 返回的文件头长度是占位值，系统播放器不认）；
+ *   播放器一开始就放不了（不认格式、拿不到声音焦点）时抛 [VoicePreviewPlaybackException]，页面提示试听失败
  */
 class VoicePreview(
     private val api: VoiceService,
@@ -25,7 +27,10 @@ class VoicePreview(
 ) {
     private var current: File? = null
 
-    /** 合成并开始放；放完时调 [onEnd]。失败时抛 [LlmException] 或 [VoiceCatalogNeedsKeyException] */
+    /**
+     * 合成并开始放；放完或中途停下时调 [onEnd]。合成失败时抛 [LlmException] 或 [VoiceCatalogNeedsKeyException]，
+     * 播放器一开始就放不了时抛 [VoicePreviewPlaybackException]（这时不调 [onEnd]）
+     */
     suspend fun play(target: VoiceTarget, voice: String, text: String, onEnd: () -> Unit) {
         val audio = if (target.systemTts) {
             val wav = try {
@@ -38,18 +43,24 @@ class VoicePreview(
             val key = target.apiKey?.takeIf { it.isNotBlank() } ?: throw VoiceCatalogNeedsKeyException()
             api.synthesize(target.protocol, LlmEndpoint(target.baseUrl, key), TtsRequest(target.model, text, voice))
         }
+        val bytes = if (audio.extension.equals("wav", ignoreCase = true)) WavFormat.fixLengths(audio.bytes) else audio.bytes
         val file = withContext(Dispatchers.IO) {
-            File(tempDir(), "preview-${UUID.randomUUID()}.${audio.extension}").apply { writeBytes(audio.bytes) }
+            File(tempDir(), "preview-${UUID.randomUUID()}.${audio.extension}").apply { writeBytes(bytes) }
         }
         withContext(Dispatchers.Main.immediate) {
             stop()
             stopOther()
             current = file
-            player.play(file, AudioRoute.SPEAKER) {
+            // 播放器在 play 里就结束（准备失败、拿不到声音焦点）时，结束回调比 play 返回还早
+            var started = false
+            var failedAtStart = false
+            player.play(file, AudioRoute.SPEAKER) { completed ->
                 file.delete()
                 if (current == file) current = null
-                onEnd()
+                if (!started && !completed) failedAtStart = true else onEnd()
             }
+            started = true
+            if (failedAtStart) throw VoicePreviewPlaybackException()
         }
     }
 
@@ -59,3 +70,6 @@ class VoicePreview(
         current = null
     }
 }
+
+/** 试听合成出来了，但手机一开始就放不了（系统播放器不认这个格式，或者拿不到声音焦点） */
+class VoicePreviewPlaybackException : Exception("PreviewPlaybackFailed")

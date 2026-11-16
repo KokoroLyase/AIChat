@@ -1095,6 +1095,7 @@
     <string name="voice_picker_no_source">还没有选语音合成来源，先在“我 → 语音消息”里选一个。</string>
     <string name="voice_picker_failed">获取音色失败：%1$s</string>
     <string name="voice_picker_preview_failed">试听失败：%1$s</string>
+    <string name="voice_picker_preview_cannot_play">手机放不出这段音频</string>
     <string name="voice_picker_preview">试听</string>
     <string name="voice_picker_previewing">合成中…</string>
     <string name="voice_picker_playing">播放中</string>

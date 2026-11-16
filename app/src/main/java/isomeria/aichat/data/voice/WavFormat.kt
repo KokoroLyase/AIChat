@@ -103,6 +103,24 @@ object WavFormat {
         return null
     }
 
+    /**
+     * 1.0.0：把文件头里的 RIFF 长度和 `data` 长度改成按实际内容算的值。DeepSeek 的合成边合成边返回，这两处是占位值
+     * 0xFFFFFFFF；[parse] 按文件实际长度算（所以压 AAC 没问题），系统的 MediaPlayer 却不认这种文件头，一放就报错。
+     * 不是能识别的 PCM WAV、或者长度本来就对的，原样返回
+     */
+    fun fixLengths(bytes: ByteArray): ByteArray {
+        val info = parse(bytes) ?: return bytes
+        val sizeAt = (info.dataOffset - 4).toInt()
+        val riff = bytes.size - 8L
+        fun read(at: Int): Long = (0 until 4).fold(0L) { acc, i -> acc or ((bytes[at + i].toLong() and 0xFF) shl (8 * i)) }
+        if (read(4) == riff && read(sizeAt) == info.dataBytes) return bytes
+        val out = bytes.copyOf()
+        fun write(at: Int, v: Long) = repeat(4) { out[at + it] = ((v shr (8 * it)) and 0xFF).toByte() }
+        write(4, riff)
+        write(sizeAt, info.dataBytes)
+        return out
+    }
+
     private const val PARSE_LIMIT = 64 * 1024
 }
 

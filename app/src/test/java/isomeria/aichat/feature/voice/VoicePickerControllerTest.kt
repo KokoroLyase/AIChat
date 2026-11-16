@@ -47,21 +47,27 @@ class VoicePickerControllerTest {
 
     private class FakeService(var failure: LlmException? = null) : VoiceService {
         val requests = mutableListOf<Pair<String, TtsRequest>>()
+        var audio = TtsAudio(byteArrayOf(0x49, 0x44, 0x33, 4, 0, 0), "mp3")
         override suspend fun synthesize(protocol: String, endpoint: LlmEndpoint, request: TtsRequest): TtsAudio {
             requests += protocol to request
             failure?.let { throw it }
-            return TtsAudio(byteArrayOf(0x49, 0x44, 0x33, 4, 0, 0), "mp3")
+            return audio
         }
         override suspend fun transcribe(protocol: String, endpoint: LlmEndpoint, request: AsrRequest) = AsrResult("")
     }
 
     private class FakePlayer : VoicePlayer {
         var playing: File? = null
+        var playedBytes: ByteArray? = null
         var onEnd: ((Boolean) -> Unit)? = null
         var stops = 0
+        /** 像 AndroidVoicePlayer 那样在 play 里就结束（prepare 失败、拿不到声音焦点时是 false） */
+        var endsAtOnce: Boolean? = null
         override fun play(file: File, route: AudioRoute, onEnd: (completed: Boolean) -> Unit) {
             playing = file
+            playedBytes = file.readBytes()
             this.onEnd = onEnd
+            endsAtOnce?.let { onEnd(it) }
         }
         override fun stop() {
             stops++
@@ -134,6 +140,54 @@ class VoicePickerControllerTest {
         player.onEnd!!(true)
         assertFalse("放完删掉", file.exists())
         assertNull(controller.state.value.playing)
+    }
+
+    /** 1.0.0：DeepSeek 返回的 WAV 文件头长度是占位值，系统播放器不认；试听前改成实际长度 */
+    @Test
+    fun preview_wavWithStreamingPlaceholders_isFixedBeforePlaying() {
+        val pcm = ByteArray(4_800) { (it % 7).toByte() }
+        val streamed = (isomeria.aichat.data.voice.WavFormat.header(pcm.size.toLong(), 24_000, 1) + pcm).also {
+            for (i in 4 until 8) it[i] = 0xFF.toByte()
+            for (i in 40 until 44) it[i] = 0xFF.toByte()
+        }
+        service.audio = TtsAudio(streamed, "wav")
+        controller.open(volc, "")
+        await { !controller.state.value.loading }
+        val option = BuiltInVoices.VOLCENGINE.first()
+        controller.preview(option)
+        await { controller.state.value.playing == option.id }
+        val played = player.playedBytes!!
+        assertEquals(isomeria.aichat.data.voice.WavFormat.header(pcm.size.toLong(), 24_000, 1).toList(), played.copyOf(44).toList())
+        assertTrue(played.copyOfRange(44, played.size).contentEquals(pcm))
+    }
+
+    /** 1.0.0：播放器一开始就放不了时提示“试听失败：手机放不出这段音频”，不再一直停在“播放中”，临时文件删掉 */
+    @Test
+    fun preview_playerFailsAtOnce_showsCannotPlay_notStuckPlaying() {
+        player.endsAtOnce = false
+        controller.open(volc, "")
+        await { !controller.state.value.loading }
+        controller.preview(BuiltInVoices.VOLCENGINE.first())
+        await { controller.state.value.previewError != null }
+        val state = controller.state.value
+        assertEquals(PickerMessage(R.string.voice_picker_preview_failed, R.string.voice_picker_preview_cannot_play), state.previewError)
+        assertNull(state.playing)
+        assertNull(state.previewing)
+        assertFalse("临时文件删掉", player.playing!!.exists())
+        assertEquals("试听失败：手机放不出这段音频", context.getString(R.string.voice_picker_preview_failed, context.getString(R.string.voice_picker_preview_cannot_play)))
+    }
+
+    /** 放得极快、play 返回前就放完时，也不能停在“播放中” */
+    @Test
+    fun preview_endsBeforePlayReturns_isNotStuckPlaying() {
+        player.endsAtOnce = true
+        controller.open(volc, "")
+        await { !controller.state.value.loading }
+        val option = BuiltInVoices.VOLCENGINE.first()
+        controller.preview(option)
+        await { controller.state.value.previewing == null }
+        assertNull(controller.state.value.playing)
+        assertNull(controller.state.value.previewError)
     }
 
     @Test
