@@ -1188,7 +1188,7 @@ class ScreenshotTest {
     @Test fun fileBubblesLarge() = large("96-chat-file-large", false) { ChatPageSample(rows = isomeria.aichat.feature.chat.fileRows) }
     @Test @Config(qualifiers = "w320dp-h860dp-xxhdpi") fun fileBubblesNarrow() = large("96-chat-file-narrow", true) { ChatPageSample(rows = isomeria.aichat.feature.chat.fileRows) }
 
-    /** 设置 → 模型服务 → 文件解析（0.9.2） */
+    /** 我 → 模型服务 → 文件解析（0.9.2） */
     @Composable private fun ParserShot(test: isomeria.aichat.feature.settings.ParserTestResult? = null) = isomeria.aichat.feature.settings.ParserSettingsContent(
         state = isomeria.aichat.feature.settings.ParserSettingsState(loaded = true, savedKeyMasked = "abcd••••••wxyz", test = test),
         onBack = {},
