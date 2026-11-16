@@ -28,6 +28,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
@@ -60,6 +61,8 @@ import isomeria.aichat.feature.contactedit.ContactForm
 import isomeria.aichat.feature.contactedit.ContactVoiceRows
 import isomeria.aichat.feature.contactedit.previewState
 import isomeria.aichat.feature.me.MeContent
+import isomeria.aichat.ui.components.ChatInputBar
+import isomeria.aichat.ui.components.InputPanel
 import isomeria.aichat.ui.components.MorePanel
 import isomeria.aichat.ui.components.RecordMode
 import isomeria.aichat.ui.components.RecordZone
@@ -587,6 +590,18 @@ class UiPolishTest {
         }
         assertEquals(1, layoutOf("转文字").lineCount)
         assertFalse(layoutOf("转文字").cut())
+    }
+
+    // 1.0.0：字体最大时“发送”按钮原来是固定高度，两个字下半截被切掉
+    @Test
+    fun inputBar_largestFont_sendLabelNotCut() {
+        show {
+            ChatInputBar(
+                TextFieldValue("草稿"), {}, voiceMode = false, panel = InputPanel.NONE, onToggleVoice = {}, onTogglePanel = {},
+                onSend = {}, onInputFocused = {}, focusRequester = remember { FocusRequester() },
+            )
+        }
+        assertFalse("“发送”被切掉", layoutOf("发送").cut())
     }
 
     // 1.0.0：字体最大时“智信”上的红点比图标高，原来会把这一格撑高，“智信”比另外两个字低

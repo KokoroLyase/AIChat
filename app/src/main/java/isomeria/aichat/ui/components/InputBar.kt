@@ -193,7 +193,8 @@ private fun SendButton(onClick: () -> Unit) {
     val pressed by interaction.collectIsPressedAsState()
     Box(
         Modifier
-            .height(dimens.inputMinHeight)
+            // 1.0.0：和顶栏的小按钮一样只限最小高度。原来固定高度，系统字体 2.0 叠加 App 特大时“发送”两个字下半截被切掉
+            .heightIn(min = dimens.inputMinHeight)
             .padding(vertical = 3.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(if (pressed) colors.brandPressed else colors.brand)
