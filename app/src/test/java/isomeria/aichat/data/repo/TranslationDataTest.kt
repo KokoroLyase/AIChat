@@ -77,7 +77,7 @@ class TranslationDataTest {
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         val providers = ProviderRepository(db, db.providerDao(), cipher, setOf(fake))
-        repo = TranslationRepository(db, providers, UsageRepository(db.usageDao()), TranslateLabels("翻成英语", "翻成中文"))
+        repo = TranslationRepository(db, providers, UsageRepository(db.usageDao()), TranslateLabels("翻成英语", "翻成中文", "翻译下面这条成英语：%1\$s", "翻译下面这条成中文：%1\$s"))
         runBlocking {
             val providerId = db.providerDao().insert(
                 ProviderConfig(
@@ -110,7 +110,7 @@ class TranslationDataTest {
         assertEquals(ThinkingLevel.OFF, request.thinking)
         assertEquals("1.0.0：不跟联系人的 0.9，用固定的低温度", 0.3f, request.temperature)
         assertEquals(listOf(ChatRole.SYSTEM, ChatRole.USER), request.messages.map { it.role })
-        assertEquals(listOf("翻成英语", "周末去爬山吗"), request.messages.map { it.plainText() })
+        assertEquals("1.0.0：用户消息里也写明要求", listOf("翻成英语", "翻译下面这条成英语：周末去爬山吗"), request.messages.map { it.plainText() })
         val saved = db.messageDao().get(id)!!
         assertEquals("Shall we go hiking this weekend?", saved.translation)
         assertTrue(saved.translationShown)
@@ -159,6 +159,14 @@ class TranslationDataTest {
         val id = insert("Are you free?", MessageType.VOICE, Role.USER)
         repo.translate(id)
         assertEquals("翻成中文", fake.requests.single().messages.first().plainText())
+        assertEquals("翻译下面这条成中文：Are you free?", fake.requests.single().messages.last().plainText())
+    }
+
+    /** 1.0.0：问句也放进“翻译下面这条”的要求里；原文里的 % 和占位符样子的文字原样保留 */
+    @Test
+    fun questionAndPercentSigns_wrappedVerbatim() = runBlocking {
+        repo.translate(insert("你想买什么水果？打 8 折是 80% 吗？%1\$s"))
+        assertEquals("翻译下面这条成英语：你想买什么水果？打 8 折是 80% 吗？%1\$s", fake.requests.single().messages.last().plainText())
     }
 
     @Test

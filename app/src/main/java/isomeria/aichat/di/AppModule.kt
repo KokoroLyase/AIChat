@@ -116,6 +116,9 @@ object AppModule {
         isomeria.aichat.data.repo.TranslateLabels(
             toEnglish = context.getString(R.string.prompt_translate_english),
             toChinese = context.getString(R.string.prompt_translate_chinese),
+            // 不带参数取出模板，原文在请求时代入（原文里的 % 不会被当成格式）
+            textToEnglish = context.getString(R.string.prompt_translate_text_english),
+            textToChinese = context.getString(R.string.prompt_translate_text_chinese),
         )
 
     @Provides

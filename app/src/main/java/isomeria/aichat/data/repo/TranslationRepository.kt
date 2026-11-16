@@ -16,8 +16,11 @@ import isomeria.aichat.data.llm.LlmException
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** 翻译提示（0.9.0），从 strings.xml 读取后传入 */
-data class TranslateLabels(val toEnglish: String, val toChinese: String)
+/**
+ * 翻译提示（0.9.0），从 strings.xml 读取后传入。[textToEnglish]、[textToChinese]（1.0.0）是用户消息的模板，
+ * `%1$s` 换成原文
+ */
+data class TranslateLabels(val toEnglish: String, val toChinese: String, val textToEnglish: String, val textToChinese: String)
 
 /**
  * 翻译（0.9.0）：长按文字或有转写的语音“翻译”。
@@ -25,7 +28,8 @@ data class TranslateLabels(val toEnglish: String, val toChinese: String)
  * - 方向按 [TranslateDirection]：汉字超过一半翻成英语，否则翻成中文
  * - 用这个联系人的服务商和聊天模型，模型能关思考就关（[ProviderRepository.snapshot]）；温度 1.0.0 起不跟联系人，
  *   固定用较低的 [isomeria.aichat.data.llm.ModelRules.TRANSLATION_TEMPERATURE]，限制在模型允许的范围内；
- *   请求只有两条：翻译提示（系统）和要翻译的文字（用户），不带聊天记录、记忆和人设
+ *   请求只有两条：翻译提示（系统）和要翻译的文字（用户），不带聊天记录、记忆和人设。1.0.0 起用户消息里也写明
+ *   “翻译下面这条、不要回答”再接原文：只在系统提示里写时，MiMo 关思考会把问句当成问它而去回答
  * - 译文存在消息上（[Message.translation]），再点“翻译”直接显示，不再请求；不进上下文和记忆，聊天请求不变
  * - 用量记为 [UsagePurpose.TRANSLATE]，不算主动聊天
  */
@@ -64,7 +68,8 @@ class TranslationRepository @Inject constructor(
     /** 发给服务商的请求（单独拿出来，便于核对请求内容） */
     fun buildMessages(target: TranslateTarget, text: String): List<ChatMessage> = listOf(
         ChatMessage(ChatRole.SYSTEM, if (target == TranslateTarget.ENGLISH) labels.toEnglish else labels.toChinese),
-        ChatMessage(ChatRole.USER, text),
+        // 只替换占位符，不用 String.format：原文里的 % 原样保留
+        ChatMessage(ChatRole.USER, (if (target == TranslateTarget.ENGLISH) labels.textToEnglish else labels.textToChinese).replace("%1\$s", text)),
     )
 
     private suspend fun request(contactId: Long, target: TranslateTarget, text: String): String {
