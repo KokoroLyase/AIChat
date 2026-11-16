@@ -269,7 +269,7 @@ fun ChatScreen(
         snapshotFlow { Triple(listState.isScrollInProgress, listState.firstVisibleItemIndex, pagedRows.loadState.prepend.endOfPaginationReached) }
             .collect { (scrolling, index, newestLoaded) ->
                 if (scrolling) {
-                    atBottom = newestLoaded && index <= 2
+                    atBottom = atBottomWhileScrolling(atBottom, index, newestLoaded)
                     if (atBottom) viewModel.markLatestSeen()
                 }
             }
@@ -1081,6 +1081,19 @@ internal fun ChatBottomArea(
 }
 
 /** 回到最新一条：[animate] 时滑过去（和收到新消息一样），否则直接跳到底部 */
+/**
+ * 滑动中判断是否停在底部（倒序列表，第 0 项是最新一条）。
+ *
+ * 1.0.0 真机：发语音时分页会接连刷新，每次刷新“最新一页已载入”都会短暂变成 false。这时正好在滑动
+ * （包括收到消息时自动滑到底部）就会被当成离开了底部，之后的回复不再跟随，落在屏幕下面，也不显示新消息浮标。
+ * 所以靠近底部、但最新一页暂时没载入时保持原来的判断；离开底部（下标大于 2）照常算离开。
+ */
+internal fun atBottomWhileScrolling(previous: Boolean, index: Int, newestLoaded: Boolean): Boolean = when {
+    index > 2 -> false
+    newestLoaded -> true
+    else -> previous
+}
+
 internal suspend fun LazyListState.scrollToLatest(animate: Boolean) {
     if (animate) animateScrollToItem(0) else scrollToItem(0)
 }
